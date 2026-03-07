@@ -10,28 +10,42 @@ const GDScriptParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/
 const ParserClass = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/parser_class.gd")
 const ParserFunc = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/parser_func.gd")
 const CaretContext = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/caret_context.gd")
+const CodeEditParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/code_edit_parser.gd")
+const TypeLookup = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/type_lookup.gd")
 
 const Utils = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/utils.gd")
 const Keys = Utils.Keys
 
-const Parse = Utils.Parse
+
+var code_edit_parser:CodeEditParser
+var _caret_context:CaretContext
+var _type_lookup:TypeLookup
 
 var code_edit:CodeEdit
+
 
 var _script_path:String
 var _script_resource:GDScript
 
 var _class_access:Dictionary = {}
 
-var _caret_context:CaretContext
 
-#var source_lines:PackedStringArray
-
-
+func _init() -> void:
+	code_edit_parser = CodeEditParser.new()
+	code_edit_parser._parser = weakref(self)
+	
+	_type_lookup = TypeLookup.new()
+	_type_lookup._parser = weakref(self)
 
 
 func set_current_script(script:GDScript):
+	if script != _script_resource:
+		clear_cache()
 	_script_resource = script
+	_script_path = _script_resource.resource_path
+
+func get_current_script():
+	return _script_resource
 
 func set_code_edit(new_code_edit:CodeEdit, free_existing:=false):
 	if is_instance_valid(code_edit):
@@ -45,6 +59,7 @@ func set_script_path(new_path:String):
 	_script_resource = load(_script_path)
 	set_source_code(_script_resource.source_code)
 
+
 func set_source_code(source:String): # need a version if the script editor is set externally, maybe just parse_source()
 	if not is_instance_valid(code_edit):
 		var code = CodeEdit.new()
@@ -52,15 +67,23 @@ func set_source_code(source:String): # need a version if the script editor is se
 		set_code_edit(code)
 	
 	code_edit.text = source
-	#Parse.source(self)
-	parse()
+
+func clear_cache():
+	_class_access.clear()
+	code_edit_parser.string_map_cache.clear()
 
 func parse():
-	Parse.source(self)
+	code_edit_parser.parse_text()
+	
+	#print_hierarchy()
 
 
-func get_identifier_type(identifer_name:String) -> String:
-	return ""
+
+func get_code_edit_parser():
+	return code_edit_parser
+
+func get_string_map(string:String):
+	return code_edit_parser.get_string_map(string)
 
 func get_caret_context(parse_context:=true) -> CaretContext:
 	if not is_instance_valid(_caret_context):
@@ -70,20 +93,12 @@ func get_caret_context(parse_context:=true) -> CaretContext:
 func reset_caret_context():
 	_caret_context = null
 
-func get_member_info(access_path:String):
-	var member_name = access_path
-	if access_path.contains("."):
-		var string_map = UString.get_string_map(access_path, UString.StringMap.Mode.STRING)
-		member_name = UString.get_member_access_back(access_path, string_map)
-		access_path = UString.trim_member_access_back(access_path, string_map)
-	else:
-		access_path = ""
-	
-	var _class = _class_access.get(access_path) as ParserClass
-	if _class == null:
-		return
-	var member = _class.get_member(member_name)
-	return member
+
+func has_class(identifier:String):
+	return _class_access.has(identifier)
+
+func get_class_object(identifier:String):
+	return _class_access.get(identifier)
 
 func get_class_at_line(line:int):
 	for access_path in _class_access.keys():
@@ -99,6 +114,72 @@ func get_function_at_line(line:int):
 	return class_obj.get_function_at_line(line)
 
 
+func get_identifier_type(identifer_name:String, line:int=-1) -> String:
+	if line == -1:
+		line = code_edit.get_caret_line()
+	#var access_data = _get_access_path_and_name(identifer_name, line)
+	#print(access_data)
+	
+	#var _class_obj = _class_access.get(access_data[0])
+	#print("GET IDENTIFIER: ", _type_lookup.get_indentifier_type(access_data[1], _class_obj, line))
+	
+	var _class_obj = _class_access.get(get_class_at_line(line))
+	var result = _type_lookup.get_indentifier_type(identifer_name, _class_obj, line)
+	print("GET IDENTIFIER: ", result)
+	return result
+
+
+
+func get_member_info(identifier:String, line:int=-1):
+	if line == -1:
+		line = code_edit.get_caret_line()
+	var _class = get_class_at_line(line)
+	if _class == null:
+		return
+	var member = _class.get_member(identifier)
+	return member
+
+
+
+
+func get_line_context(line:int, column:int=0, insert_caret:=false):
+	return code_edit_parser.get_line_context(line, column, insert_caret)
+
+
+
+
+
+
+
+
+func _get_access_path_and_name(identifier:String, line:int):
+	if identifier.begins_with("self"):
+		identifier = identifier.trim_prefix("self").trim_prefix(".")
+	var member_name = identifier
+	var access_path = ""
+	if not identifier.contains("."):
+		return [access_path, member_name]
+	
+	var string_map = get_string_map(identifier)
+	var parts = UString.split_member_access(identifier, string_map)
+	#var i = 0
+	var working_path = ""
+	for i in range(parts.size()):
+		var p = parts[i]
+		working_path = Utils.map_get_access_path(working_path, p)
+		if not _class_access.has(working_path):
+			member_name = ""
+			for j in range(i, parts.size()):
+				member_name = Utils.map_get_access_path(member_name, parts[j])
+			break
+		access_path = working_path
+	return [access_path, member_name]
+
+
+
+
+
+
 func _code_edit_dispose():
 	var meta = code_edit.get_meta(Keys.PARSER_CODE_EDIT, false)
 	if meta:
@@ -110,7 +191,36 @@ func _notification(what: int) -> void:
 		_code_edit_dispose()
 
 
-
+func print_hierarchy():
+	for key in _class_access.keys():
+		var name = key
+		var indent = 0
+		if name == "":
+			name = "Script"
+		else:
+			indent = name.count(".") + 1
+			name = UString.get_member_access_back(name)
+		var base_indent_str = ""
+		for i in indent:
+			base_indent_str += "\t"
+		print(base_indent_str + name)
+		var member_indent_str = "\t" + base_indent_str
+		
+		var _class = _class_access.get(key) as ParserClass
+		#print(base_indent_str + "Constants:")
+		#for c in _class.constants.keys():
+			#print(member_indent_str + c)
+		#print("")
+		#
+		#print(base_indent_str + "Members:")
+		#for m in _class.members.keys():
+			#print(member_indent_str + m)
+		#print("")
+		
+		print(base_indent_str + "Functions:")
+		for f in _class.functions.keys():
+			print(member_indent_str + f)
+		print("")
 
 
 

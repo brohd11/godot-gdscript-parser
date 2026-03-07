@@ -1,7 +1,32 @@
 const UString = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_string.gd")
 
+const GDScriptParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/gdscript_parser.gd")
 const Keys = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/keys.gd")
-const Parse = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/parse.gd")
+const CodeEditParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/code_edit_parser.gd")
+
+
+const DECLARATIONS = [&"class ", &"var ", &"static ", &"func ", &"enum ", &"const ", &"signal "]
+class ParserRef:
+	static func set_refs(object:Object, parser:GDScriptParser, class_obj:GDScriptParser.ParserClass=null):
+		object.set(&"_parser", weakref(parser))
+		object.set(&"_code_edit_parser", weakref(parser.code_edit_parser))
+		if is_instance_valid(class_obj):
+			object.set(&"_class_obj", weakref(class_obj))
+	
+	static func get_parser(object:Object) -> GDScriptParser:
+		return _get_ref(object, &"_parser")
+	
+	static func get_code_edit_parser(object:Object) -> CodeEditParser:
+		return _get_ref(object, &"_code_edit_parser")
+	
+	static func get_class_obj(object:Object) -> GDScriptParser.ParserClass:
+		return _get_ref(object, &"_class_obj")
+	
+	static func _get_ref(object, string_name:StringName):
+		var ref = object.get(string_name)
+		if ref:
+			return ref.get_ref()
+		return
 
 static func map_get_access_path(access_path:String, member_name:String):
 	if access_path == "":
@@ -223,9 +248,7 @@ static func get_enum_members_in_line(stripped_text:String) -> Dictionary:
 	
 	var enum_data = {}
 	for i in range(members_array.size()):
-		var m = members_array[i]
-		m = m.strip_edges()
-		enum_data[m] = i
+		enum_data[members_array[i].strip_edges()] = i
 	return enum_data
 
 
@@ -255,6 +278,17 @@ static func get_class_name_in_line(stripped_line_text:String) -> String:
 	if _class.find("extends ") > -1: #  "" <- parser
 		_class = _class.get_slice("extends ", 0) #  "" <- parser
 	return _class.strip_edges()
+
+static func get_class_name_and_extends_in_line(stripped_line_text:String):
+	if not stripped_line_text.begins_with("class "): # "" <- parser
+		return null
+	var _class_dec = stripped_line_text.get_slice("class ", 1).get_slice(":", 0) # "" <- parser
+	var _class = _class_dec
+	var _extends = ""
+	if _class_dec.find("extends ") > -1: #  "" <- parser
+		_class = _class_dec.get_slice("extends ", 0) #  "" <- parser
+		_extends = _class_dec.get_slice("extends ", 1) #  "" <- parser
+	return [_class.strip_edges(), _extends.strip_edges()]
 
 static func get_var_name_and_type_hint_in_line(stripped_line_text:String): # for local vars
 	var var_idx = stripped_line_text.find("var ")
@@ -316,13 +350,30 @@ static func _get_name_and_type_from_line(declaration:String):
 	
 	return [var_nm, type_hint]
 
-const DECLARATIONS = ["class ", "var ", "static ", "func ", "enum ", "const "]
+
 
 static func line_has_any_declaration(stripped_line:String):
 	for dec in DECLARATIONS:
 		if stripped_line.begins_with(dec):
 			return true
 	return false
+
+static func add_var_to_dict(stripped_line:String, line:int, dict:Dictionary, int_key:=false):
+	var var_data = get_var_name_and_type_hint_in_line(stripped_line)
+	if var_data != null:
+		var var_name = var_data[0]
+		var type = var_data[1]
+		if type.find(".new(") > -1:
+			type = type.get_slice(".new(", 0)
+		var key = line if int_key else var_name
+		dict[key] = {
+			Keys.MEMBER_NAME: var_name,
+			Keys.LINE_INDEX: line,
+			Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_VAR,
+			Keys.TYPE: type,
+			}
+	return var_data
+
 
 static func get_member_data(stripped_line:String, line_index:int):
 	var data = {}

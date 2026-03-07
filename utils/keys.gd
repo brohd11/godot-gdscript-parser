@@ -1,4 +1,5 @@
 
+const _BLANK = &""
 const CARET_UNI_CHAR = &"\uFFFF"
 
 const PARSER_CODE_EDIT = &"_parser_code_edit"
@@ -6,9 +7,11 @@ const PARSER_CODE_EDIT = &"_parser_code_edit"
 
 # map keys
 
+const CLASS_INDENT = &"class_indent"
 const MEMBER_NAME = &"member_name"
 const MEMBER_TYPE = &"member_type"
 const LINE_INDEX = &"line_index"
+const FUNC_LINES = &"func_lines"
 
 
 const LOCAL_VARS = &"#local"

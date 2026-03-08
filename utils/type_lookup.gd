@@ -331,7 +331,9 @@ func _check_member_data(member_name:String, class_obj:ParserClass, local_vars:Di
 		#print("CONST RESULT ", resolved)
 		#return resolved
 	else:
-		var get_type = _get_script_member_type(line_index) # this could be cool to also scroll up to last assignment?
+		var column = member_data.get(Keys.COLUMN_INDEX, 0)
+		print("COLUMN ", column)
+		var get_type = _get_script_member_type(line_index, column) # this could be cool to also scroll up to last assignment?
 		if get_type != null:
 			type_declaration = get_type[1]
 			print("GOT TYPE: ", type_declaration)
@@ -746,11 +748,11 @@ func _is_class_name_valid(_class_name, check_global:=true):
 	return false
 
 
-func _get_script_member_type(line:int): # thjs could be a bit more efficient, if not needed, could use what you got already, 
+func _get_script_member_type(line:int, column:int=0): # thjs could be a bit more efficient, if not needed, could use what you got already, 
 	var code_edit_parser = _get_code_edit_parser() # but also maybe speeding up scan by not getting types could be good
 	var line_text = code_edit_parser.get_line(line, true)
-	if line_text.ends_with("\\"):
-		return code_edit_parser.get_type_from_line(line)
+	if line_text.ends_with("\\") or column > 0:
+		return code_edit_parser.get_type_from_line(line, column)
 	else:
 		return code_edit_parser.get_type_from_line_text(line_text.strip_edges())
 

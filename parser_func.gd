@@ -74,7 +74,7 @@ func map_variables() -> void:
 		var indent = code_edit_parser.get_indent_code_edit(i)
 		if Utils.line_has_any_declaration(stripped) and indent <= class_indent:
 			break
-		var var_data = Utils.get_var_name_and_type_hint_in_line(stripped)
+		var var_data = Utils.get_var_or_const_info(stripped)
 		if var_data != null:
 			var var_name = var_data[0]
 			#var_name = Utils.map_check_dupe_local_var_name(var_name, local_vars) # this is negated by using indexes
@@ -114,7 +114,7 @@ func map_variables() -> void:
 		#var indent = code_edit_parser.get_indent_code_edit(i)
 		#if Utils.line_has_any_declaration(stripped) and indent <= class_indent:
 			#break
-		#var var_data = Utils.get_var_name_and_type_hint_in_line(stripped)
+		#var var_data = Utils.get_var_or_const_info(stripped)
 		#if var_data != null:
 			#var var_name = var_data[0]
 			##var_name = Utils.map_check_dupe_local_var_name(var_name, local_vars) # this is negated by using indexes

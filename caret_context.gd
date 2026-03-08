@@ -86,7 +86,8 @@ func parse():
 	var params = {&"map_local_vars":true, &"map_blocks": _MAP_BLOCKS}
 	var code_context_start_data = code_edit_parser.get_line_context_start_data(caret_line, params)
 	function_blocks = code_context_start_data.get(&"blocks", [])
-	code_context = code_edit_parser.get_line_context(caret_line, caret_column, true, code_context_start_data)
+	var context_data = code_edit_parser.get_line_context(caret_line, caret_column, true, code_context_start_data)
+	code_context = context_data.get(Keys.CONTEXT_TEXT)
 	print(code_context)
 	#print(code_context_start_data)
 	code_context_caret_pos = code_context.find(Keys.CARET_UNI_CHAR)
@@ -182,7 +183,7 @@ func _set_assignment_at_caret():
 	var left_typed = ""
 	if left.begins_with("var "):
 		#var trimmed = left.trim_prefix("var ") # not sure if this was causing issues?
-		var data = Utils.get_var_name_and_type_hint_in_line(left)
+		var data = Utils.get_var_or_const_info(left)
 		if data != null:
 			left_typed = parser.get_identifier_type(data[1], caret_line)
 	else:

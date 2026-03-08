@@ -1,4 +1,3 @@
-
 #! import-p Keys,
 
 const UString = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_string.gd")
@@ -117,11 +116,6 @@ func get_function_at_line(line:int):
 func get_identifier_type(identifer_name:String, line:int=-1) -> String:
 	if line == -1:
 		line = code_edit.get_caret_line()
-	#var access_data = _get_access_path_and_name(identifer_name, line)
-	#print(access_data)
-	
-	#var _class_obj = _class_access.get(access_data[0])
-	#print("GET IDENTIFIER: ", _type_lookup.get_indentifier_type(access_data[1], _class_obj, line))
 	
 	var _class_obj = _class_access.get(get_class_at_line(line))
 	var result = _type_lookup.get_indentifier_type(identifer_name, _class_obj, line)
@@ -143,37 +137,10 @@ func get_member_info(identifier:String, line:int=-1):
 
 
 func get_line_context(line:int, column:int=0, insert_caret:=false):
-	return code_edit_parser.get_line_context(line, column, insert_caret)
+	return code_edit_parser.get_line_context(line, column, insert_caret).get(Keys.CONTEXT_TEXT)
 
 
 
-
-
-
-
-
-func _get_access_path_and_name(identifier:String, line:int):
-	if identifier.begins_with("self"):
-		identifier = identifier.trim_prefix("self").trim_prefix(".")
-	var member_name = identifier
-	var access_path = ""
-	if not identifier.contains("."):
-		return [access_path, member_name]
-	
-	var string_map = get_string_map(identifier)
-	var parts = UString.split_member_access(identifier, string_map)
-	#var i = 0
-	var working_path = ""
-	for i in range(parts.size()):
-		var p = parts[i]
-		working_path = Utils.map_get_access_path(working_path, p)
-		if not _class_access.has(working_path):
-			member_name = ""
-			for j in range(i, parts.size()):
-				member_name = Utils.map_get_access_path(member_name, parts[j])
-			break
-		access_path = working_path
-	return [access_path, member_name]
 
 
 

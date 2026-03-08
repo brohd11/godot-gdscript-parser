@@ -23,192 +23,129 @@ static var type_assignment_regex:RegEx
 static var context_regex: RegEx
 
 var _map_regex:RegEx
+var _annotation_regex:RegEx
+
+#@export var f = ("")
+#@export_file(
+	#"*gd"
+#)var ff = ""; var fg= ""
+
+
+
+var g="";var t = ";not this";func my_func(): pass;var fh;
+
+var _pc:_ParserContext
+
+
+class _ParserContext:
+	var class_access_map = {"":[]}
+	var member_map := {}
+	var constant_map := {}
+	var inner_class_map := {}
+	
+	var access_path := ""
+	var current_indentation_level:int = 0
+	var extended_lines:= []
+	var pending_annotations:= []
+	
+	var in_function:= false
+	var current_func_dict:={}
+	
+	var main_script_path:=""
+
 
 
 func parse_text():
-	_map_regex = RegEx.new()
-	_map_regex.compile("^(static\\s+var|static\\s+func|var|func|enum|const|signal|class)\\s+([a-zA-Z_]\\w*)")
+	if not is_instance_valid(_map_regex):
+		_map_regex = RegEx.new()
+		_map_regex.compile("^(?:(static)\\s+)?(var|func|enum|const|signal|class_name|class)\\s+([a-zA-Z_]\\w*)")
+	if not is_instance_valid(_annotation_regex):
+		_annotation_regex = RegEx.new()
+		_annotation_regex.compile("^@[A-Za-z0-9_]+(?:\\([^)]*\\))?\\s*")
+	
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("S")
+	
 	var parser = _get_parser()
 	code_edit = parser.code_edit
+	indent_size = code_edit.get_tab_size()
+	
 	var existing_class_access = parser._class_access
 	var main_script = parser._script_resource
 	var main_script_path = main_script.resource_path
 	
-	indent_size = code_edit.get_tab_size()
 	
-	var class_access_map = {}
-	var member_map = {}
-	var constant_map = {}
-	var inner_class_map = {}
+	_pc = _ParserContext.new()
+	_pc.main_script_path = main_script_path
 	
-	class_access_map[""] = []
-	var access_path = ""
-	var current_indentation_level = 0
-	var extended_lines = []
-	
-	var in_function = false
-	var current_func_dict:={}
+	var class_access_map = _pc.class_access_map
+	var extended_lines = _pc.extended_lines
 	
 	var i = 0
 	var code_edit_line_count = code_edit.get_line_count() - 1
 	for _i in range(code_edit_line_count):
-		#var line = code_edit.get_line(i)
-		#var line = get_line(i, true)
-		
-		var stripped:String = get_line(i, true).strip_edges()
-		#if line.find("#") > -1:
-			#stripped = remove_comment(i, line)
-		#else:
-			#stripped = line.strip_edges()
-		
+		var stripped:String = get_line(i, true, true)
 		if stripped == "":
-			class_access_map[access_path].append(i)
-			if in_function:
-				current_func_dict[Keys.FUNC_LINES].append(i)
+			class_access_map[_pc.access_path].append(i)
+			if _pc.in_function:
+				_pc.current_func_dict[Keys.FUNC_LINES].append(i)
 			i += 1
 			continue
 		
-		var next_i = i
-		while stripped.ends_with("\\"):
-			next_i += 1
-			if not next_i < code_edit_line_count:
-				break
-			stripped = stripped.trim_suffix("\\")
-			extended_lines.append(next_i)
-			var next_line = code_edit.get_line(next_i)
-			if next_line.find("#") > -1:
-				stripped += remove_comment(next_i, next_line).strip_edges(true, false)
-			else:
-				stripped += next_line.strip_edges(true, false)
-			#stripped = stripped.strip_edges()
+		var has_semi_col = stripped.find(";") > -1
+		if has_semi_col:
+			var data = get_semi_colon_strings(i)
+			for column in data.keys():
+				var text = data[column]
+				_parse_line(text, i, column)
+		else:
+			_parse_line(stripped, i)
 		
-		
-		var indentation_level = get_indent_code_edit(i)
-		if indentation_level < current_indentation_level:
-			if stripped != "":
-				var iterations = (current_indentation_level - indentation_level) / indent_size
-				for z in range(iterations):
-					var dot = access_path.rfind(".")
-					if dot == -1:
-						access_path = ""
-						break
-					else:
-						access_path = access_path.substr(0, access_path.rfind("."))
-				
-				#prints("DROP LEVEL:", indentation_level, current_indentation_level,old_access_path, " -> ", access_path)
-				current_indentation_level = indentation_level
-		
-		
-		var inner_name = Utils.get_class_name_in_line(stripped)
-		if inner_name != "":
-			var new_access_path = Utils.map_get_access_path(access_path, inner_name)
-			var member_data = {
-				Keys.MEMBER_NAME:inner_name,
-				Keys.MEMBER_TYPE:Keys.MEMBER_TYPE_CLASS,
-				Keys.TYPE:Utils.map_get_access_path(main_script_path, new_access_path),
-				Keys.LINE_INDEX:i
-			}
-			inner_class_map.get_or_add(access_path, {})[inner_name] = member_data
-			
-			in_function = false
-			current_indentation_level += indent_size
-			access_path = new_access_path
-			class_access_map[access_path] = []
-		
-		if current_indentation_level == indentation_level:
-			
-			var member_data = Utils.get_member_data(stripped, i)
-			if not member_data.is_empty():
-				var member_name = member_data[Keys.MEMBER_NAME]
-				var member_type = member_data[Keys.MEMBER_TYPE]
-				if member_type == Keys.MEMBER_TYPE_CONST or member_type == Keys.MEMBER_TYPE_ENUM:
-					in_function = false
-					constant_map.get_or_add(access_path, {})[member_name] = member_data
-				elif member_type == Keys.MEMBER_TYPE_FUNC or member_type == Keys.MEMBER_TYPE_STATIC_FUNC:
-					current_func_dict = member_data
-					in_function = true
-					member_data[Keys.FUNC_LINES] = PackedInt32Array()
-					member_map.get_or_add(access_path, {})[member_name] = member_data
-				else:
-					in_function = false
-					member_map.get_or_add(access_path, {})[member_name] = member_data
-			
-			
-			var result = _map_regex.search(stripped)
-			if result:
-				var keyword = result.get_string(1)
-				var member_name = result.get_string(2)
-				var data = {
-					Keys.MEMBER_TYPE: keyword,
-					Keys.MEMBER_NAME: member_name,
-					Keys.LINE_INDEX: i
-				}
-				if keyword.ends_with("func"):
-					current_func_dict = data
-					in_function = true
-					data[Keys.FUNC_LINES] = PackedInt32Array()
-					member_map.get_or_add(access_path, {})[member_name] = data
-				elif keyword.begins_with("c"):
-					in_function = false
-					constant_map.get_or_add(access_path, {})[member_name] = data
-				else:
-					in_function = false
-					member_map.get_or_add(access_path, {})[member_name] = data
-				
-				if not member_data:
-					print("MIS MATCH ", member_name)
-				elif member_name != member_data[Keys.MEMBER_NAME]:
-					prints("MIS MATCH '%s' - '%s'"% [member_data[Keys.MEMBER_NAME], member_name])
-			
-		
-		
-		class_access_map[access_path].append(i)
-		if in_function:
-			current_func_dict[Keys.FUNC_LINES].append(i)
+		class_access_map[_pc.access_path].append(i)
+		if _pc.in_function:
+			_pc.current_func_dict[Keys.FUNC_LINES].append(i)
 		if not extended_lines.is_empty():
 			for index in extended_lines:
-				class_access_map[access_path].append(index)
-				if in_function:
-					current_func_dict[Keys.FUNC_LINES].append(i)
+				class_access_map[_pc.access_path].append(index)
+				if _pc.in_function:
+					_pc.current_func_dict[Keys.FUNC_LINES].append(i)
 				i += 1
 			extended_lines.clear()
 		
 		i += 1
 	
 	
-	#print(inner_class_map)
 	var temp_class_access = {}
 	var _class_paths = class_access_map.keys()
 	for path:String in _class_paths:
 		var _class_obj:ParserClass
 		if existing_class_access.has(path):
 			_class_obj = existing_class_access[path]
+			_class_obj.queue_refresh()
 		if not is_instance_valid(_class_obj):
 			_class_obj = ParserClass.new()
 			Utils.ParserRef.set_refs(_class_obj, parser)
 			_class_obj.access_path = path
-			_class_obj.indent_level = get_indent_access_path(access_path)
+			_class_obj.indent_level = get_indent_access_path(_pc.access_path)
 		
-		_class_obj.queue_refresh()
 		
-		var valid_constants:Dictionary = constant_map.get("", {}).duplicate()
-		var valid_classes:Dictionary = inner_class_map.get("", {}).duplicate()
+		
+		var valid_constants:Dictionary = _pc.constant_map.get("", {}).duplicate()
+		var valid_classes:Dictionary = _pc.inner_class_map.get("", {}).duplicate()
 		if path != "":
 			var working_path = path
 			for x in range(path.count(".") + 1):
-				valid_constants.merge(constant_map.get(working_path, {}))
-				valid_classes.merge(inner_class_map.get(working_path, {}))
+				valid_constants.merge(_pc.constant_map.get(working_path, {}))
+				valid_classes.merge(_pc.inner_class_map.get(working_path, {}))
 				working_path = working_path.substr(0, working_path.rfind("."))
 		
 		
-		_class_obj.main_script_path = main_script_path
+		_class_obj.main_script_path = _pc.main_script_path
 		if path == "":
 			_class_obj.script_resource = parser._script_resource
 			#_class_obj.script_access_path = main_script_path
 		else:
 			#_class_obj.script_access_path = valid_classes[path].get(Keys.TYPE)
-			var script = UClassDetail.get_member_info_by_path(main_script, access_path)
+			var script = UClassDetail.get_member_info_by_path(main_script, _pc.access_path)
 			if script != null:
 				_class_obj.script_resource = script
 		
@@ -221,7 +158,7 @@ func parse_text():
 		
 		
 		
-		_class_obj.set_members(member_map.get(path, {}))
+		_class_obj.set_members(_pc.member_map.get(path, {}))
 		_class_obj.set_constants(valid_constants)
 		_class_obj.set_inner_classes(valid_classes)
 		
@@ -230,10 +167,88 @@ func parse_text():
 	parser._class_access = temp_class_access
 	t.stop()
 	#print("CLASSES ",temp_class_access.keys())
+	_pc = null
 	return temp_class_access
 
 
-
+func _parse_line(stripped:String, line:int, column:int=0):
+	var has_extension = stripped.ends_with("\\")
+	if has_extension or stripped.begins_with("@"):
+		if has_extension or stripped.count("(") != stripped.count(")"): # complex case, get full context
+			var context_data = get_line_context(line, 0, false, {Keys.CONTEXT_START: line})
+			var end_index = context_data.get(Keys.CONTEXT_END)
+			for e_i in range(line + 1, end_index):
+				_pc.extended_lines.append(e_i)
+			stripped = context_data.get(Keys.CONTEXT_TEXT, "").strip_edges()
+		
+		while stripped.begins_with("@"):
+			var _match = _annotation_regex.search(stripped)
+			if _match:
+				var matched_text = _match.get_string()
+				_pc.pending_annotations.append(matched_text.strip_edges())
+				stripped = stripped.substr(matched_text.length()) # Slice the annotation off the front of the line
+			else:
+				break # Failsafe
+	
+	var indentation_level = get_indent_code_edit(line)
+	if indentation_level < _pc.current_indentation_level:
+		if stripped != "":
+			var iterations = (_pc.current_indentation_level - indentation_level) / indent_size
+			for z in range(iterations):
+				var dot = _pc.access_path.rfind(".")
+				if dot == -1:
+					_pc.access_path = ""
+					break
+				else:
+					_pc.access_path = _pc.access_path.substr(0, _pc.access_path.rfind("."))
+			
+			#prints("DROP LEVEL:", indentation_level, current_indentation_level,old_access_path, " -> ", access_path)
+			_pc.current_indentation_level = indentation_level
+	
+	if not (stripped.begins_with("class") or _pc.current_indentation_level == indentation_level):
+		return
+	
+	var result = _map_regex.search(stripped)
+	if result:
+		var keyword = result.get_string(2)
+		if result.get_string(1) != "":
+			if result.get_string(1) != "static":
+				print("REGEX MISTAKE SHOULD BE STATIC ", result.get_string(1))
+			keyword = "static " + keyword
+		var member_name = result.get_string(3)
+		
+		var data = {
+			Keys.MEMBER_TYPE: keyword,
+			Keys.MEMBER_NAME:member_name,
+			Keys.LINE_INDEX:line,
+			Keys.ANNOTATIONS: _pc.pending_annotations.duplicate()
+		}
+		
+		_pc.pending_annotations.clear()
+		_pc.in_function = false
+		if keyword == "class":
+			var new_access_path = UString.dot_join(_pc.access_path, member_name)
+			#data[Keys.MEMBER_TYPE] = Keys.MEMBER_TYPE_CLASS
+			data[Keys.TYPE] = UString.dot_join(_pc.main_script_path, new_access_path)
+			
+			_pc.inner_class_map.get_or_add(_pc.access_path, {})[member_name] = data
+			
+			_pc.current_indentation_level += indent_size
+			_pc.access_path = new_access_path
+			_pc.class_access_map[_pc.access_path] = []
+			
+		else:#if _pc.current_indentation_level == indentation_level:
+			data[Keys.COLUMN_INDEX] = column
+			if keyword.ends_with("func"):
+				_pc.current_func_dict = data
+				_pc.in_function = true
+				data[Keys.FUNC_LINES] = PackedInt32Array()
+				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
+			elif keyword.begins_with("c"):
+				_pc.constant_map.get_or_add(_pc.access_path, {})[member_name] = data
+			else:
+				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
+			
 
 
 
@@ -310,7 +325,7 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 	
 	return {
 		&"has_semi_col": has_semi_col,
-		&"start_index": context_start_line,
+		Keys.CONTEXT_START: context_start_line,
 		&"blocks": blocks,
 		&"local_vars":local_vars
 	}
@@ -337,22 +352,14 @@ func get_line_context_start_simple(target_line_index:int) -> Dictionary:
 	
 	return {
 		&"has_semi_col": has_semi_col,
-		&"start_index": context_start_line,
+		Keys.CONTEXT_START: context_start_line,
 	}
 
-func _line_has_semi_colon(line:int):
-	var line_text = code_edit.get_line(line) # musn't be stripped on left for is_valid_code with semi
-	var semi_i = line_text.rfind(";")
-	while semi_i != -1:
-		if not is_valid_code(line, semi_i):
-			semi_i = line_text.rfind(";", semi_i - 1)
-		else:
-			return true
-	return false
 
 
 
-func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=false, start_data:={}) -> String:
+
+func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=false, start_data:={}) -> Dictionary:
 	if not is_instance_valid(context_regex):
 		context_regex = RegEx.new()
 		context_regex.compile("[\"'(){}\\[\\]]")
@@ -362,9 +369,9 @@ func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=fal
 		start_data = get_line_context_start_simple(target_line_index)
 	
 	var has_semi_col:bool = start_data.get(&"has_semi_col", false)
-	var context_start_line:int = start_data.get(&"start_index", target_line_index)
+	var context_start_line:int = start_data.get(Keys.CONTEXT_START, target_line_index)
 	var context_end_line:int = target_line_index + 1
-	
+	prints("HAS SEMI COL", has_semi_col, _caret_column)
 	
 	#var has_semi_col:=false
 	#var context_start_line = target_line_index + 1
@@ -448,7 +455,7 @@ func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=fal
 		else:
 			context_text += "\n" + line
 	
-	if has_semi_col and insert_caret:
+	if has_semi_col:# and _caret_column > 0:
 		var string_map = get_string_map(context_text)
 		var semi_prev = UString.string_safe_rfind(context_text, ";", caret_idx, string_map) + 1
 		var semi_next = UString.string_safe_find(context_text, ";", caret_idx, string_map)
@@ -456,7 +463,24 @@ func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=fal
 	
 	
 	t.stop()
-	return context_text
+	var return_data = {
+		Keys.CONTEXT_TEXT: context_text,
+		Keys.CONTEXT_START: context_start_line,
+		Keys.CONTEXT_END: context_end_line,
+	}
+	
+	return return_data
+
+
+func _line_has_semi_colon(line:int):
+	var line_text = code_edit.get_line(line) # musn't be stripped on left for is_valid_code with semi
+	var semi_i = line_text.rfind(";")
+	while semi_i != -1:
+		if not is_valid_code(line, semi_i):
+			semi_i = line_text.rfind(";", semi_i - 1)
+		else:
+			return true
+	return false
 
 
 func parse_identifier_at_position(text_to_process:String, start_pos:int):
@@ -528,7 +552,7 @@ func get_string_map(text:String):
 
 
 
-func get_line(line:int, strip_comment:=false):
+func get_line(line:int, strip_comment:=false, strip_left:=false):
 	var line_text = code_edit.get_line(line)
 	if not strip_comment:
 		return line_text
@@ -539,7 +563,7 @@ func get_line(line:int, strip_comment:=false):
 				com_idx = line_text.find("#", com_idx + 1)
 			else:
 				break
-		return line_text.substr(0, com_idx).strip_edges(false, true)
+		return line_text.substr(0, com_idx).strip_edges(strip_left, true)
 
 func get_extended_line(line_index:int):
 	var full_line = ""
@@ -572,8 +596,9 @@ func get_line_no_comment(line:int):
 			break
 	return line_text.substr(0, com_idx).strip_edges(false)
 
-func get_type_from_line(line:int):
-	var context = get_line_context(line)
+func get_type_from_line(line:int, column:int=0):
+	var context = get_line_context(line, column).get(Keys.CONTEXT_TEXT, "")
+	print("RAW CONTEXT ", context)
 	return get_type_from_line_text(context.strip_edges())
 
 ## returns an array with [member_name, member_type], except functions, which return a dict {func_args, func_return}, keys are in Keys class
@@ -581,17 +606,17 @@ func get_type_from_line_text(stripped_line_text:String):
 	for dec in Keywords.DECLARATIONS:
 		if stripped_line_text.begins_with(dec):
 			if dec == &"var " or dec == &"static var ":
-				return Utils.get_var_name_and_type_hint_in_line(stripped_line_text)
+				return Utils.get_var_or_const_info(stripped_line_text)
 			elif dec == &"enum ":
-				return [Utils.get_enum_name_from_line(stripped_line_text), Utils.get_enum_members_in_line(stripped_line_text)]
+				return Utils.get_enum_info(stripped_line_text)
 			elif dec == &"const ":
-				return Utils.get_const_name_and_type_in_line(stripped_line_text)
+				return Utils.get_var_or_const_info(stripped_line_text)
 			elif dec == &"func " or dec == &"static func ":
-				return Utils.get_func_data_from_declaration(stripped_line_text)
+				return Utils.get_func_info(stripped_line_text)
 			elif dec == &"class ":
-				return Utils.get_class_name_and_extends_in_line(stripped_line_text)
+				return Utils.get_class_info(stripped_line_text)
 			elif dec == &"signal ":
-				print("TODO: get_type_from_line_text - IMPLEMENT SIGNAL DATA")
+				Utils.get_signal_info(stripped_line_text)
 
 
 
@@ -611,6 +636,24 @@ func _get_control_flow_expression(line:int, control_flow_word:String):
 	var extended_line = get_extended_line(line)
 	return extended_line.get_slice(control_flow_word, 1).get_slice(":", 0).strip_edges()
 
+
+func get_semi_colon_strings(line:int):
+	var line_text = get_line(line, true)
+	var semi_idx = line_text.find(";")
+	var stmt_start_idx = 0  # Renamed for clarity: this tracks the start of the current statement
+	var data = {}
+
+	while semi_idx != -1:
+		if is_valid_code(line, semi_idx):
+			data[stmt_start_idx] = line_text.substr(stmt_start_idx, semi_idx - stmt_start_idx)
+			stmt_start_idx = semi_idx + 1
+		semi_idx = line_text.find(";", semi_idx + 1)
+	
+	if stmt_start_idx < line_text.length():
+		var remainder = line_text.substr(stmt_start_idx)
+		if not remainder.strip_edges().is_empty():
+			data[stmt_start_idx] = remainder
+	return data
 
 func remove_comment(line:int, line_text:String):
 	var com_idx = line_text.find("#")
@@ -669,41 +712,39 @@ func get_func_branch_start(line:int, target_indent_level:int, add_class_indent:=
 
 
 func get_func_data_at_line(line:int): # this used to take stripped text, will I need this for source code?
-	var stripped_text = get_line_context(line).strip_edges()
-	print(stripped_text)
-	if not (stripped_text.begins_with("func ") or stripped_text.begins_with("static func ")):
-		return {}
-	var func_data = {Keys.FUNC_ARGS:{}}
-	var open_paren = stripped_text.find("(")
-	var close_paren = stripped_text.rfind(")")
-	if stripped_text.count("(") > 1:
-		var string_map = get_string_map(stripped_text)
-		open_paren = stripped_text.find("(")
-		close_paren = string_map.bracket_map.get(open_paren)
-		if close_paren == null:
-			return {}
-	
-	open_paren += 1
-	var args = stripped_text.substr(open_paren, close_paren - open_paren)
-	if args.find(",") > -1:
-		args = args.split(",", false)
-	else:
-		args = [args]
-	for arg in args:
-		if arg == "":
-			continue
-		var dummy_string = "var " + arg.strip_edges()
-		var var_data = UString.get_var_name_and_type_hint_in_line(dummy_string)
-		var var_nm = var_data[0]
-		var type_hint = var_data[1]
-		func_data[Keys.FUNC_ARGS][var_nm] = type_hint
-	
-	var return_idx = stripped_text.find("->")
-	if return_idx > -1:
-		var return_type = stripped_text.get_slice("->", 1)
-		return_type = return_type.get_slice(":", 0).strip_edges()
-		func_data[Keys.FUNC_RETURN] = return_type
-	return func_data
+	var stripped_text = get_line_context(line).get(Keys.CONTEXT_TEXT, "").strip_edges()
+	return Utils.get_func_info(stripped_text)
+	#var func_data = {Keys.FUNC_ARGS:{}}
+	#var open_paren = stripped_text.find("(")
+	#var close_paren = stripped_text.rfind(")")
+	#if stripped_text.count("(") > 1:
+		#var string_map = get_string_map(stripped_text)
+		#open_paren = stripped_text.find("(")
+		#close_paren = string_map.bracket_map.get(open_paren)
+		#if close_paren == null:
+			#return {}
+	#
+	#open_paren += 1
+	#var args = stripped_text.substr(open_paren, close_paren - open_paren)
+	#if args.find(",") > -1:
+		#args = args.split(",", false)
+	#else:
+		#args = [args]
+	#for arg in args:
+		#if arg == "":
+			#continue
+		#var dummy_string = "var " + arg.strip_edges()
+		#var var_data = UString.get_var_or_const_info(dummy_string)
+		#var var_nm = var_data[0]
+		#var type_hint = var_data[1]
+		#func_data[Keys.FUNC_ARGS][var_nm] = type_hint
+	#
+	#var return_idx = stripped_text.find("->")
+	#if return_idx > -1:
+		#var return_type = stripped_text.get_slice("->", 1)
+		#return_type = return_type.get_slice(":", 0).strip_edges()
+		#func_data[Keys.FUNC_RETURN] = return_type
+	#return func_data
 
 
 

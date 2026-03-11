@@ -104,7 +104,10 @@ func has_inherited_member(identifier:String):
 func get_inherited_member(identifier:String):
 	return get_inherited_members().get(identifier)
 
-
+func get_function(func_name:String):
+	if func_name == "new":
+		func_name = "_init"
+	return functions.get(func_name)
 
 func get_function_start_line(func_name:String):
 	var func_obj = functions.get(func_name) as ParserFunc

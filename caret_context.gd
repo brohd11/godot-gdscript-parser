@@ -9,58 +9,88 @@ const UString = GDScriptParser.UString
 
 const _MAP_BLOCKS = [Keywords.FOR, Keywords.MATCH]
 
-enum State {
+enum TokenState {
 	NONE,
 	COMMENT,
 	STRING,
-	ASSIGNMENT,
-	FUNC_ARGS,
-	MEMBER_ACCESS,
-	SCRIPT_BODY,
-	TYPE_ASSIGNMENT,
+	STRING_NAME,
+	NODE_PATH_LITERAL,
+	GET_NODE_PATH,
+	GET_NODE_UNIQUE,
 	ANNOTATION,
-	BLOCK_MATCH,
 }
+
+enum ExpressionState {
+	NONE,
+	DECLARATION,
+	ASSIGNMENT,  # var x = | (Suggest variables, globals, functions)
+	COMPARISON,      # if x == | (Suggest variables)
+	TYPE_HINT,       # var x: |  (Suggest Classes, Enums, built-in types. Replaces TYPE_ASSIGNMENT)
+	FUNCTION_CALL,   # my_func(|) (Suggest variables, show parameter hints)
+	MEMBER_ACCESS,   # my_obj.| (Suggest properties/methods of my_obj)
+	INDEX_ACCESS, # my_obj[0] or my_dict["key"]
+	
+	DICT_DECL,       # var x = { | } (Suggest string keys or variables)
+	ARRAY_DECL,      # var x = [ | ] 
+}
+
+enum ScopeState {
+	CLASS_BODY,
+	FUNCTION_BODY,
+	MATCH_BRANCH,
+	LOOP_BODY,
+}
+
 
 
 var _parser:WeakRef #
 var _code_edit_parser:WeakRef
 var code_edit:CodeEdit #
 
-var state:State
+var token_state:TokenState
+var expression_state:ExpressionState
+var scope_state:ScopeState
+
 
 var caret_column:int= -1 #
 var caret_line:int= -1 #
 
-var completion_text:String
+var current_class:String
+var current_function:String
 
+
+var _completion_text:String
 var current_line_text:String
 
 var code_context_caret_pos:int
 var code_context:String #
+var code_context_stripped:String
 var code_context_string_map:UString.StringMap #
+
+var expression_before_caret:String
 
 var word_before_caret:String #
 var char_before_caret:String #
 
-var func_call_data:FuncCallData #
-var assignment_data:AssignmentData #
+var _index_access_identifier:String = ""
 
-var caret_in_function_call:bool = false #
-var caret_in_function_declaration:bool = false #
-var caret_in_dict:bool = false #
-var caret_in_enum:bool = false #
-var caret_in_match:bool = false
+var _operation_data:OperationData #
+var _active_function_call:FunctionCallData #
 
-var bracket_type:=""
+var line_declaration:String = ""
 
-var current_class:String
-var current_function:String
 
-var caret_in_type_assignment:bool = false
+
+
+var closest_bracket_index_paren:int=-1
+var closest_bracket_index_square:int=-1
+var closest_bracket_index_curly:int=-1
+var closest_bracket_type:=""
+
+
 var type_assignment:String
 
-var function_blocks = []
+var function_blocks:= []
 
 static var _assignment_regex:RegEx
 static var _type_assignment_regex:RegEx
@@ -76,25 +106,22 @@ func _init(parser:GDScriptParser, parse_context:=true) -> void:
 
 
 func parse():
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("ALL CONTEXT")
+	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("CARET CONTEXT")
 	var parser = ParserRef.get_parser(self)
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)
 	
-	current_line_text = code_edit.get_line(caret_line)
+	current_line_text = code_edit_parser.get_line(caret_line)
+	var caret_left = current_line_text.substr(0, caret_column).strip_edges(false, true)
 	
-	#completion_text = _get_text_for_auto_complete()
-	var params = {&"map_local_vars":true, &"map_blocks": _MAP_BLOCKS}
+	var params = {Keys.CONTEXT_LOCAL_VARS:true, Keys.CONTEXT_BLOCKS: _MAP_BLOCKS}
 	var code_context_start_data = code_edit_parser.get_line_context_start_data(caret_line, params)
-	function_blocks = code_context_start_data.get(&"blocks", [])
+	function_blocks = code_context_start_data.get(Keys.CONTEXT_BLOCKS, [])
 	var context_data = code_edit_parser.get_line_context(caret_line, caret_column, true, code_context_start_data)
 	code_context = context_data.get(Keys.CONTEXT_TEXT)
+	code_context_stripped = code_context.strip_edges()
 	print(code_context)
-	#print(code_context_start_data)
 	code_context_caret_pos = code_context.find(Keys.CARET_UNI_CHAR)
 	code_context_string_map = parser.get_string_map(code_context)
-	
-	word_before_caret = code_edit_parser.parse_identifier_at_position(current_line_text, caret_column - 1)
-	char_before_caret = _get_char_before_caret()
 	
 	current_class = parser.get_class_at_line(caret_line)
 	current_function = parser.get_function_at_line(caret_line)
@@ -104,47 +131,95 @@ func parse():
 			var current_func_obj = current_class_obj.functions.get(current_function) as GDScriptParser.ParserFunc
 			if is_instance_valid(current_func_obj):
 				#current_func_obj.parse()
-				current_func_obj.set_in_scope_local_vars(code_context_start_data.get(&"local_vars", {}))
+				print("&*&*")
+				print(code_context_start_data)
+				
+				current_func_obj.set_in_scope_local_vars(code_context_start_data.get(Keys.CONTEXT_LOCAL_VARS, {}))
 	
 	
-	#gdscript_parser.on_completion_requested() #^ this needs to be before for get_current_func to work
+	word_before_caret = code_edit_parser.parse_identifier_at_position(caret_left, caret_left.length() - 1)
+	expression_before_caret = code_edit_parser.parse_expression_at_position(code_context, code_context_caret_pos - 1, code_context_string_map)
+	
+	
+	char_before_caret = _get_char_before_caret()
 	
 	var current_block = function_blocks.pop_back()
 	var current_block_type = ""
 	if current_block != null:
 		current_block_type = current_block.get("type")
-		
 	
-	_set_caret_in_func_call() #^ check first to populate CARET_IN_FUNC
-	_set_caret_in_bracket()
-	_set_assignment_at_caret()
-	_set_in_type_assignment()
+	line_declaration = CodeEditParser.get_line_declaration(code_context_stripped).strip_edges()
 	
-	state = State.NONE
+	_check_brackets()
+	_set_function_call_data()
+	_set_operation_at_caret()
+	
+	print("&*&*")
+	print(_operation_data.left_text)
+	
+	#print("%s" % )
+	
+	var in_class_body = current_function == Keys.CLASS_BODY
+	
+	token_state = TokenState.NONE
 	if code_edit.is_in_string(caret_line, caret_column) != -1:
-		state = State.STRING
+		match _get_string_type():
+			"&": token_state = TokenState.STRING_NAME
+			"^": token_state = TokenState.NODE_PATH_LITERAL
+			_: token_state = TokenState.STRING
 	elif code_edit.is_in_comment(caret_line, caret_column) != -1:
-		state = State.COMMENT
-	elif caret_in_type_assignment:
-		state = State.TYPE_ASSIGNMENT
-	elif word_before_caret.find(".") > -1:
-		state = State.MEMBER_ACCESS
-	elif caret_in_function_call:
-		state = State.FUNC_ARGS
-	elif assignment_data.is_valid:
-		state = State.ASSIGNMENT
-	elif current_block_type == &"match":
-		state = State.BLOCK_MATCH
-	elif current_function == Keys.CLASS_BODY:
-		if current_line_text.begins_with("@"):
-			state = State.ANNOTATION
+		token_state = TokenState.COMMENT
+	elif code_context.begins_with("@"):
+		token_state = TokenState.ANNOTATION
+	elif expression_before_caret.begins_with("$"):
+		token_state = TokenState.GET_NODE_PATH
+	elif expression_before_caret.begins_with("%"):
+		var expr_index = code_context_rfind(expression_before_caret, code_context_caret_pos)
+		var id_before = code_edit_parser.parse_expression_at_position(code_context, expr_index - 1 , code_context_string_map)
+		print("before::", id_before)
+		if id_before.begins_with("'") or id_before.begins_with('"'):
+			#print("FORMAT STRING")
+			pass
 		else:
-			state = State.SCRIPT_BODY
+			token_state = TokenState.GET_NODE_UNIQUE
 	
-	print(State.keys()[state])
+	
+	expression_state = ExpressionState.NONE
+	if _is_in_type_assignment():
+		expression_state = ExpressionState.TYPE_HINT
+	elif word_before_caret.find(".") > -1:
+		expression_state = ExpressionState.MEMBER_ACCESS
+	elif closest_bracket_type != "":
+		var idx = max(closest_bracket_index_curly, closest_bracket_index_square)
+		_index_access_identifier = code_context_parse_expression(idx - 1)
+		#print("before::", _index_access_identifier)
+		if _index_access_identifier != "":
+			expression_state = ExpressionState.INDEX_ACCESS
+	elif _operation_data.is_valid:
+		if _operation_data.operator == "=":
+			expression_state = ExpressionState.ASSIGNMENT
+		else:
+			expression_state = ExpressionState.COMPARISON
+	
+	
+	if in_class_body:
+		scope_state = ScopeState.CLASS_BODY
+	elif current_block_type == &"match":
+		scope_state = ScopeState.MATCH_BRANCH
+	else:
+		scope_state = ScopeState.FUNCTION_BODY
+	
+	print("^&^&^&")
+	print(word_before_caret)
+	print(expression_before_caret)
+	print(
+"TOKEN STATE: %s
+EXPRESSION STATE: %s
+SCOPE STATE: %s" % [TokenState.keys()[token_state], ExpressionState.keys()[expression_state], ScopeState.keys()[scope_state]],
+"\nIN ENUM: %s
+IN DICT: %s" % [is_in_enum(), is_in_dictionary()]
+	)
 	t.stop()
-
-
 
 
 
@@ -159,37 +234,41 @@ func _get_char_before_caret():
 		i -= 1
 	return _char
 
-func _set_caret_in_bracket():
-	var closest_bracket_idx = code_context_string_map.get_tightest_bracket_set(code_context_caret_pos)
+func _get_string_type():
+	var i = caret_column
+	while i > 0:
+		if code_context_string_map.string_mask[i] == 0:
+			break
+		i -= 1
+	return code_context[i]
+
+func _check_brackets():
+	var bracket_map = code_context_string_map.bracket_map
+	var bracket_map_keys = bracket_map.keys()
+	bracket_map_keys.sort()
+	
+	for open in bracket_map_keys:
+		if open > code_context_caret_pos:
+			break
+		var close = bracket_map.get(open)
+		if not (open <= code_context_caret_pos and close >= code_context_caret_pos):
+			continue
+		var _char = code_context[open]
+		if _char == "(":
+			closest_bracket_index_paren = open
+		elif _char == "[":
+			closest_bracket_index_square = open
+		elif _char == "{":
+			closest_bracket_index_curly = open
+		else:
+			continue
+	
+	var closest_bracket_idx = max(closest_bracket_index_paren, closest_bracket_index_square, closest_bracket_index_curly)
 	if closest_bracket_idx == -1:
 		return
-	bracket_type = code_context_string_map.string[closest_bracket_idx]
-	if bracket_type != "{":
-		return
-	var bracket_stripped = code_context.substr(0, closest_bracket_idx)
-	if code_context.strip_edges().begins_with("enum "):
-		if bracket_stripped.begins_with("enum "):
-			caret_in_enum = true
-		return
-	caret_in_dict = true
+	closest_bracket_type = code_context[closest_bracket_idx]
 
 
-func _set_assignment_at_caret():
-	assignment_data = _get_assignment_at_caret()
-	if not assignment_data.is_valid:
-		return
-	var parser = Utils.ParserRef.get_parser(self)
-	var left = assignment_data.left
-	var left_typed = ""
-	if left.begins_with("var "):
-		#var trimmed = left.trim_prefix("var ") # not sure if this was causing issues?
-		var data = Utils.get_var_or_const_info(left)
-		if data != null:
-			left_typed = parser.get_identifier_type(data[1], caret_line)
-	else:
-		left_typed = parser.get_identifier_type(left, caret_line)
-	
-	assignment_data.left_typed = left_typed
 
 
 func _get_assignment_at_caret():
@@ -198,6 +277,7 @@ func _get_assignment_at_caret():
 	
 	
 	var assign_data = AssignmentData.new()
+	
 	#if line_text.rfind("=", caret_idx) == -1: # alternative to above, if not on right side no need to do
 	if UString.rfind_index_safe(text_to_process, "=", caret_idx) == -1:
 		return assign_data
@@ -223,7 +303,7 @@ func _get_assignment_at_caret():
 							rhs = best_match.get_string(3).strip_edges()
 				
 				var lhs = best_match.get_string(1).strip_edges()
-				var last_char_idx = best_match.get_end(1) - 1
+				#var last_char_idx = best_match.get_end(1) - 1
 				var operator = best_match.get_string(2).strip_edges()
 				
 				#var and_index = lhs.rfind(" and ", caret_idx)
@@ -241,164 +321,233 @@ func _get_assignment_at_caret():
 				
 				lhs = lhs.trim_prefix("self.") #^ simple sub
 				
-				assign_data.left = lhs
+				assign_data.left_text = lhs
 				assign_data.operator = operator
-				assign_data.right = rhs
+				assign_data.right_text = rhs
 				assign_data.is_valid = true
 				return assign_data
 	
 	return assign_data
 
 
-#region Func Call
-## Return func call state. Sets CARET_IN_FUNC cache status. Caret can be in func parentheses but not in func call state.
-func _set_caret_in_func_call():
-	var text_to_process = code_context
-	var caret_idx = code_context_caret_pos
+func get_operation_data() -> OperationData:
+	if not _operation_data.is_valid or _operation_data.inferred:
+		return _operation_data
+	var parser = Utils.ParserRef.get_parser(self)
+	var left = _operation_data.left_text
+	if left.begins_with("var "):
+		var data = Utils.get_var_or_const_info(left)
+		if data != null:
+			_operation_data.left_type = parser.get_identifier_type(data[1], caret_line)
+	else:
+		_operation_data.left_type = parser.get_identifier_type(left, caret_line)
+		#var st = ""
+		#for part in UString.split_member_access(left):
+			#st = UString.dot_join(st,parser._type_lookup.resolve_identifier_to_global(left, parser.get_class_object(parser.get_class_at_line(caret_line)), caret_line))
+		#_operation_data.test_left = st
+		#print("TESTLEFT::",st)
 	
-	var stripped = text_to_process.strip_edges()
-	var in_declar = stripped.begins_with("func") or stripped.begins_with("static func")
-	if in_declar:
-		caret_in_function_declaration = true
 	
-	_set_func_call_data()
-	if not func_call_data.is_valid or in_declar:
-		#completion_cache[CompletionCache.CARET_IN_FUNC_CALL] = false
-		return false
-	
-	caret_in_function_call = true
-	var arg_text = func_call_data.args[func_call_data.arg_index]
-	#var arg_text = func_data[EditorCodeCompletion.FuncCall.ARGS][func_data[EditorCodeCompletion.FuncCall.ARG_INDEX]]
-	#if arg_text.rfind("=", current_caret_col) > -1: # does this work? May need adjusting
-	if UString.rfind_index_safe(arg_text, "=", caret_idx) > -1:
-		return false
-	return true
+	_operation_data.inferred = true
+	return _operation_data
 
 
 
+func _set_operation_at_caret():
+	_operation_data = OperationData.new()
+	var current_pos = code_context_caret_pos - 1
+	
+	# We use this to check if we accidentally passed a logical boundary (like 'and', 'or')
+	var right_text = ""
 
-func _set_func_call_data() -> void:
-	var code_edit_parser = ParserRef.get_code_edit_parser(self)
-	
-	func_call_data = FuncCallData.new()
-	
-	var text_to_process = code_context
-	var caret_idx = code_context_caret_pos
-	
-	if UString.rfind_index_safe(text_to_process, "(", caret_idx) == -1:
-		return
-	
-	var string_map = code_edit_parser.get_string_map(text_to_process)
-	var bracket_map = string_map.bracket_map
-	var string_indexes = string_map.string_mask
-	if string_map.has_errors or bracket_map.is_empty():
-		return
-	
-	var open_bracket_index = string_map.get_tightest_bracket_set(caret_idx, "(")
-	if open_bracket_index == -1:
-		return
-	var closed_bracket_index = string_map.bracket_map[open_bracket_index]
-	
-	var func_full_call = code_edit_parser.parse_identifier_at_position(text_to_process, open_bracket_index - 1)
-	if func_full_call == "":
-		return
-	
-	func_full_call = func_full_call.trim_prefix("self.") #^ simple check
-	#print(func_full_call)
-	var arg_idxs = []
-	var current_arg_index = 0
-	var count = closed_bracket_index
-	while count >= open_bracket_index:
-		count -= 1
-		if string_indexes[count] == 1:
+	while current_pos >= 0:
+		# 1. Skip strings completely
+		if code_context_string_map.string_mask[current_pos] == 1:
+			right_text = code_context[current_pos] + right_text
+			current_pos -= 1
 			continue
-		var _char = text_to_process[count]
-		if _char == ")" or _char == "}" or _char == "]":
-			count = bracket_map[count]
+			
+		var _char = code_context[current_pos]
 		
-		if _char == ",":
-			if caret_idx > count:
-				current_arg_index += 1
-			arg_idxs.append(count)
-	
-	arg_idxs.reverse()
-	var arg_array = []
-	var start_index = open_bracket_index + 1
-	for i in arg_idxs:
-		var substr_length = i - start_index
-		var arg = text_to_process.substr(start_index, substr_length).strip_edges()
-		arg_array.append(arg)
-		start_index = i + 1
-	
-	var last_arg = text_to_process.substr(start_index, closed_bracket_index - start_index).strip_edges()
-	arg_array.append(last_arg)
-	
-	func_call_data.is_valid = true
-	func_call_data.full_call = func_full_call
-	func_call_data.args = arg_array
-	func_call_data.arg_index = current_arg_index
+		# 2. Skip closed brackets (This perfectly handles func(a == b) and arrays!)
+		if _char == ")" or _char == "]" or _char == "}":
+			var open_bracket = code_context_string_map.bracket_map.get(current_pos, current_pos)
+			# Prepend the whole skipped block to right_text
+			right_text = code_context.substr(open_bracket, current_pos - open_bracket + 1) + right_text
+			current_pos = open_bracket - 1
+			continue
+			
+		# 3. Hard Boundaries (If we hit a comma, newline, or open bracket, there is no operation here)
+		if _char in [",", ";", "\n", "(", "[", "{"]:
+			return
+			
+		# 4. Logical Word Boundaries (Stop if we crossed into a different expression)
+		# E.g. "if x == 1 and |" -> we don't want to scan past 'and'
+		if right_text.begins_with("and ") or right_text.begins_with("or "):
+			return
+			
+		# 5. WE FOUND AN OPERATOR SYMBOL!
+		if _char in ["=", "<", ">", "!", ":", "+", "-", "*", "/", "%"]:
+			var op_end = current_pos
+			var op_start = current_pos
+			
+			# Scan backwards to capture compound operators (like ==, !=, :=, <=)
+			while op_start > 0:
+				var prev_char = code_context[op_start - 1]
+				if prev_char in ["=", "<", ">", "!", ":", "+", "-", "*", "/", "%"]:
+					op_start -= 1
+				else:
+					break
+			
+			var operator_str = code_context.substr(op_start, op_end - op_start + 1)
+			
+			# Ignore the GDScript return type arrow "->"
+			if operator_str == "->":
+				right_text = operator_str + right_text
+				current_pos = op_start - 1
+				continue
+				
+			# Populate the OperationData
+			_operation_data.operator = operator_str
+			_operation_data.right_text = right_text.strip_edges()
+			
+			# 6. MAGIC: Use your existing function to cleanly grab the left side!
+			_operation_data.left_text = code_context_parse_expression(op_start - 1)
+			_operation_data.is_valid = true
+			return
+
+		# Keep building the text to the right of the operator
+		right_text = _char + right_text
+		current_pos -= 1
 
 
-func infer_func_call_data():
-	if not func_call_data.is_valid:
-		return false
-	if func_call_data.inferred:
-		return true
+
+
+
+func is_in_function_call():
+	return _active_function_call.is_valid
+
+func get_function_call_data() -> FunctionCallData:
+	if _active_function_call.inferred:
+		return _active_function_call
+	
+	var full_call = _active_function_call.full_call
 	
 	var parser = Utils.ParserRef.get_parser(self)
-	var full_call = func_call_data.full_call
-	if full_call.find(".") > -1:
-		var string_map = parser.get_string_map(full_call) #^ trim method so we can just infer object types
-		var trimmed = UString.trim_member_access_back(full_call, string_map)
-		var method_call = UString.get_member_access_back(full_call, string_map)
-		var full_call_typed = parser.get_identifier_type(trimmed, caret_line)# + "()")
-		full_call_typed = full_call_typed + "." + method_call
-		func_call_data.full_call_typed = full_call_typed
+	var parser_script = parser._script_path
 	
-	func_call_data.inferred = true
-	return true
-
-
-
-func _set_in_type_assignment():
-	var text_to_process = code_context
-	var idx = code_context_caret_pos
+	_active_function_call.function_data = parser.get_function_data(full_call, caret_line)
 	
-	if idx == 0:
+	#_active_function_call.return_type = parser.get_identifier_type(full_call, caret_line)
+	
+	
+	_active_function_call.inferred = true
+	return _active_function_call
+
+
+func _set_function_call_data() -> void:
+	_active_function_call = FunctionCallData.new()
+	Utils.ParserRef.set_refs(_active_function_call, Utils.ParserRef.get_parser(self))
+	
+	if line_declaration.ends_with("func"):
 		return
-	var relevant_text = text_to_process.substr(0, idx).strip_edges()
-	if relevant_text == "":
+	if closest_bracket_index_paren == -1:
 		return
 	
+	var code_edit_parser = ParserRef.get_code_edit_parser(self)
+	
+	var bracket_map = code_context_string_map.bracket_map
+	var string_indexes = code_context_string_map.string_mask
+	if code_context_string_map.has_errors:
+		return
+	
+	var closed_bracket_index = code_context_string_map.bracket_map.get(closest_bracket_index_paren, -1)
+	if closed_bracket_index == -1:
+		return
+	
+	var func_full_call = code_edit_parser.parse_expression_at_position(code_context, closest_bracket_index_paren - 1, code_context_string_map)
+	if func_full_call == "":
+		return
+	print("FULL CALL::", func_full_call)
+	func_full_call = func_full_call.trim_prefix("self.") #^ simple check
+	
+	var args = []
+	var current_arg_index = 0
+	var start_idx = closest_bracket_index_paren + 1
+	var count = start_idx
+
+	while count < closed_bracket_index:
+		if string_indexes[count] == 1:
+			count += 1
+			continue
+			
+		var _char = code_context[count]
+		if _char == "(" or _char == "{" or _char == "[":
+			count = bracket_map[count]
+			continue
+			
+		if _char == ",":
+			var arg_text = code_context.substr(start_idx, count - start_idx).strip_edges()
+			args.append(arg_text)
+			start_idx = count + 1
+			
+			if code_context_caret_pos > count:
+				current_arg_index += 1
+				
+		count += 1
+	
+	var last_arg = code_context.substr(start_idx, closed_bracket_index - start_idx).strip_edges()
+	args.append(last_arg)
+	
+	_active_function_call.is_valid = true
+	_active_function_call.full_call = func_full_call
+	_active_function_call.current_arguments = args
+	_active_function_call.current_arg_index = current_arg_index
+
+
+
+
+func _is_in_type_assignment():
 	if not is_instance_valid(_type_assignment_regex):
 		_type_assignment_regex = RegEx.new()
 		var pattern = "(?:\\s*is not\\s+|\\s*is\\s+|\\s*as\\s+|\\s*extends\\s+|[\\w.]+\\s*:\\s*|\\->\\s*)([\\w.]*)$"
 		_type_assignment_regex.compile(pattern)
 	
+	if code_context_caret_pos == 0:
+		return false
+	if is_in_dictionary() or line_declaration == "" or not code_context.begins_with("for "):
+		return false # this should stop false positives
+	
+	var relevant_text = code_context.substr(0, code_context_caret_pos).strip_edges()
+	if relevant_text == "":
+		return false
+	
 	var _match = _type_assignment_regex.search(relevant_text)
 	if _match:
 		type_assignment = _match.get_string(1)
-		caret_in_type_assignment = true
-		return
+		return true
+	return false
 
 
 
+func get_index_access_identifier():
+	return _index_access_identifier
 
+func is_declaration():
+	return line_declaration != ""
 
+func is_in_enum():
+	return closest_bracket_type == "{" and line_declaration == "enum"
 
+func is_in_dictionary():
+	return closest_bracket_type == "{" and line_declaration != "enum"
 
+func is_in_array():
+	return closest_bracket_type == "[" and _index_access_identifier == ""
 
-
-
-
-
-
-
-
-
-
-
-
+func is_in_dictionary_access():
+	
+	pass
 
 
 
@@ -409,7 +558,9 @@ func _notification(what: int) -> void:
 # API
 
 func get_text_for_autocomplete():
-	return Utils.ParserRef.get_parser(self).code_edit_parser.get_text_for_auto_complete(caret_line, caret_column)
+	if _completion_text != "":
+		return _completion_text
+	return Utils.ParserRef.get_code_edit_parser(self).get_text_for_auto_complete(caret_line, caret_column)
 
 func is_valid_code(line:int, col:int):
 	return code_edit.is_in_string(line, col) == -1 and code_edit.is_in_comment(line, col) == -1
@@ -424,36 +575,89 @@ func code_context_rfind(what:String, from:int=-1, string_safe:=true):
 		return UString.string_safe_rfind(code_context, what, from, code_context_string_map)
 	return UString.rfind_index_safe(code_context, what, from)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+func code_context_parse_expression(start_pos:int):
+	return ParserRef.get_code_edit_parser(self).parse_expression_at_position(code_context, start_pos, code_context_string_map)
 
 
 class AssignmentData:
 	var is_valid:=false
 	var inferred:=false
 	
-	var left:String
-	var left_typed:String
+	var left_text:String
+	var left_type:String
 	var operator:String
-	var right:String
+	var right_text:String
 
 
-class FuncCallData:
+class OperationData:
+	
 	var is_valid:=false
 	var inferred:=false
 	
+	var test_left
+	
+	var left_text:String
+	var left_type:String
+	var operator:String
+	var right_text:String
+	
+	func get_left_declaration():
+		
+		pass
+
+
+
+
+class FunctionCallData:
+	var _parser:WeakRef #
+	var _code_edit_parser:WeakRef
+	
+	
+	var is_valid:=false
+	var inferred:=false
+	
+	var caller:String
+	
 	var full_call:String
 	var full_call_typed:String
-	var args:=[]
-	var arg_index:int = -1
+	var function_data:Dictionary
+	
+	var current_arguments:=[]
+	var current_arg_index:int = -1
+	
+	func get_text_current_arg() -> String:
+		if current_arg_index == -1:
+			return ""
+		return current_arguments[current_arg_index]
+	
+	func func_get_current_arg_declaration():
+		var current_arg_data = _func_get_current_arg_data()
+		if current_arg_data == null:
+			return ""
+		return current_arg_data.get(Keys.TYPE, "")
+	
+	func func_get_current_arg_type():
+		var current_arg_data = _func_get_current_arg_data()
+		if current_arg_data == null:
+			return ""
+		var arg_type_resolved = current_arg_data.get(Keys.TYPE_RESOLVED)
+		if arg_type_resolved != null:
+			return arg_type_resolved
+		var arg_type = current_arg_data.get(Keys.TYPE)
+		if arg_type.begins_with("res://"):
+			return arg_type
+		var parser = Utils.ParserRef.get_parser(self)
+		var resolved = parser.get_identifier_type(arg_type)
+		current_arg_data[Keys.TYPE_RESOLVED] = resolved
+		return resolved
+	
+	func _func_get_current_arg_data():
+		var arg_data = function_data.get(Keys.FUNC_ARGS, {})
+		var arg_names = arg_data.keys()
+		if current_arg_index >= arg_names.size():
+			return
+		var current_arg_name = arg_names[current_arg_index]
+		return arg_data[current_arg_name]
+	
+	func func_get_return_type():
+		return function_data.get(Keys.FUNC_RETURN, "No Type Found")

@@ -80,7 +80,7 @@ static func get_enum_info(stripped_line: String) -> Array:
 	if not is_instance_valid(_enum_regex):
 		_enum_regex = RegEx.new()
 		_enum_regex.compile("^enum\\s+([a-zA-Z_]\\w*)?\\s*\\{([^}]*)\\}")
-	
+	print(stripped_line)
 	var _match = _enum_regex.search(stripped_line)
 	if not _match:
 		return []

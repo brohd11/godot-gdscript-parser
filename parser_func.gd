@@ -13,6 +13,7 @@ var _code_edit_parser:WeakRef
 
 var dirty_flag:=true
 
+var _cache_dirty:=true
 
 var func_lines:PackedInt32Array
 var declaration_line:int
@@ -25,18 +26,22 @@ var name:String
 
 var member_data:={}
 
-var return_type = "" # done
+var return_type := "" # done
 var arguments = {} # done
 
 var local_vars:= {}
 
 var in_scope_local_vars:= {}
+var _local_vars_set:=false
 
 func queue_refresh():
-	pass
+	_cache_dirty = true
+	_local_vars_set = false
+	in_scope_local_vars.clear()
 
 
 func set_in_scope_local_vars(new_vars:Dictionary):
+	_local_vars_set = true
 	end_line = func_lines[func_lines.size() - 1]
 	_set_function_data()
 	in_scope_local_vars = new_vars
@@ -50,14 +55,24 @@ func parse():
 
 
 func _set_function_data():
+	if not _cache_dirty:
+		return arguments
+	var column = member_data.get(Keys.COLUMN_INDEX, 0)
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)
-	var func_data = code_edit_parser.get_func_data_at_line(declaration_line)
+	var func_data = code_edit_parser.get_type_from_line(declaration_line, column)
+	print("FUNCTION DATA: ",func_data)
 	arguments.clear()
-	var arg_data = func_data.get(Keys.FUNC_ARGS, {})
+	var result = func_data.get("result")
+	_cache_dirty = false # at this point it has been read
+	if result == null:
+		return_type = ""
+		return
+	
+	var arg_data = result.get(Keys.FUNC_ARGS, {})
 	for arg in arg_data.keys():
 		arguments[arg] = {Keys.TYPE: arg_data[arg], Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_FUNC_ARG}
-	return_type = func_data.get(Keys.FUNC_RETURN, "")
-	#print("SET FUNC DATA: ", func_data)
+	return_type = result.get(Keys.FUNC_RETURN, "")
+	#print("SET FUNC DATA: ", result)
 
 
 
@@ -132,37 +147,78 @@ func map_variables() -> void:
 
 
 func get_in_scope_local_vars(line:int):
-	return in_scope_local_vars
-	#print("GET IN SCOPE %%%")
-	#print("ALL: ", local_vars.keys())
-	#print("FUNC ARGS: ", arguments)
+	if _local_vars_set:
+		return in_scope_local_vars
 	
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)
-	var func_indent = class_indent + code_edit_parser.indent_size
-	var current_branch_start_line = code_edit_parser.get_func_branch_start(line, class_indent)
-	var current_line_indent = code_edit_parser.get_indent_code_edit(line)
-	
-	#prints(current_line_indent, class_indent, func_indent)
-	
-	var in_scope_vars = {}
+	var context_data = code_edit_parser.get_line_context_start_data(line)
+	var in_scope_vars = context_data.get(Keys.CONTEXT_LOCAL_VARS, {})
 	in_scope_vars.merge(arguments)
-	
-	var var_idxes = local_vars.keys()
-	var_idxes.sort()
-	for i in var_idxes:
-		if i > line:
-			break
-		var indent = code_edit_parser.get_indent_code_edit(i)
-		if i < current_branch_start_line and indent > func_indent:
-			continue
-		if indent > current_line_indent:
-			continue
-		in_scope_vars[local_vars[i][Keys.MEMBER_NAME]] = local_vars[i]
-	
-	
-	
 	return in_scope_vars
+
+func get_function_data():
+	var return_string = get_return_type()
+	return {Keys.FUNC_ARGS: arguments, Keys.FUNC_RETURN:return_string}
+
+func get_arguments():
+	_set_function_data()
+	return arguments
 
 func get_return_type(): # this could be used to parse
 	_set_function_data()
+	if return_type == "":
+		return_type = _infer_return_type()
 	return return_type
+
+
+# this may be slowww, possibly do it in the mapping step
+# other option would be to set a limit for indent, check only func level
+func _infer_return_type() -> String:
+	var code_edit_parser = Utils.ParserRef.get_code_edit_parser(self)
+	var func_indent = class_indent + code_edit_parser.indent_size
+	var potential_return = ""
+	end_line = func_lines[func_lines.size() - 1]
+	var i = end_line + 1
+	while i > declaration_line + 1:
+		i -= 1
+		var line_text = code_edit_parser.get_line(i, true)
+		if not line_text.strip_edges().begins_with("return"):
+			continue
+		if not code_edit_parser.is_valid_code(i, line_text.find("return")):
+			continue
+		var indent = code_edit_parser.get_indent_code_edit(i)
+		
+		potential_return = code_edit_parser.get_line_context(i, 0, false, {Keys.CONTEXT_START: i}).get(Keys.CONTEXT_TEXT, "")
+		if indent == func_indent:
+			break
+		else:
+			var valid = false
+			var nest_i = i
+			while nest_i < declaration_line:
+				nest_i -= 1
+				var line = code_edit_parser.get_line(nest_i, true, true)
+				if line == "":
+					continue
+				if not code_edit_parser.is_valid_code(nest_i, 0):
+					continue
+				var nest_indent = code_edit_parser.get_indent_code_edit(nest_i)
+				if nest_indent >= indent:
+					continue
+				var func_idx = line.find("func")
+				if func_idx == -1:
+					valid = true
+					break
+				i = nest_i - 1
+				break
+			if valid:
+				break
+	
+	
+	
+	var result = potential_return.strip_edges().trim_prefix("return").strip_edges()
+	
+	var parser = Utils.ParserRef.get_parser(self)
+	print("CALLING IDEN")
+	result = parser.get_identifier_type(result, i)
+	
+	return result

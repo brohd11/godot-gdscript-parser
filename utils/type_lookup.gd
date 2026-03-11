@@ -19,6 +19,10 @@ const PRINT_DEBUG = true # not PLUGIN_EXPORTED
 var _parser:WeakRef
 var code_edit:CodeEdit
 
+var create_non_script_parsers:=true
+#var _resolve_to_script:=false
+
+
 func _get_parser() -> GDScriptParser:
 	return _parser.get_ref()
 
@@ -29,83 +33,49 @@ func _get_parser_main_script():
 	return Utils.ParserRef.get_parser(self).get_current_script()
 
 
-##^r I think this will be a child of the class object, each class can parse it's own things
-
-## THESE NEED TP BE CLEANED UP
-
-
-func get_class_script():
-	
-	pass
-
-func get_string_map(text:String):
-	return _get_parser().get_string_map(text)
-
-## Get script member info, ignores Godot Native class inheritance properties.
-func get_script_member_info_by_path(script:GDScript, member_path:String, member_hints:=UClassDetail._MEMBER_ARGS, check_global:=true):
-	return UClassDetail.get_member_info_by_path(script, member_path, member_hints, false, false, false, check_global)
-
-
-func resolve_static_path(script:GDScript, member_path:String):
-	if member_path.begins_with("res://"):
-		var path_data = get_script_path_and_suffix(member_path)
-		script = load(path_data[0])
-		member_path = path_data[1]
-	
-	var parts = UString.split_member_access(member_path) as Array
-	var current_script = script
-	var working_path = ""
-	while not parts.is_empty():
-		var p = parts.pop_front()
-		var to_check = p
-		if to_check.find("(") > -1:
-			to_check = to_check.substr(0, to_check.find("("))
-		
-		var member_info = UClassDetail.get_member_info_by_path(current_script, to_check)
-		if member_info is GDScript:
-			current_script = member_info
-			working_path = UString.dot_join(working_path, p)
-		elif member_info == null:
-			working_path = UString.dot_join(working_path, ".".join(parts))
-			break
-		else:
-			var type = _property_info_to_type_no_class(member_info)
-			if type != "":
-				return type
-			else:
-				working_path = UString.dot_join(working_path, p)
-			break
-	
-	return working_path
-
-static func get_script_path_and_suffix(script_path:String):
-	if not script_path.begins_with("res://"):
-		return []
-	var path = script_path
-	var suffix = ""
-	var gd_idx = script_path.find(".gd.")
-	if gd_idx > -1:
-		path = script_path.substr(0, gd_idx + 3)
-		suffix = script_path.substr(gd_idx + 4)
-	return [path, suffix]
-
-
-func _get_code_edit():
-	
-	pass
-
-func _get_in_scope_body_and_local_vars():
-	
-	pass
-
-#^^ CLEANUP
 
 #region Var Lookup
-## Get var type of member string. Break into parts then process if needed.
-## ie. my_class.some_var.my_func() will have [method _get_var_type] ran on the first part, "my_class".
-## The rest will be added to the string and checked that it has property info.
 
-func get_indentifier_type(identifier:String,  class_obj:ParserClass, line:int=-1):
+func get_function_data(identifier, class_obj:ParserClass, line:int=-1):
+	var stripped_identifier = identifier
+	if identifier.find(".") == -1:
+		if identifier.find("(") > -1:
+			stripped_identifier = identifier.substr(0, identifier.find("("))
+		var func_obj = class_obj.get_function(identifier) as ParserFunc
+		if is_instance_valid(func_obj):
+			return func_obj.get_function_data()
+		var inherited_script = _find_member_inheriting_script(stripped_identifier, class_obj.script_resource)
+		if inherited_script != "": # this needs to account for inner classes
+			var script = load(inherited_script)
+			var parser = _get_parser_for_script(script)
+			return parser.get_function_data(identifier)
+	else:
+		var string_map = UString.get_string_map(identifier)
+		var access = UString.trim_member_access_back(identifier, string_map)
+		var method_name = UString.get_member_access_back(identifier, string_map)
+		var calling_script = get_chain_type(access, class_obj, {})
+		if calling_script != "": # need to account for access path?
+			var script = load(calling_script)
+			var parser = _get_parser_for_script(script)
+			var func_data = parser.get_function_data(method_name)
+			var func_args = func_data.get(Keys.FUNC_ARGS)
+			for name in func_args.keys():
+				var arg_data = func_args[name]
+				var type = arg_data.get(Keys.TYPE, "")
+				if type == "" or _valid_identifier(type):
+					continue
+				arg_data[Keys.TYPE_RESOLVED] = parser.get_identifier_type(type)
+			print("FUNC DATA::", func_data)
+			return func_data
+		
+	
+	return {}
+
+
+
+func resolve_identifier_to_global(identifier:String, class_obj:ParserClass, line:int=-1):
+	if _valid_identifier(identifier, true):
+		return identifier
 	if line == -1:
 		line = class_obj.line_indexes[0]
 	
@@ -119,20 +89,52 @@ func get_indentifier_type(identifier:String,  class_obj:ParserClass, line:int=-1
 	var local_vars:Dictionary = {}
 	var function_name = class_obj.get_function_at_line(line)
 	if function_name != Keys.CLASS_BODY:
-		var func_obj:ParserFunc = class_obj.functions.get(function_name)
+		var func_obj:ParserFunc = class_obj.get_function(function_name)
 		if is_instance_valid(func_obj):
 			local_vars = func_obj.get_in_scope_local_vars(line)
 			#print("LOCAL vars: ", local_vars.keys())
 	
-	var result = get_chain_type(identifier, line, class_obj, local_vars)
+	var result = get_chain_type(identifier, class_obj, local_vars, true)
 	t.stop()
-	#return ""
+	return result
+	
+
+
+## Get var type of member string. Break into parts then process if needed.
+## ie. my_class.some_var.my_func() will have [method _get_var_type] ran on the first part, "my_class".
+## The rest will be added to the string and checked that it has property info.
+
+func get_indentifier_type(identifier:String, class_obj:ParserClass, line:int=-1):
+	if _valid_identifier(identifier):
+		return identifier
+	
+	if line == -1:
+		line = class_obj.line_indexes[0]
+	
+	var t= ALibRuntime.Utils.UProfile.TimeFunction.new("NEW LOOKUP")
+	
+	if identifier == "self":
+		return class_obj.get_script_resource().resource_path
+	elif identifier.begins_with("self"):
+		identifier = identifier.trim_prefix("self").trim_prefix(".")
+	
+	var local_vars:Dictionary = {}
+	var function_name = class_obj.get_function_at_line(line)
+	if function_name != Keys.CLASS_BODY:
+		var func_obj:ParserFunc = class_obj.get_function(function_name)
+		if is_instance_valid(func_obj):
+			local_vars = func_obj.get_in_scope_local_vars(line)
+			#print("LOCAL vars: ", local_vars.keys())
+	
+	var result = get_chain_type(identifier, class_obj, local_vars)
+	t.stop()
 	return result
 
-
-func get_chain_type(expression: String, line_index:int, initial_class_obj: ParserClass, local_vars:Dictionary, recursions:int=0) -> String:
-	if recursions >= 50:
+#^r NOTE:: REMOVED LINE_INDEX ARG FROM THIS, SEEMS TO DO NOTHING
+func get_chain_type(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary, allow_global:=false, recursions:int=0) -> String:
+	if recursions >= 10:
 		return expression
+	
 	var parser = _get_parser()
 	var main_script = parser.get_current_script()
 	var main_script_path = main_script.resource_path
@@ -145,19 +147,19 @@ func get_chain_type(expression: String, line_index:int, initial_class_obj: Parse
 	var string_map = parser.get_string_map(expression)
 	var parts: Array = UString.split_member_access(expression, string_map)
 	
-	
-	var current_type_path = ""
+	#var current_type_path = ""
+	var current_type_path = main_script_path
 	
 	var current_script_path = main_script_path
 	var current_script = main_script # GDScript Resource
 	var current_part_in_script = true
 	
 	var current_class_obj:ParserClass = initial_class_obj
-	print("START ------------------------------------------")
-	
+	print("START:%s - %s ----------" % [recursions, expression])
+	print(parts)
 	#return current_type_path
 	var count = 0
-	while parts.size() > 0 and count < 50:
+	while parts.size() > 0 and count < 10:
 		count += 1
 		var current_part: String = parts.pop_front()
 		var is_func = current_part.find("(") != -1
@@ -165,31 +167,34 @@ func get_chain_type(expression: String, line_index:int, initial_class_obj: Parse
 		var resolved_type = ""
 		print("CYCLE &*&*&*&*&*&*&*&")
 		#^ --- IN SCRIPT ---
+		print("CHECK::", identifier)
 		if current_part_in_script:
-			prints("CHECK",identifier, current_class_obj.access_path)
+			prints("IN_SCRIPT::",identifier, current_class_obj.access_path, " in ", main_script_path)
+			print(local_vars)
 			if member_in_class_or_local_vars(identifier, current_class_obj, local_vars):
+				print("CLASS OR LOCAL")
 				resolved_type = _process_in_script_data(identifier, current_class_obj, local_vars)
 			else:# pass through current part so that you can get full context
-				resolved_type = _process_non_script_member(current_part, current_type_path, current_class_obj, local_vars)
+				print("NON SCRIPT") # why am i not passing the stripped func? for args think, think dictionary.get() to infer default
+				resolved_type = _process_non_script_class_member(current_part, current_type_path, current_class_obj, local_vars)
 			
 			
 			# 3. Check Globals / Autoloads (if applicable)
 			if resolved_type == "":
+				print("ATTEMPT GLOBAL::", identifier)
 				resolved_type = UClassDetail.get_global_class_path(identifier) # YOUR IMPLEMENTATION
 			
 			print("BASE ID: ", resolved_type)
-			
+			print(".".join(parts))
 		else: #^ --- OUTSIDE SCRIPT ---
 			if current_type_path.begins_with("res://"):
-				var member_info = get_script_member_info_by_path(current_script, identifier)
-				if member_info != null:
-					resolved_type = _property_info_to_type_no_class(member_info)
+				resolved_type = _process_external_identifier(identifier, current_script)
+				
 				print("OUTSIDE ", resolved_type)
 				
-			else: # --- BUILT-IN C++ TYPE (Node3D, Array, etc) ---
-				print("")
-				# It doesn't have a res:// path, so it's likely a native Godot class.
-				resolved_type = _simple_type_check(current_type_path)
+			else: # --- BUILT-IN C++ TYPE (Node3D, Array, etc) --- It doesn't have a res:// path, so it's likely a native Godot class.
+				print("OUTSIDE BUILT IN::", identifier)
+				resolved_type = _process_built_in_type_method(current_part, current_type_path, current_class_obj, local_vars)
 		
 		
 		# ==========================================
@@ -199,55 +204,100 @@ func get_chain_type(expression: String, line_index:int, initial_class_obj: Parse
 			resolved_type = ""
 		# If we hit a dead end (untyped var, unknown function)
 		if resolved_type == "":
-			var remainder = ".".join(parts) # Join whatever is left
-			var dead_end_path = current_part if remainder == "" else current_part + "." + remainder
-			return dead_end_path if current_type_path == "" else current_type_path + "." + dead_end_path
+			return ""
+			#var remainder = ".".join(parts) # Join whatever is left
+			#var dead_end_path = current_part if remainder == "" else current_part + "." + remainder
+			#return dead_end_path if current_type_path == "" else current_type_path + "." + dead_end_path
 		
 		# RECURSION CHECK: Did the variable return a literal expression instead of a parsed type?
 		# e.g., local_vars["my_var"] resulted in the string "SomeClass.get_instance()"
 		# We must resolve that expression into a true path before continuing!
-		print("RESOLVED TYPE: ", resolved_type)
 		
-		if _is_unresolved_expression(resolved_type): 
+		
+		if _is_unresolved_expression(resolved_type, allow_global): 
 			# Pass the initial context because expressions are evaluated where they were declared!
-			var recursive = get_chain_type(resolved_type, line_index, initial_class_obj, local_vars, recursions + 1)
+			var recursive = get_chain_type(resolved_type, initial_class_obj, local_vars, allow_global, recursions + 1)
 			if recursive != resolved_type:
+				print("RECURSE::", resolved_type)
 				resolved_type = recursive
+				print("RECURSE RESOLVED TYPE::", resolved_type)
 			else:
 				print("RECUR == INPUT: ", resolved_type)
 				return ""
+		else:
+			print("RESOLVED_EXPRESSION::", resolved_type)
+		#resolved_string = UString.dot_join(resolved_string, resolved_type)
 		
 		if resolved_type.begins_with("res://"):
 			var script_data = get_script_path_and_suffix(resolved_type)
 			if resolved_type.begins_with(main_script_path):
+				current_script_path = main_script_path
 				current_script = main_script
-				var new_class_obj = parser.get_class_object(script_data[1])
+				var access_path = script_data[1]
+				var new_class_obj = parser.get_class_object(access_path)
 				prints("SWITCH OBJ:", script_data, current_class_obj, " -> ", new_class_obj)
 				current_class_obj = new_class_obj
-				print(current_class_obj)
+				#print(current_class_obj)
 				current_part_in_script = true
+				if new_class_obj == null:
+					if access_path.ends_with(Keys.ENUM_PATH_SUFFIX):
+						return resolved_type
+					else:
+						print("UNHANDLED CLASS OBJECT::", resolved_type)
+					
+				
 			else:
-				current_script = load(script_data[0])
+				current_script_path = script_data[0]
+				current_script = load(current_script_path)
 				current_part_in_script = false
 		
+		#elif _resolve_to_script:
+			##var final_string = current_class_obj.script_access_path + "." + resolved_type
+			#var final_string = UString.dot_join(current_script_path, current_class_obj.script_access_path)
+			#final_string = UString.dot_join(final_string, resolved_type)
+			##var remainder = ".".join(parts)
+			##var dead_end_path = UString.dot_join(current_part, remainder)
+			##var final_string = UString.dot_join(current_type_path, dead_end_path)
+			##print("RESOLVE TO SCRIPT RETURN::", final_string)
+			#return final_string
+		
+		if allow_global and _valid_identifier(resolved_type, allow_global):
+			return UString.dot_join(resolved_type, ".".join(parts))
+		
+		
+		
+		var old_path = current_type_path
 		current_type_path = resolved_type
+		print("SET PATH %s -> %s" % [old_path, resolved_type])
+		print(".".join(parts))
+		
+		#var remainder = ".".join(parts) # Join whatever is left
+		#var dead_end_path = ""
+		#if remainder == "":
+			#dead_end_path = current_part
+		#else:
+			#dead_end_path = current_part + "." + remainder
+		#if current_type_path != "":
+			#dead_end_path = current_type_path + "." + dead_end_path
+		#return dead_end_path
 		
 	
-	print("RETURN ==== ", current_type_path)
+	print("RETURN:", str(recursions), " ==== ", current_type_path)
+	#print("RES STRING ==== ", resolved_string)
 	return current_type_path
 
-func _is_unresolved_expression(identifier:String):
+func _is_unresolved_expression(identifier:String, allow_global:=false):
 	if identifier.begins_with("res://"):
 		return false
-	elif _valid_identifier(identifier):
+	elif _valid_identifier(identifier, allow_global):
 		return false
 	elif identifier.find(".") > -1:
 			return true
 	
 	return true
 
-func _valid_identifier(identifier:String):
-	if _is_class_name_valid(identifier):
+func _valid_identifier(identifier:String, allow_global:=false):
+	if _is_class_name_valid(identifier, allow_global): # don't allow global so they are resolved to script.
 		return true
 	if VariantChecker.check_type(identifier):
 		return true
@@ -255,34 +305,6 @@ func _valid_identifier(identifier:String):
 		return true
 	
 	return false
-
-
-
-
-
-class Test:
-	
-	static func some_func() -> String:
-		return ""
-	
-	func get_ins() -> Nest:
-		return Nest.new()
-	const U=Utils
-	func a_string() -> StringName:
-		return &""
-	class Nest extends U:
-		var my_var:Test
-		func get_some() -> int:
-			return 1
-		func my_dict() -> Dictionary:
-			
-			return {}
-		
-		func my_recur() -> String:
-			return my_recur()
-		
-		
-
 
 
 func _process_in_script_data(member_name:String, class_obj:ParserClass, local_vars:Dictionary):
@@ -333,12 +355,9 @@ func _check_member_data(member_name:String, class_obj:ParserClass, local_vars:Di
 	else:
 		var column = member_data.get(Keys.COLUMN_INDEX, 0)
 		print("COLUMN ", column)
-		var get_type = _get_script_member_type(line_index, column) # this could be cool to also scroll up to last assignment?
-		if get_type != null:
-			type_declaration = get_type[1]
-			print("GOT TYPE: ", type_declaration)
-			if member_type == Keys.MEMBER_TYPE_CONST:
-				return _resolve_constant(type_declaration, class_obj)
+		type_declaration = _get_script_member_type(line_index, column)
+		
+		
 	
 	
 	var type_check = _simple_type_check(type_declaration)
@@ -351,23 +370,32 @@ func _check_member_data(member_name:String, class_obj:ParserClass, local_vars:Di
 	
 	#member_data=
 	
-	
 	return type_declaration
 
 
 
-func _process_non_script_member(identifier:String, current_type_path:String, class_obj:ParserClass, local_vars:Dictionary):
-	print(identifier, current_type_path)
-	if identifier.begins_with("new("):
+func _process_non_script_class_member(identifier:String, current_type_path:String, class_obj:ParserClass, local_vars:Dictionary):
+	prints(current_type_path, identifier)
+	if identifier.begins_with("new(") or identifier == "new":
 		return current_type_path
 	
-	var type_to_check = ""
-	if class_obj.has_inherited_member(identifier):
-		return _get_inherited_member_type(identifier, class_obj)
+	var stripped_identifier = identifier
+	if identifier.find("(") > -1:
+		stripped_identifier = identifier.get_slice("(", 0)
 	
+	
+	if class_obj.has_inherited_member(stripped_identifier):
+		print("IS INHER")
+		return _get_inherited_member_type(stripped_identifier, class_obj)
+	
+	return _process_built_in_type_method(identifier, current_type_path, class_obj, local_vars)
+
+func _process_built_in_type_method(identifier:String, current_type_path:String, class_obj:ParserClass, local_vars:Dictionary):
+	var type_to_check = ""
 	if current_type_path == &"Dictionary":
 		if identifier.begins_with("get"):
 			var args = identifier.get_slice("(", 1)
+			print(identifier, args)
 			args = args.substr(0, args.rfind(")"))
 			if args.find(",") == -1:
 				return identifier
@@ -388,29 +416,21 @@ func _process_non_script_member(identifier:String, current_type_path:String, cla
 
 
 
-
-func test_func():
-	var t:=\
-	Test.new()
-	#t.some_func()=
+func _process_external_identifier(identifier:String, script:GDScript):
+	#var member_info = get_script_member_info_by_path(script, identifier)
+	#if member_info != null:
+		#return _property_info_to_type_no_class(member_info)
 	
-	var n = t.get_ins()
 	
-	n.get_some()
-	n.my_var.a_string()
+	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("OUTSIDE PARSER")
+	var parser = GDScriptParser.new()
+	parser.set_current_script(script)
+	parser.set_source_code(script.source_code)
+	parser.parse()
+	var type = parser.get_identifier_type(identifier)
+	t.stop()
 	
-	var d = n.my_dict()
-	#d.get("some", n.my_var.a_string())=
-	
-	#t.U.get_class_name_in_line()=
-	
-	pass
-
-
-
-
-
-
+	return type
 
 
 ## Get func return from script editor text.
@@ -422,7 +442,7 @@ func _get_func_return_type(method_name:String, class_obj:ParserClass):
 	
 	var type = ""
 	if class_obj.functions.has(method_name):
-		var func_obj = class_obj.functions.get(method_name) as ParserFunc
+		var func_obj = class_obj.get_function(method_name) as ParserFunc
 		type = func_obj.get_return_type()
 	else:
 		type = _get_inherited_member_type(method_name, class_obj)
@@ -493,6 +513,18 @@ func _get_inherited_member_type(var_name:String, class_obj:ParserClass):
 			printerr("GET INHERITED INNER CLASS: ", script)
 		return ""
 	
+	
+	
+	
+	#TEST
+	print("GET INHERITED ", script.get_base_script())
+	var base_script = script.get_base_script()
+	if is_instance_valid(base_script):
+		return _process_external_identifier(var_name, base_script)
+	
+	
+	#TEST
+	
 	var member_info = class_obj.get_inherited_member(var_name)
 	if member_info == null:
 		return ""
@@ -500,6 +532,36 @@ func _get_inherited_member_type(var_name:String, class_obj:ParserClass):
 	if type == "":
 		return ""
 	return type
+
+
+
+func _find_member_inheriting_script(identifier:String, script:GDScript):
+	var last_script = script
+	if get_script_member_info_by_path(script, identifier) == null:
+		return ""
+		
+	var current_script = script.get_base_script()
+	while current_script != null:
+		if get_script_member_info_by_path(current_script, identifier) == null:
+			break
+		last_script = current_script
+		current_script = current_script.get_base_script()
+	
+	return last_script.resource_path
+
+
+
+
+func _get_parser_for_script(script:GDScript):
+	var parser = GDScriptParser.new()
+	parser.set_current_script(script)
+	parser.set_source_code(script.source_code)
+	parser.parse()
+	return parser
+
+
+
+
 
 
 
@@ -513,144 +575,234 @@ func _get_inherited_member_type(var_name:String, class_obj:ParserClass):
 
 
 
-
-
-
-
-
-
-
-func resolve_full_const_type(var_name, class_obj:ParserClass):
-	#if not class_obj.has_constant_or_class(var_name):
-		#return null
-	var type = _resolve_constant(var_name, class_obj)
-	print("RESOLVED TYPE: ", type)
-	return type
-
-
-func _resolve_constant(var_name: String, class_obj: ParserClass) -> String:
-	var parser = _get_parser()
-	var parser_main_script_path = parser._script_path
+class Test:
 	
-	# Treat the identifier as a queue of parts to resolve.
-	# e.g., "SC.Class.Another" -> ["SC", "Class", "Another"]
-	var parts: Array = Array(var_name.split("."))
+	static func some_func() -> String:
+		return ""
 	
-	var resolved_path: String = ""
-	var working_class_obj: ParserClass = class_obj
-	var visited_aliases: Dictionary = {}
+	func get_ins() -> Nest:
+		return Nest.new()
+	const U=Utils
+	func a_string() -> StringName:
+		return &""
+	class Nest extends U:
+		var my_var:Test
+		func get_some() -> int:
+			return 1
+		func my_dict() -> Dictionary:
+			
+			return {}
+		
+		func my_recur() -> String:
+			return my_recur()
+		
+	
+	
+	func test():
+		
+		var g = get_ins()
+		
+		var m = g.my_dict()
 
-	# Keep processing as long as we have parts in our chain
-	while parts.size() > 0:
-		var current_part = parts[0]
-		
-		# If the current class object doesn't know what this part is, 
-		# we've gone as deep as we can statically resolve. Break the loop.
-		if not working_class_obj.has_constant_or_class(current_part):
-			break
-		
-		# Cycle Detection (Class Instance + Alias Name ensures we don't falsely flag identical names in different classes)
-		var cycle_key = str(working_class_obj) + "::" + current_part
-		if visited_aliases.has(cycle_key):
-			if PRINT_DEBUG:
-				printerr("Cycle detected in constant resolution! Alias '", current_part, "' is part of a loop.")
-			resolved_path += "[CYCLE_ERROR:" + current_part + "]"
-			parts.pop_front()
-			break
-		
-		visited_aliases[cycle_key] = true
-		
-		var data = working_class_obj.get_constant_or_class(current_part)
-		#print("RESOLVEDATA ", data)
-		
-		
-		var full_definition: String = data.get(Keys.TYPE, "")
-		
-		# CASE 1: It's a preload/script path (e.g., "res://another.gd")
-		if full_definition.begins_with("res://"):
-			var script_path_data = get_script_path_and_suffix(full_definition)
-			var path = script_path_data[0]
-			var suffix = script_path_data[1]
-			
-			resolved_path = full_definition
-			# Consume this part
-			parts.pop_front()
-			
-			if path == parser_main_script_path:
-				resolved_path = path # Just the res:// path for now
-				var inner_class_name = parser.get_class_at_line(0)
-				working_class_obj = parser.get_class_object(inner_class_name)
-				
-				# If the preload definition itself had a suffix (e.g. res://script.gd.Inner),
-				# we must prepend that suffix to our queue so the while-loop processes it!
-				if suffix != "":
-					var suffix_parts = Array(suffix.split(".", false))
-					var new_queue = suffix_parts
-					new_queue.append_array(parts)
-					parts = new_queue
-					
-			else: 
-				# At this point it is out of script, so rely on GDScript Resource
-				var script = load(path) 
-				
-				# CRITICAL: Combine the preload's suffix AND the remaining queue parts
-				var remaining_chain_parts = []
-				if suffix != "":
-					remaining_chain_parts.append(suffix)
-				if parts.size() > 0:
-					remaining_chain_parts.append(".".join(parts))
-					
-				var full_remaining_chain = ".".join(remaining_chain_parts)
-				
-				if full_remaining_chain == "":
-					return path
-				var member_info = get_script_member_info_by_path(script, full_remaining_chain)
-				print("OUT OF SCRIPT DATA: ", script.resource_path, " -> ", full_remaining_chain)
-				# Return the final resulting string
-				return _property_info_to_type_no_class(member_info)
-			
-			
-			
-		# CASE 2: It is the inner class itself (definition is the same as the name)
-		elif full_definition == current_part or full_definition == "":
-			resolved_path = UString.dot_join(resolved_path, current_part)
-			parts.pop_front() # Consume this part
-			
-			# Move our context deep into the inner class
-			var idx = data.get(Keys.LINE_INDEX)
-			var inner_class_name = parser.get_class_at_line(idx)
-			working_class_obj = parser.get_class_object(inner_class_name)
-			
-		# CASE 3: It is an Alias/Constant (e.g., const SC = SubClass.Sub)
-		else:
-			parts.pop_front() # Remove 'SC'
-			
-			# Split "SubClass.Sub" into ["SubClass", "Sub"]
-			var alias_parts: Array = Array(full_definition.split("."))
-			
-			# Prepend the alias definition to the front of our remaining queue
-			# So ["Class", "Another"] becomes ["SubClass", "Sub", "Class", "Another"]
-			var new_queue: Array = []
-			new_queue.append_array(alias_parts)
-			new_queue.append_array(parts)
-			parts = new_queue
-			
-			# Notice we DO NOT change working_class_obj here, because the alias
-			# needs to be resolved starting from the current class context!
 
-	# If there are leftover parts we couldn't resolve natively (e.g. standard Godot properties),
-	# we just append them to whatever path we successfully built.
-	if parts.size() > 0:
-		var remainder = ".".join(parts)
-		resolved_path = UString.dot_join(resolved_path, remainder)
-
-	return resolved_path
+func test():
+	
+	var t= Test.new()
+	var n = t.get_ins()
+	
+	#if n.my_var.U.get_class_name_in_line("") == 
+	
 	
 
+
+
+
+
+
+
+
+#^ these may be obsoleted
+
+#func resolve_full_const_type(var_name, class_obj:ParserClass):
+	##if not class_obj.has_constant_or_class(var_name):
+		##return null
+	#var type = _resolve_constant(var_name, class_obj)
+	#print("RESOLVED TYPE: ", type)
+	#return type
+
+
+#func _resolve_constant(var_name: String, class_obj: ParserClass) -> String:
+	#var parser = _get_parser()
+	#var parser_main_script_path = parser._script_path
+	#
+	## Treat the identifier as a queue of parts to resolve.
+	## e.g., "SC.Class.Another" -> ["SC", "Class", "Another"]
+	#var parts: Array = Array(var_name.split("."))
+	#
+	#var resolved_path: String = ""
+	#var working_class_obj: ParserClass = class_obj
+	#var visited_aliases: Dictionary = {}
+#
+	## Keep processing as long as we have parts in our chain
+	#while parts.size() > 0:
+		#var current_part = parts[0]
+		#
+		## If the current class object doesn't know what this part is, 
+		## we've gone as deep as we can statically resolve. Break the loop.
+		#if not working_class_obj.has_constant_or_class(current_part):
+			#break
+		#
+		## Cycle Detection (Class Instance + Alias Name ensures we don't falsely flag identical names in different classes)
+		#var cycle_key = str(working_class_obj) + "::" + current_part
+		#if visited_aliases.has(cycle_key):
+			#if PRINT_DEBUG:
+				#printerr("Cycle detected in constant resolution! Alias '", current_part, "' is part of a loop.")
+			#resolved_path += "[CYCLE_ERROR:" + current_part + "]"
+			#parts.pop_front()
+			#break
+		#
+		#visited_aliases[cycle_key] = true
+		#
+		#var data = working_class_obj.get_constant_or_class(current_part)
+		##print("RESOLVEDATA ", data)
+		#
+		#
+		#var full_definition: String = data.get(Keys.TYPE, "")
+		#
+		## CASE 1: It's a preload/script path (e.g., "res://another.gd")
+		#if full_definition.begins_with("res://"):
+			#var script_path_data = get_script_path_and_suffix(full_definition)
+			#var path = script_path_data[0]
+			#var suffix = script_path_data[1]
+			#
+			#resolved_path = full_definition
+			## Consume this part
+			#parts.pop_front()
+			#
+			#if path == parser_main_script_path:
+				#resolved_path = path # Just the res:// path for now
+				#var inner_class_name = parser.get_class_at_line(0)
+				#working_class_obj = parser.get_class_object(inner_class_name)
+				#
+				## If the preload definition itself had a suffix (e.g. res://script.gd.Inner),
+				## we must prepend that suffix to our queue so the while-loop processes it!
+				#if suffix != "":
+					#var suffix_parts = Array(suffix.split(".", false))
+					#var new_queue = suffix_parts
+					#new_queue.append_array(parts)
+					#parts = new_queue
+					#
+			#else: 
+				## At this point it is out of script, so rely on GDScript Resource
+				#var script = load(path) 
+				#
+				## CRITICAL: Combine the preload's suffix AND the remaining queue parts
+				#var remaining_chain_parts = []
+				#if suffix != "":
+					#remaining_chain_parts.append(suffix)
+				#if parts.size() > 0:
+					#remaining_chain_parts.append(".".join(parts))
+					#
+				#var full_remaining_chain = ".".join(remaining_chain_parts)
+				#
+				#if full_remaining_chain == "":
+					#return path
+				#var member_info = get_script_member_info_by_path(script, full_remaining_chain)
+				#print("OUT OF SCRIPT DATA: ", script.resource_path, " -> ", full_remaining_chain)
+				## Return the final resulting string
+				#return _property_info_to_type_no_class(member_info)
+			#
+			#
+			#
+		## CASE 2: It is the inner class itself (definition is the same as the name)
+		#elif full_definition == current_part or full_definition == "":
+			#resolved_path = UString.dot_join(resolved_path, current_part)
+			#parts.pop_front() # Consume this part
+			#
+			## Move our context deep into the inner class
+			#var idx = data.get(Keys.LINE_INDEX)
+			#var inner_class_name = parser.get_class_at_line(idx)
+			#working_class_obj = parser.get_class_object(inner_class_name)
+			#
+		## CASE 3: It is an Alias/Constant (e.g., const SC = SubClass.Sub)
+		#else:
+			#parts.pop_front() # Remove 'SC'
+			#
+			## Split "SubClass.Sub" into ["SubClass", "Sub"]
+			#var alias_parts: Array = Array(full_definition.split("."))
+			#
+			## Prepend the alias definition to the front of our remaining queue
+			## So ["Class", "Another"] becomes ["SubClass", "Sub", "Class", "Another"]
+			#var new_queue: Array = []
+			#new_queue.append_array(alias_parts)
+			#new_queue.append_array(parts)
+			#parts = new_queue
+			#
+			## Notice we DO NOT change working_class_obj here, because the alias
+			## needs to be resolved starting from the current class context!
+#
+	## If there are leftover parts we couldn't resolve natively (e.g. standard Godot properties),
+	## we just append them to whatever path we successfully built.
+	#if parts.size() > 0:
+		#var remainder = ".".join(parts)
+		#resolved_path = UString.dot_join(resolved_path, remainder)
+#
+	#return resolved_path
+
+
+#^ not sure that this is really needed
+#func resolve_static_path(script:GDScript, member_path:String):
+	#if member_path.begins_with("res://"):
+		#var path_data = get_script_path_and_suffix(member_path)
+		#script = load(path_data[0])
+		#member_path = path_data[1]
+	#
+	#var parts = UString.split_member_access(member_path) as Array
+	#var current_script = script
+	#var working_path = ""
+	#while not parts.is_empty():
+		#var p = parts.pop_front()
+		#var to_check = p
+		#if to_check.find("(") > -1:
+			#to_check = to_check.substr(0, to_check.find("("))
+		#
+		#var member_info = UClassDetail.get_member_info_by_path(current_script, to_check)
+		#if member_info is GDScript:
+			#current_script = member_info
+			#working_path = UString.dot_join(working_path, p)
+		#elif member_info == null:
+			#working_path = UString.dot_join(working_path, ".".join(parts))
+			#break
+		#else:
+			#var type = _property_info_to_type_no_class(member_info)
+			#if type != "":
+				#return type
+			#else:
+				#working_path = UString.dot_join(working_path, p)
+			#break
+	#
+	#return working_path
 
 
 
 #^ HELPER FUNCS
+
+
+## Get script member info, ignores Godot Native class inheritance properties.
+func get_script_member_info_by_path(script:GDScript, member_path:String, member_hints:=UClassDetail._MEMBER_ARGS, check_global:=true):
+	return UClassDetail.get_member_info_by_path(script, member_path, member_hints, false, false, false, check_global)
+
+
+static func get_script_path_and_suffix(script_path:String):
+	if not script_path.begins_with("res://"):
+		return []
+	var path = script_path
+	var suffix = ""
+	var gd_idx = script_path.find(".gd.")
+	if gd_idx > -1:
+		path = script_path.substr(0, gd_idx + 3)
+		suffix = script_path.substr(gd_idx + 4)
+	return [path, suffix]
 
 ## Get a class_name from property info and convert to a type if possible.
 ## If method data, uses return data.
@@ -731,6 +883,7 @@ func _property_info_to_type_no_class(property_info) -> String:
 
 
 
+
 ## Check that class name is Godot Native or member of the class. A valid user global class will also return true.
 func _is_class_name_valid(_class_name, check_global:=true):
 	if _class_name.find(".") > -1:
@@ -750,11 +903,35 @@ func _is_class_name_valid(_class_name, check_global:=true):
 
 func _get_script_member_type(line:int, column:int=0): # thjs could be a bit more efficient, if not needed, could use what you got already, 
 	var code_edit_parser = _get_code_edit_parser() # but also maybe speeding up scan by not getting types could be good
-	var line_text = code_edit_parser.get_line(line, true)
-	if line_text.ends_with("\\") or column > 0:
-		return code_edit_parser.get_type_from_line(line, column)
-	else:
-		return code_edit_parser.get_type_from_line_text(line_text.strip_edges())
+	#var line_text = code_edit_parser.get_line(line, true)
+	var get_type_data = code_edit_parser.get_type_from_line(line, column)
+	var result = get_type_data.get("result")
+	if result == null:
+		return ""
+	var dec_type = get_type_data.get("type", &"")
+	if dec_type == Keys.MEMBER_TYPE_CONST or dec_type == Keys.MEMBER_TYPE_VAR or dec_type == Keys.MEMBER_TYPE_STATIC_VAR:
+		return result[1]
+	elif dec_type == Keys.MEMBER_TYPE_ENUM:
+		var parser = Utils.ParserRef.get_parser(self)
+		var class_at_line = parser.get_class_object(parser.get_class_at_line(line)) as ParserClass
+		var access = UString.dot_join(class_at_line.access_path, result[0] + Keys.ENUM_PATH_SUFFIX)
+		return UString.dot_join(class_at_line.main_script_path, access)
+	elif dec_type == Keys.MEMBER_TYPE_CLASS:
+		var parser = Utils.ParserRef.get_parser(self)
+		var class_at_line = parser.get_class_object(parser.get_class_at_line(line)) as ParserClass
+		var access = UString.dot_join(class_at_line.access_path, result[0])
+		return UString.dot_join(class_at_line.main_script_path, access)
+	elif dec_type == Keys.MEMBER_TYPE_FUNC or dec_type == Keys.MEMBER_TYPE_STATIC_FUNC:
+		return result.get(Keys.FUNC_NAME, "")
+	elif dec_type == Keys.MEMBER_TYPE_SIGNAL:
+		return "Signal"
+	
+	return ""
+	
+	#if line_text.ends_with("\\") or column > 0:
+		#return code_edit_parser.get_type_from_line(line, column)
+	#else:
+		#return code_edit_parser.get_type_from_line_text(line_text.strip_edges())
 
 func member_in_class_or_local_vars(identifier:String, class_obj:ParserClass, local_vars:Dictionary):
 	return class_obj.has_script_member(identifier) or local_vars.has(identifier)

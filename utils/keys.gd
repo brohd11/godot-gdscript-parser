@@ -7,6 +7,9 @@ const PARSER_CODE_EDIT = &"_parser_code_edit"
 const CONTEXT_TEXT = &"context_text"
 const CONTEXT_START = &"context_start"
 const CONTEXT_END = &"context_end"
+const CONTEXT_BLOCKS = &"context_blocks"
+const CONTEXT_LOCAL_VARS = &"context_local_vars"
+const CONTEXT_SEMI_COLON = &"context_semi_colon"
 
 # var type
 const MEMBER_TYPE_FUNC_ARG = &"func_arg"
@@ -17,6 +20,9 @@ const MEMBER_TYPE_VAR = &"var"
 const MEMBER_TYPE_CONST = &"const"
 const MEMBER_TYPE_ENUM = &"enum"
 const MEMBER_TYPE_CLASS = &"class"
+const MEMBER_TYPE_SIGNAL = &"signal"
+
+const ENUM_PATH_SUFFIX = &"::Enum"
 
 # map keys
 
@@ -28,13 +34,13 @@ const COLUMN_INDEX = &"column_index"
 const FUNC_LINES = &"func_lines"
 const ANNOTATIONS = &"annotations"
 
+const TYPE = &"type"
+const TYPE_RESOLVED = &"type_resolved"
+
 const CLASS_BODY = &"#body" # this is not for data
 
 
-
-const LOCAL_VARS = &"#local" # is this used?
-
-
+# member info
 const FUNC_NAME = &"func_name"
 const FUNC_ARGS = &"func_args"
 const FUNC_RETURN = &"func_return"
@@ -44,6 +50,7 @@ const SIGNAL_ARGS = &"signal_args"
 
 
 
+const LOCAL_VARS = &"#local" # is this used?
 
 # UNUSED
 const DECLARATION = &"dec_line"
@@ -54,7 +61,7 @@ const SNAPSHOT = &"snapshot"
 const CLASS_MASK = &"class_mask"
 const CONST = &"const"
 
-const TYPE = &"type"
+
 const ENUM_MEMBERS = &"enum_members"
 
 

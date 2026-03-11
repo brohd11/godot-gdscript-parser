@@ -32,7 +32,7 @@ var _annotation_regex:RegEx
 
 
 
-var g="";var t = ";not this";func my_func(): pass;var fh;
+var g="";var t = ";not this";func my_func(arg:Vector2) -> int: return 1;var fh;
 
 var _pc:_ParserContext
 
@@ -275,9 +275,9 @@ static func _parse_source2(source:String):
 
 
 func get_line_context_start_data(target_line_index:int, params:Dictionary={}) -> Dictionary:
-	var map_blocks_array = params.get(&"map_blocks", []) as Array
+	var map_blocks_array = params.get(Keys.CONTEXT_BLOCKS, []) as Array
 	var has_blocks = not map_blocks_array.is_empty()
-	var map_local_vars = params.get(&"map_local_vars", true) as bool
+	var map_local_vars = params.get(Keys.CONTEXT_LOCAL_VARS, true) as bool
 	
 	var blocks:= []
 	var local_vars:= {}
@@ -324,10 +324,10 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 					break
 	
 	return {
-		&"has_semi_col": has_semi_col,
+		Keys.CONTEXT_SEMI_COLON: has_semi_col,
 		Keys.CONTEXT_START: context_start_line,
-		&"blocks": blocks,
-		&"local_vars":local_vars
+		Keys.CONTEXT_BLOCKS: blocks,
+		Keys.CONTEXT_LOCAL_VARS:local_vars
 	}
 
 
@@ -347,11 +347,10 @@ func get_line_context_start_simple(target_line_index:int) -> Dictionary:
 		if not stripped.begins_with("func "):
 			break
 		if Utils.get_func_name_in_line(stripped) != "":
-			print("HAS FUNC")
 			break
 	
 	return {
-		&"has_semi_col": has_semi_col,
+		Keys.CONTEXT_SEMI_COLON: has_semi_col,
 		Keys.CONTEXT_START: context_start_line,
 	}
 
@@ -368,33 +367,10 @@ func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=fal
 	if start_data.is_empty():
 		start_data = get_line_context_start_simple(target_line_index)
 	
-	var has_semi_col:bool = start_data.get(&"has_semi_col", false)
+	var has_semi_col:bool = start_data.get(Keys.CONTEXT_SEMI_COLON, false)
 	var context_start_line:int = start_data.get(Keys.CONTEXT_START, target_line_index)
 	var context_end_line:int = target_line_index + 1
-	prints("HAS SEMI COL", has_semi_col, _caret_column)
-	
-	#var has_semi_col:=false
-	#var context_start_line = target_line_index + 1
-	#var context_end_line = target_line_index + 1
-	#while context_start_line > 0:
-		#context_start_line -= 1
-		#var line = code_edit.get_line(context_start_line) # musn't be stripped for is_valid_code
-		#if line == "":
-			#continue
-		#var semi_i = line.rfind(";")
-		#while semi_i != -1:
-			#if not is_valid_code(context_start_line, semi_i):
-				#semi_i = line.rfind(";", semi_i - 1)
-			#else:
-				#has_semi_col = true
-				#break
-		#line = line.strip_edges()
-		#if not Utils.line_has_any_declaration(line) or code_edit.is_in_string(context_start_line, 0) != -1:
-			#continue
-		#if not line.begins_with("func "):
-			#break
-		#if Utils.get_func_name_in_line(line) != "":
-			#break
+	#prints("HAS SEMI COL", has_semi_col, _caret_column)
 	
 	var bracket_depth = 0
 	var in_string = code_edit.is_in_string(context_start_line, 0) != -1
@@ -445,6 +421,8 @@ func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=fal
 			if insert_caret:
 				line = line.insert(_caret_column, Keys.CARET_UNI_CHAR)
 				caret_idx = line.rfind(Keys.CARET_UNI_CHAR) + context_text.length()
+			else:
+				caret_idx = _caret_column + context_text.length()
 			
 		if code_edit.is_in_string(i) == -1:
 			var not_first = i > context_start_line
@@ -455,11 +433,12 @@ func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=fal
 		else:
 			context_text += "\n" + line
 	
+	
 	if has_semi_col:# and _caret_column > 0:
 		var string_map = get_string_map(context_text)
 		var semi_prev = UString.string_safe_rfind(context_text, ";", caret_idx, string_map) + 1
 		var semi_next = UString.string_safe_find(context_text, ";", caret_idx, string_map)
-		context_text = context_text.substr(semi_prev, semi_next)
+		context_text = context_text.substr(semi_prev, semi_next - semi_prev)
 	
 	
 	t.stop()
@@ -513,6 +492,85 @@ func parse_identifier_at_position(text_to_process:String, start_pos:int):
 		current_pos -= 1
 	
 	return text_to_process.substr(name_start_pos, start_pos - name_start_pos + 1)
+
+func parse_expression_at_position(text_to_process: String, start_pos: int, string_map=null) -> String:
+	if string_map == null:
+		string_map = get_string_map(text_to_process)
+	var current_pos = start_pos
+	var name_start_pos = start_pos + 1
+	
+	# These flags act as a tiny "State Machine" to handle whitespace safely
+	var expecting_operator = false 
+	var last_was_ident = false
+	
+	while current_pos >= 0:
+		# 1. Safely walk backward through strings
+		if string_map.string_mask[current_pos] == 1:
+			name_start_pos = current_pos
+			current_pos -= 1
+			last_was_ident = true # A string acts like an identifier block
+			continue
+		
+		var _char = text_to_process[current_pos]
+		
+		# 2. Handle Whitespace boundaries safely
+		if _char == " " or _char == "\t" or _char == "\n":
+			if last_was_ident:
+				# If we read a word, and hit a space, the ONLY valid thing 
+				# to the left of this space is an operator (like a dot or bracket).
+				expecting_operator = true
+			current_pos -= 1
+			continue
+			
+		# 3. Handle Brackets (Method calls AND Index access)
+		if _char == ")" or _char == "]" or _char == "}":
+			current_pos = string_map.bracket_map.get(current_pos, current_pos)
+			last_was_ident = true
+			expecting_operator = false
+			name_start_pos = current_pos
+			current_pos -= 1
+			continue
+			
+		# 4. Handle Member Access (.)
+		if _char == ".":
+			expecting_operator = false
+			last_was_ident = false
+			name_start_pos = current_pos
+			current_pos -= 1
+			continue
+			
+		# 5. Handle Node Path Terminals ($ and %)
+		if _char == "$" or _char == "%":
+			# These characters exclusively mark the BEGINNING of an expression.
+			name_start_pos = current_pos
+			break # Stop scanning entirely
+			
+		# 6. Check for Valid Expression Characters
+		# We include '/' specifically so NodePaths parse seamlessly
+		var is_ident = (_char >= 'a' and _char <= 'z') or \
+					   (_char >= 'A' and _char <= 'Z') or \
+					   (_char >= '0' and _char <= '9') or \
+					   _char == '_' or _char == '/'
+					   
+		if is_ident:
+			if expecting_operator:
+				# Example: "var my_func"
+				# We read "my_func", hit a space, and now hit "r" (from var).
+				# This is a word boundary! We must stop scanning here.
+				break
+				
+			last_was_ident = true
+			name_start_pos = current_pos
+			current_pos -= 1
+			continue
+			
+		# 7. If it's a comma, plus, minus, equals, etc... we reached the edge!
+		break
+		
+	var final_expr = text_to_process.substr(name_start_pos, start_pos - name_start_pos + 1)
+	return final_expr.strip_edges()
+
+
 
 func get_indent_access_path(access_path:String):
 	if access_path == "":
@@ -598,25 +656,31 @@ func get_line_no_comment(line:int):
 
 func get_type_from_line(line:int, column:int=0):
 	var context = get_line_context(line, column).get(Keys.CONTEXT_TEXT, "")
-	print("RAW CONTEXT ", context)
+	#print("RAW CONTEXT ", context)
 	return get_type_from_line_text(context.strip_edges())
 
 ## returns an array with [member_name, member_type], except functions, which return a dict {func_args, func_return}, keys are in Keys class
 func get_type_from_line_text(stripped_line_text:String):
 	for dec in Keywords.DECLARATIONS:
 		if stripped_line_text.begins_with(dec):
+			var data = {}
 			if dec == &"var " or dec == &"static var ":
-				return Utils.get_var_or_const_info(stripped_line_text)
+				data["result"] = Utils.get_var_or_const_info(stripped_line_text)
 			elif dec == &"enum ":
-				return Utils.get_enum_info(stripped_line_text)
+				data["result"] = Utils.get_enum_info(stripped_line_text)
 			elif dec == &"const ":
-				return Utils.get_var_or_const_info(stripped_line_text)
+				data["result"] = Utils.get_var_or_const_info(stripped_line_text)
 			elif dec == &"func " or dec == &"static func ":
-				return Utils.get_func_info(stripped_line_text)
+				data["result"] = Utils.get_func_info(stripped_line_text)
 			elif dec == &"class ":
-				return Utils.get_class_info(stripped_line_text)
+				data["result"] = Utils.get_class_info(stripped_line_text)
 			elif dec == &"signal ":
-				Utils.get_signal_info(stripped_line_text)
+				data["result"] = Utils.get_signal_info(stripped_line_text)
+			if data.is_empty():
+				return {}
+			data["type"] = StringName(dec.strip_edges())
+			return data
+	return {}
 
 
 
@@ -710,41 +774,6 @@ func get_func_branch_start(line:int, target_indent_level:int, add_class_indent:=
 		i -= 1
 	return i
 
-
-func get_func_data_at_line(line:int): # this used to take stripped text, will I need this for source code?
-	var stripped_text = get_line_context(line).get(Keys.CONTEXT_TEXT, "").strip_edges()
-	return Utils.get_func_info(stripped_text)
-	#var func_data = {Keys.FUNC_ARGS:{}}
-	#var open_paren = stripped_text.find("(")
-	#var close_paren = stripped_text.rfind(")")
-	#if stripped_text.count("(") > 1:
-		#var string_map = get_string_map(stripped_text)
-		#open_paren = stripped_text.find("(")
-		#close_paren = string_map.bracket_map.get(open_paren)
-		#if close_paren == null:
-			#return {}
-	#
-	#open_paren += 1
-	#var args = stripped_text.substr(open_paren, close_paren - open_paren)
-	#if args.find(",") > -1:
-		#args = args.split(",", false)
-	#else:
-		#args = [args]
-	#for arg in args:
-		#if arg == "":
-			#continue
-		#var dummy_string = "var " + arg.strip_edges()
-		#var var_data = UString.get_var_or_const_info(dummy_string)
-		#var var_nm = var_data[0]
-		#var type_hint = var_data[1]
-		#func_data[Keys.FUNC_ARGS][var_nm] = type_hint
-	#
-	#var return_idx = stripped_text.find("->")
-	#if return_idx > -1:
-		#var return_type = stripped_text.get_slice("->", 1)
-		#return_type = return_type.get_slice(":", 0).strip_edges()
-		#func_data[Keys.FUNC_RETURN] = return_type
-	#return func_data
 
 
 

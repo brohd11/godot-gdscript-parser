@@ -60,11 +60,7 @@ func set_script_path(new_path:String):
 
 
 func set_source_code(source:String): # need a version if the script editor is set externally, maybe just parse_source()
-	if not is_instance_valid(code_edit):
-		var code = CodeEdit.new()
-		code.set_meta(Keys.PARSER_CODE_EDIT, true)
-		set_code_edit(code)
-	
+	_create_buffer_code_edit()
 	code_edit.text = source
 
 func clear_cache():
@@ -75,6 +71,8 @@ func parse():
 	code_edit_parser.parse_text()
 	
 	#print_hierarchy()
+
+
 
 
 
@@ -112,17 +110,29 @@ func get_function_at_line(line:int):
 	var class_obj = _class_access[access_path] as ParserClass
 	return class_obj.get_function_at_line(line)
 
+func get_function_data(identifier_name:String, line:int=-1) -> Dictionary:
+	if line == -1:
+		line = code_edit.get_caret_line()
+	var _class_obj = _get_class_obj(line)
+	var result = _type_lookup.get_function_data(identifier_name, _class_obj, line)
+	print("GET FUNCTION DATA::", result)
+	return result
 
 func get_identifier_type(identifer_name:String, line:int=-1) -> String:
 	if line == -1:
 		line = code_edit.get_caret_line()
-	
-	var _class_obj = _class_access.get(get_class_at_line(line))
+	var _class_obj = _get_class_obj(line)
+	var _func_obj = _class_obj.functions.get(identifer_name)
+	if is_instance_valid(_func_obj):
+		_func_obj.parse()
 	var result = _type_lookup.get_indentifier_type(identifer_name, _class_obj, line)
-	print("GET IDENTIFIER: ", result)
+	print("GET IDENTIFIER::", result)
 	return result
 
-
+func _get_class_obj(line:int=-1) -> ParserClass:
+	if line == -1:
+		line = code_edit.get_caret_line()
+	return _class_access.get(get_class_at_line(line)) as ParserClass
 
 func get_member_info(identifier:String, line:int=-1):
 	if line == -1:
@@ -134,17 +144,20 @@ func get_member_info(identifier:String, line:int=-1):
 	return member
 
 
-
-
 func get_line_context(line:int, column:int=0, insert_caret:=false):
 	return code_edit_parser.get_line_context(line, column, insert_caret).get(Keys.CONTEXT_TEXT)
 
 
 
-
-
-
-
+func _create_buffer_code_edit():
+	if not is_instance_valid(code_edit):
+		var code = CodeEdit.new()
+		code.add_comment_delimiter("#", "", true)
+		code.add_comment_delimiter("##", "", true)
+		code.add_string_delimiter('"""', '"""')
+		code.add_string_delimiter("'''", "'''")
+		code.set_meta(Keys.PARSER_CODE_EDIT, true)
+		set_code_edit(code)
 
 
 func _code_edit_dispose():
@@ -155,7 +168,10 @@ func _code_edit_dispose():
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:
-		_code_edit_dispose()
+		#_code_edit_dispose()
+		var meta = code_edit.get_meta(Keys.PARSER_CODE_EDIT, false)
+		if meta:
+			code_edit.queue_free()
 
 
 func print_hierarchy():

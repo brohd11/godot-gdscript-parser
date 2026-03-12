@@ -244,7 +244,7 @@ func _parse_line(stripped:String, line:int, column:int=0):
 				_pc.in_function = true
 				data[Keys.FUNC_LINES] = PackedInt32Array()
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
-			elif keyword.begins_with("c"):
+			elif keyword.begins_with("c") or keyword == "enum":
 				_pc.constant_map.get_or_add(_pc.access_path, {})[member_name] = data
 			else:
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data

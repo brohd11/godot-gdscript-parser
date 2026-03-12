@@ -22,7 +22,6 @@ enum TokenState {
 
 enum ExpressionState {
 	NONE,
-	DECLARATION,
 	ASSIGNMENT,  # var x = | (Suggest variables, globals, functions)
 	COMPARISON,      # if x == | (Suggest variables)
 	TYPE_HINT,       # var x: |  (Suggest Classes, Enums, built-in types. Replaces TYPE_ASSIGNMENT)
@@ -80,20 +79,18 @@ var _active_function_call:FunctionCallData #
 var line_declaration:String = ""
 
 
-
-
 var closest_bracket_index_paren:int=-1
 var closest_bracket_index_square:int=-1
 var closest_bracket_index_curly:int=-1
 var closest_bracket_type:=""
 
 
-var type_assignment:String
+var _type_hint:String
 
 var function_blocks:= []
 
 static var _assignment_regex:RegEx
-static var _type_assignment_regex:RegEx
+static var _type_hint_regex:RegEx
 
 func _init(parser:GDScriptParser, parse_context:=true) -> void:
 	Utils.ParserRef.set_refs(self, parser)
@@ -185,7 +182,7 @@ func parse():
 	
 	
 	expression_state = ExpressionState.NONE
-	if _is_in_type_assignment():
+	if _is_in_type_hint():
 		expression_state = ExpressionState.TYPE_HINT
 	elif word_before_caret.find(".") > -1:
 		expression_state = ExpressionState.MEMBER_ACCESS
@@ -268,67 +265,7 @@ func _check_brackets():
 		return
 	closest_bracket_type = code_context[closest_bracket_idx]
 
-
-
-
-func _get_assignment_at_caret():
-	var text_to_process = code_context
-	var caret_idx = code_context_caret_pos
-	
-	
-	var assign_data = AssignmentData.new()
-	
-	#if line_text.rfind("=", caret_idx) == -1: # alternative to above, if not on right side no need to do
-	if UString.rfind_index_safe(text_to_process, "=", caret_idx) == -1:
-		return assign_data
-	
-	if not is_instance_valid(_assignment_regex):
-		_assignment_regex = RegEx.new()
-		var pattern = r"((?:var\s+)?\w+(?:\(.*?\))?(?:\.\w+(?:\(.*?\))?)*(?:\s*:\s*[\w.]+)?)\s*(=\s*=|:\s*=|!\s*=|=)(.*?)(?=\s*(?:or|and|&&|\|\|)|$)"
-		_assignment_regex.compile(pattern)
-	
-	var matches = _assignment_regex.search_all(text_to_process)
-	if not matches.is_empty():
-		for i in range(matches.size() - 1, -1, -1):
-			var _match = matches[i] as RegExMatch
-			if _match.get_start(2) <= caret_idx:
-				var best_match = _match
-				var rhs = best_match.get_string(3).strip_edges()
-				if rhs.find("=") > -1: #^ search for a 2nd assignment
-					var nested_matches = _assignment_regex.search_all(rhs)
-					for nm in range(nested_matches.size() - 1, -1, -1):
-						var nested_match = nested_matches[nm]
-						if nested_match.get_start(2) <= caret_idx:
-							best_match = nested_match
-							rhs = best_match.get_string(3).strip_edges()
-				
-				var lhs = best_match.get_string(1).strip_edges()
-				#var last_char_idx = best_match.get_end(1) - 1
-				var operator = best_match.get_string(2).strip_edges()
-				
-				#var and_index = lhs.rfind(" and ", caret_idx)
-				var and_index = UString.rfind_index_safe(lhs, " and ", caret_idx)
-				if and_index > -1:
-					lhs = lhs.substr(and_index + 5)
-				#var or_index = lhs.rfind(" or ", caret_idx)
-				var or_index = UString.rfind_index_safe(lhs, " or ", caret_idx)
-				if or_index > -1:
-					lhs = lhs.substr(or_index + 4)
-				#var bitwise_index = lhs.rfind("&&", caret_idx)
-				var bitwise_index = UString.rfind_index_safe(lhs, "&&", caret_idx)
-				if bitwise_index > -1:
-					lhs = lhs.substr(bitwise_index + 2)
-				
-				lhs = lhs.trim_prefix("self.") #^ simple sub
-				
-				assign_data.left_text = lhs
-				assign_data.operator = operator
-				assign_data.right_text = rhs
-				assign_data.is_valid = true
-				return assign_data
-	
-	return assign_data
-
+#region OperationData
 
 func get_operation_data() -> OperationData:
 	if not _operation_data.is_valid or _operation_data.inferred:
@@ -341,16 +278,9 @@ func get_operation_data() -> OperationData:
 			_operation_data.left_type = parser.get_identifier_type(data[1], caret_line)
 	else:
 		_operation_data.left_type = parser.get_identifier_type(left, caret_line)
-		#var st = ""
-		#for part in UString.split_member_access(left):
-			#st = UString.dot_join(st,parser._type_lookup.resolve_identifier_to_global(left, parser.get_class_object(parser.get_class_at_line(caret_line)), caret_line))
-		#_operation_data.test_left = st
-		#print("TESTLEFT::",st)
-	
 	
 	_operation_data.inferred = true
 	return _operation_data
-
 
 
 func _set_operation_at_caret():
@@ -420,9 +350,10 @@ func _set_operation_at_caret():
 		right_text = _char + right_text
 		current_pos -= 1
 
+#endregion
 
 
-
+#region FunctionCallData
 
 func is_in_function_call():
 	return _active_function_call.is_valid
@@ -431,15 +362,25 @@ func get_function_call_data() -> FunctionCallData:
 	if _active_function_call.inferred:
 		return _active_function_call
 	
-	var full_call = _active_function_call.full_call
-	
 	var parser = Utils.ParserRef.get_parser(self)
-	var parser_script = parser._script_path
 	
+	
+	var full_call = _active_function_call.full_call
+	var string_map = parser.get_string_map(full_call)
+	var back = UString.get_member_access_back(full_call, string_map)
+	_active_function_call.function_name = full_call
+	if back == full_call:
+		if GDScriptParser.TypeLookup.GlobalChecker.is_valid(full_call):
+			_active_function_call.function_object = &"global_method"
+		else:
+			_active_function_call.function_object = UString.dot_join(parser.get_script_path(), current_class)
+	else:
+		var access = UString.trim_member_access_back(full_call, string_map)
+		_active_function_call.function_object = parser.get_identifier_type(access)
+	
+	
+	print("FULLCALL::", full_call, "::OBJ::", _active_function_call.function_object)
 	_active_function_call.function_data = parser.get_function_data(full_call, caret_line)
-	
-	#_active_function_call.return_type = parser.get_identifier_type(full_call, caret_line)
-	
 	
 	_active_function_call.inferred = true
 	return _active_function_call
@@ -488,7 +429,7 @@ func _set_function_call_data() -> void:
 			
 		if _char == ",":
 			var arg_text = code_context.substr(start_idx, count - start_idx).strip_edges()
-			args.append(arg_text)
+			args.append(arg_text.replace(Keys.CARET_UNI_CHAR, ""))
 			start_idx = count + 1
 			
 			if code_context_caret_pos > count:
@@ -497,7 +438,7 @@ func _set_function_call_data() -> void:
 		count += 1
 	
 	var last_arg = code_context.substr(start_idx, closed_bracket_index - start_idx).strip_edges()
-	args.append(last_arg)
+	args.append(last_arg.replace(Keys.CARET_UNI_CHAR, ""))
 	
 	_active_function_call.is_valid = true
 	_active_function_call.full_call = func_full_call
@@ -505,29 +446,56 @@ func _set_function_call_data() -> void:
 	_active_function_call.current_arg_index = current_arg_index
 
 
+#endregion
 
+#region TypeAssignment
 
-func _is_in_type_assignment():
-	if not is_instance_valid(_type_assignment_regex):
-		_type_assignment_regex = RegEx.new()
+func _is_in_type_hint():
+	if not is_instance_valid(_type_hint_regex):
+		_type_hint_regex = RegEx.new()
 		var pattern = "(?:\\s*is not\\s+|\\s*is\\s+|\\s*as\\s+|\\s*extends\\s+|[\\w.]+\\s*:\\s*|\\->\\s*)([\\w.]*)$"
-		_type_assignment_regex.compile(pattern)
+		_type_hint_regex.compile(pattern)
 	
 	if code_context_caret_pos == 0:
 		return false
-	if is_in_dictionary() or line_declaration == "" or not code_context.begins_with("for "):
-		return false # this should stop false positives
+	if is_in_dictionary():
+		return false
+	if  line_declaration == "" and not code_context_stripped.begins_with("for ") and not code_context_stripped.begins_with("extends "):
+		return false
 	
 	var relevant_text = code_context.substr(0, code_context_caret_pos).strip_edges()
 	if relevant_text == "":
 		return false
 	
-	var _match = _type_assignment_regex.search(relevant_text)
+	var _match = _type_hint_regex.search(relevant_text)
 	if _match:
-		type_assignment = _match.get_string(1)
+		_type_hint = _match.get_string(1)
 		return true
 	return false
 
+
+#endregion
+
+
+
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		print("FREE CC")
+
+# API
+
+func get_current_class_object() -> GDScriptParser.ParserClass:
+	var parser = Utils.ParserRef.get_parser(self)
+	return parser.get_class_object(current_class)
+
+func get_current_func_object() -> GDScriptParser.ParserFunc:
+	var parser = Utils.ParserRef.get_parser(self)
+	var class_obj = parser.get_class_object(current_class) as GDScriptParser.ParserClass
+	if is_instance_valid(class_obj):
+		return class_obj.get_function(current_function)
+	return null
 
 
 func get_index_access_identifier():
@@ -549,13 +517,8 @@ func is_in_dictionary_access():
 	
 	pass
 
-
-
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_PREDELETE:
-		print("FREE CC")
-
-# API
+func get_type_hint_text():
+	return _type_hint
 
 func get_text_for_autocomplete():
 	if _completion_text != "":
@@ -579,22 +542,10 @@ func code_context_parse_expression(start_pos:int):
 	return ParserRef.get_code_edit_parser(self).parse_expression_at_position(code_context, start_pos, code_context_string_map)
 
 
-class AssignmentData:
-	var is_valid:=false
-	var inferred:=false
-	
-	var left_text:String
-	var left_type:String
-	var operator:String
-	var right_text:String
-
 
 class OperationData:
-	
 	var is_valid:=false
 	var inferred:=false
-	
-	var test_left
 	
 	var left_text:String
 	var left_type:String
@@ -616,7 +567,8 @@ class FunctionCallData:
 	var is_valid:=false
 	var inferred:=false
 	
-	var caller:String
+	var function_name:String
+	var function_object:String
 	
 	var full_call:String
 	var full_call_typed:String

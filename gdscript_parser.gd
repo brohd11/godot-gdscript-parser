@@ -58,6 +58,9 @@ func set_script_path(new_path:String):
 	_script_resource = load(_script_path)
 	set_source_code(_script_resource.source_code)
 
+func get_script_path():
+	return _script_path
+
 
 func set_source_code(source:String): # need a version if the script editor is set externally, maybe just parse_source()
 	_create_buffer_code_edit()

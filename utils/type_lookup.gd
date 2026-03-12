@@ -36,7 +36,7 @@ func _get_parser_main_script():
 
 #region Var Lookup
 
-func get_function_data(identifier, class_obj:ParserClass, line:int=-1):
+func get_function_data(identifier, class_obj:ParserClass, _line:int=-1):
 	var stripped_identifier = identifier
 	if identifier.find(".") == -1:
 		if identifier.find("(") > -1:
@@ -55,9 +55,11 @@ func get_function_data(identifier, class_obj:ParserClass, line:int=-1):
 		var method_name = UString.get_member_access_back(identifier, string_map)
 		var calling_script = get_chain_type(access, class_obj, {})
 		if calling_script != "": # need to account for access path?
-			var script = load(calling_script)
+			var script_data = UString.get_script_path_and_suffix(calling_script)
+			var script = load(script_data[0])
 			var parser = _get_parser_for_script(script)
-			var func_data = parser.get_function_data(method_name)
+			var nested_class_obj = parser.get_class_object(script_data[1])
+			var func_data = get_function_data(method_name, nested_class_obj)
 			var func_args = func_data.get(Keys.FUNC_ARGS)
 			for name in func_args.keys():
 				var arg_data = func_args[name]
@@ -147,8 +149,7 @@ func get_chain_type(expression: String, initial_class_obj: ParserClass, local_va
 	var string_map = parser.get_string_map(expression)
 	var parts: Array = UString.split_member_access(expression, string_map)
 	
-	#var current_type_path = ""
-	var current_type_path = main_script_path
+	var current_type_path = "" # main_script_path # this can't be the current path because it defaults to that, need workaround
 	
 	var current_script_path = main_script_path
 	var current_script = main_script # GDScript Resource

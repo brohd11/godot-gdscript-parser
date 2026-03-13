@@ -54,6 +54,7 @@ func get_function_data(identifier, class_obj:ParserClass, _line:int=-1):
 		var access = UString.trim_member_access_back(identifier, string_map)
 		var method_name = UString.get_member_access_back(identifier, string_map)
 		var calling_script = get_chain_type(access, class_obj, {})
+		print("FUNC DATA::SCRIPT::", calling_script)
 		if calling_script != "": # need to account for access path?
 			var script_data = UString.get_script_path_and_suffix(calling_script)
 			var script = load(script_data[0])
@@ -171,7 +172,7 @@ func get_chain_type(expression: String, initial_class_obj: ParserClass, local_va
 		print("CHECK::", identifier)
 		if current_part_in_script:
 			prints("IN_SCRIPT::",identifier, current_class_obj.access_path, " in ", main_script_path)
-			print(local_vars)
+			#print(local_vars)
 			if member_in_class_or_local_vars(identifier, current_class_obj, local_vars):
 				print("CLASS OR LOCAL")
 				resolved_type = _process_in_script_data(identifier, current_class_obj, local_vars)
@@ -230,7 +231,7 @@ func get_chain_type(expression: String, initial_class_obj: ParserClass, local_va
 		#resolved_string = UString.dot_join(resolved_string, resolved_type)
 		
 		if resolved_type.begins_with("res://"):
-			var script_data = get_script_path_and_suffix(resolved_type)
+			var script_data = UString.get_script_path_and_suffix(resolved_type)
 			if resolved_type.begins_with(main_script_path):
 				current_script_path = main_script_path
 				current_script = main_script
@@ -252,16 +253,6 @@ func get_chain_type(expression: String, initial_class_obj: ParserClass, local_va
 				current_script = load(current_script_path)
 				current_part_in_script = false
 		
-		#elif _resolve_to_script:
-			##var final_string = current_class_obj.script_access_path + "." + resolved_type
-			#var final_string = UString.dot_join(current_script_path, current_class_obj.script_access_path)
-			#final_string = UString.dot_join(final_string, resolved_type)
-			##var remainder = ".".join(parts)
-			##var dead_end_path = UString.dot_join(current_part, remainder)
-			##var final_string = UString.dot_join(current_type_path, dead_end_path)
-			##print("RESOLVE TO SCRIPT RETURN::", final_string)
-			#return final_string
-		
 		if allow_global and _valid_identifier(resolved_type, allow_global):
 			return UString.dot_join(resolved_type, ".".join(parts))
 		
@@ -271,16 +262,6 @@ func get_chain_type(expression: String, initial_class_obj: ParserClass, local_va
 		current_type_path = resolved_type
 		print("SET PATH %s -> %s" % [old_path, resolved_type])
 		print(".".join(parts))
-		
-		#var remainder = ".".join(parts) # Join whatever is left
-		#var dead_end_path = ""
-		#if remainder == "":
-			#dead_end_path = current_part
-		#else:
-			#dead_end_path = current_part + "." + remainder
-		#if current_type_path != "":
-			#dead_end_path = current_type_path + "." + dead_end_path
-		#return dead_end_path
 		
 	
 	print("RETURN:", str(recursions), " ==== ", current_type_path)
@@ -553,6 +534,65 @@ func _find_member_inheriting_script(identifier:String, script:GDScript):
 
 
 
+func get_identifier_type_symbol(identifier:String, class_obj:ParserClass, local_vars:Dictionary):
+	
+	if member_in_class_or_local_vars(identifier, class_obj, local_vars):
+		print("ACCESS OBJ::, IN MEMBER::", identifier)
+		return _var_to_const(identifier, class_obj, local_vars)
+		
+	else:
+		var is_global = UClassDetail.get_global_class_path(identifier) != ""
+		if is_global:
+			return identifier
+	
+	return identifier
+
+func _var_to_const(identifier:String, class_obj:ParserClass, local_vars:Dictionary):
+	var count = 0
+	var result = identifier
+	while member_in_class_or_local_vars(result, class_obj, local_vars):
+		count += 1
+		if count > 50:
+			print("COUNTED OUT")
+			break
+		
+		var next_result = ""
+		
+		var member_data = class_obj.get_member(result)
+		if member_data == null:
+			member_data = local_vars.get(result)
+		var member_type = member_data.get(Keys.MEMBER_TYPE)
+		print("ACCESS OBJ::%s::TYPE::" % result, member_type)
+		if member_data is ParserFunc:
+			next_result =  member_data.get_return_type()
+		elif member_type == Keys.MEMBER_TYPE_FUNC_ARG or member_type == Keys.MEMBER_TYPE_VAR or member_type == Keys.MEMBER_TYPE_STATIC_VAR:
+			next_result = _check_member_data(result, class_obj, local_vars)
+		else:
+			return result
+		
+		if next_result == null:
+			break
+		print("ACCESS OBJ::NEXT::",next_result)
+		if next_result.find(".") > -1:
+			var front = UString.get_member_access_front(next_result) # this may need some thing more, worried about multistring consts
+			next_result = front
+		if result == next_result:
+			break
+		result = next_result
+	
+	return result
+
+
+
+
+
+
+
+
+
+
+
+
 func _get_parser_for_script(script:GDScript):
 	var parser = GDScriptParser.new()
 	parser.set_current_script(script)
@@ -794,16 +834,6 @@ func get_script_member_info_by_path(script:GDScript, member_path:String, member_
 	return UClassDetail.get_member_info_by_path(script, member_path, member_hints, false, false, false, check_global)
 
 
-static func get_script_path_and_suffix(script_path:String):
-	if not script_path.begins_with("res://"):
-		return []
-	var path = script_path
-	var suffix = ""
-	var gd_idx = script_path.find(".gd.")
-	if gd_idx > -1:
-		path = script_path.substr(0, gd_idx + 3)
-		suffix = script_path.substr(gd_idx + 4)
-	return [path, suffix]
 
 ## Get a class_name from property info and convert to a type if possible.
 ## If method data, uses return data.

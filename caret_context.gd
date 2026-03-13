@@ -56,6 +56,7 @@ var caret_line:int= -1 #
 
 var current_class:String
 var current_function:String
+var local_vars:= {}
 
 
 var _completion_text:String
@@ -130,8 +131,9 @@ func parse():
 				#current_func_obj.parse()
 				print("&*&*")
 				print(code_context_start_data)
+				local_vars = code_context_start_data.get(Keys.CONTEXT_LOCAL_VARS, {})
 				
-				current_func_obj.set_in_scope_local_vars(code_context_start_data.get(Keys.CONTEXT_LOCAL_VARS, {}))
+				current_func_obj.set_in_scope_local_vars(local_vars)
 	
 	
 	word_before_caret = code_edit_parser.parse_identifier_at_position(caret_left, caret_left.length() - 1)
@@ -363,24 +365,45 @@ func get_function_call_data() -> FunctionCallData:
 		return _active_function_call
 	
 	var parser = Utils.ParserRef.get_parser(self)
+	var lookup = parser.get_type_lookup()
 	
+	var access_obj_data = {}
 	
 	var full_call = _active_function_call.full_call
 	var string_map = parser.get_string_map(full_call)
-	var back = UString.get_member_access_back(full_call, string_map)
+	var front = UString.get_member_access_front(full_call, string_map)
+	#var back = UString.get_member_access_back(full_call, string_map)
 	_active_function_call.function_name = full_call
-	if back == full_call:
+	if front == full_call:
 		if GDScriptParser.TypeLookup.GlobalChecker.is_valid(full_call):
 			_active_function_call.function_object = &"global_method"
 		else:
 			_active_function_call.function_object = UString.dot_join(parser.get_script_path(), current_class)
+		#_active_function_call.access_object = _active_function_call.function_object
+		access_obj_data["symbol"] = ""
 	else:
+		access_obj_data["symbol"] = lookup.get_identifier_type_symbol(front, get_current_class_object(), local_vars)
+		access_obj_data["path"] = lookup.get_chain_type(access_obj_data["symbol"], get_current_class_object(), local_vars)
+		
 		var access = UString.trim_member_access_back(full_call, string_map)
-		_active_function_call.function_object = parser.get_identifier_type(access)
+		var func_obj = parser.get_identifier_type(access)
+		_active_function_call.function_object = func_obj
+		if access != front:
+			
+			pass
+			#_active_function_call.access_object = parser.get_identifier_type(front)
+		else:
+			pass
+			#_active_function_call.access_object = func_obj
+		
 	
+	_active_function_call.access_object = access_obj_data
 	
-	print("FULLCALL::", full_call, "::OBJ::", _active_function_call.function_object)
+	print("FULLCALL::", full_call)
+	print("ACCESS OBJ::", _active_function_call.access_object)
+	print("FUNCTION OBJ::", _active_function_call.function_object)
 	_active_function_call.function_data = parser.get_function_data(full_call, caret_line)
+	#_active_function_call.function_data = #^ this needs to operate on function object, it will be faster and ensure proper return
 	
 	_active_function_call.inferred = true
 	return _active_function_call
@@ -389,6 +412,8 @@ func get_function_call_data() -> FunctionCallData:
 func _set_function_call_data() -> void:
 	_active_function_call = FunctionCallData.new()
 	Utils.ParserRef.set_refs(_active_function_call, Utils.ParserRef.get_parser(self))
+	
+	_active_function_call.class_obj = get_current_class_object()
 	
 	if line_declaration.ends_with("func"):
 		return
@@ -547,6 +572,8 @@ class OperationData:
 	var is_valid:=false
 	var inferred:=false
 	
+	var left_access_object:Dictionary
+	
 	var left_text:String
 	var left_type:String
 	var operator:String
@@ -560,6 +587,8 @@ class OperationData:
 
 
 class FunctionCallData:
+	var class_obj:GDScriptParser.ParserClass
+	
 	var _parser:WeakRef #
 	var _code_edit_parser:WeakRef
 	
@@ -567,8 +596,11 @@ class FunctionCallData:
 	var is_valid:=false
 	var inferred:=false
 	
+	var access_object:Dictionary
+	
 	var function_name:String
 	var function_object:String
+	
 	
 	var full_call:String
 	var full_call_typed:String
@@ -581,6 +613,14 @@ class FunctionCallData:
 		if current_arg_index == -1:
 			return ""
 		return current_arguments[current_arg_index]
+	
+	func func_get_current_arg():
+		var arg = Argument.new()
+		arg.type = func_get_current_arg_type()
+		arg.declaration = func_get_current_arg_declaration()
+		var parser = Utils.ParserRef.get_parser(self)
+		arg.declaration_access = parser.get_type_lookup().get_identifier_type_symbol(UString.get_member_access_front(arg.declaration), class_obj, {})
+		return arg
 	
 	func func_get_current_arg_declaration():
 		var current_arg_data = _func_get_current_arg_data()
@@ -613,3 +653,8 @@ class FunctionCallData:
 	
 	func func_get_return_type():
 		return function_data.get(Keys.FUNC_RETURN, "No Type Found")
+	
+	class Argument:
+		var type
+		var declaration
+		var declaration_access

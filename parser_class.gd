@@ -121,6 +121,17 @@ func get_function_at_line(line:int) -> String: # this
 	return Keys.CLASS_BODY
 
 
+func get_enum_members(enum_name:String):
+	var enum_data = constants.get(enum_name)
+	if enum_data == null:
+		return
+	var code_edit_parser = Utils.ParserRef.get_code_edit_parser(self)
+	var enum_check = code_edit_parser.get_type_from_line(enum_data.get(Keys.LINE_INDEX), enum_data.get(Keys.COLUMN_INDEX, 0))
+	var result = enum_check.get("result")
+	if result == null:
+		return
+	return result[1] # this is the members as dict
+
 func get_members(include_inherited:=false):
 	var dict = {}
 	if include_inherited:

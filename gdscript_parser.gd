@@ -82,6 +82,9 @@ func parse():
 func get_code_edit_parser():
 	return code_edit_parser
 
+func get_type_lookup():
+	return _type_lookup
+
 func get_string_map(string:String):
 	return code_edit_parser.get_string_map(string)
 

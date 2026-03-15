@@ -365,25 +365,27 @@ func get_function_call_data() -> FunctionCallData:
 		return _active_function_call
 	
 	var parser = Utils.ParserRef.get_parser(self)
-	var lookup = parser.get_type_lookup()
+	#var lookup = parser.get_type_lookup()
 	
-	var access_obj_data = {}
+	#var access_obj_data = {}
 	
 	var full_call = _active_function_call.full_call
 	var string_map = parser.get_string_map(full_call)
 	var front = UString.get_member_access_front(full_call, string_map)
 	#var back = UString.get_member_access_back(full_call, string_map)
 	_active_function_call.function_name = full_call
+	var access_obj = AccessObject.new()
 	if front == full_call:
-		if GDScriptParser.TypeLookup.GlobalChecker.is_valid(full_call):
+		if GDScriptParser.TypeLookup.BuiltInChecker.is_global_method(full_call):
 			_active_function_call.function_object = &"global_method"
 		else:
 			_active_function_call.function_object = UString.dot_join(parser.get_script_path(), current_class)
 		#_active_function_call.access_object = _active_function_call.function_object
-		access_obj_data["symbol"] = ""
+		access_obj.symbol = ""
 	else:
-		access_obj_data["symbol"] = lookup.get_identifier_type_symbol(front, get_current_class_object(), local_vars)
-		access_obj_data["path"] = lookup.get_chain_type(access_obj_data["symbol"], get_current_class_object(), local_vars)
+		access_obj.process_identifier(parser, front, get_current_class_object(), local_vars)
+		#access_obj_data["symbol"] = lookup.get_identifier_type_symbol(front, get_current_class_object(), local_vars)
+		#access_obj_data["path"] = lookup.resolve_expression(access_obj_data["symbol"], get_current_class_object(), local_vars)
 		
 		var access = UString.trim_member_access_back(full_call, string_map)
 		var func_obj = parser.get_identifier_type(access)
@@ -397,7 +399,7 @@ func get_function_call_data() -> FunctionCallData:
 			#_active_function_call.access_object = func_obj
 		
 	
-	_active_function_call.access_object = access_obj_data
+	_active_function_call.access_object = access_obj
 	
 	print("FULLCALL::", full_call)
 	print("ACCESS OBJ::", _active_function_call.access_object)
@@ -596,7 +598,7 @@ class FunctionCallData:
 	var is_valid:=false
 	var inferred:=false
 	
-	var access_object:Dictionary
+	var access_object:AccessObject
 	
 	var function_name:String
 	var function_object:String
@@ -615,11 +617,13 @@ class FunctionCallData:
 		return current_arguments[current_arg_index]
 	
 	func func_get_current_arg():
+		print("ARG::", function_object)
 		var arg = Argument.new()
 		arg.type = func_get_current_arg_type()
 		arg.declaration = func_get_current_arg_declaration()
 		var parser = Utils.ParserRef.get_parser(self)
-		arg.declaration_access = parser.get_type_lookup().get_identifier_type_symbol(UString.get_member_access_front(arg.declaration), class_obj, {})
+		var access_obj = AccessObject.new_and_process(parser, arg.declaration, class_obj, {})
+		arg.access_object = access_obj
 		return arg
 	
 	func func_get_current_arg_declaration():
@@ -657,4 +661,18 @@ class FunctionCallData:
 	class Argument:
 		var type
 		var declaration
-		var declaration_access
+		var access_object:AccessObject
+
+class AccessObject:
+	var path:String
+	var symbol:String
+	
+	static func new_and_process(parser:GDScriptParser, identifier:String, class_obj:GDScriptParser.ParserClass, _local_vars:Dictionary):
+		var ao = new()
+		ao.process_identifier(parser, identifier, class_obj, _local_vars)
+		return ao
+	
+	func process_identifier(parser:GDScriptParser, identifier:String, class_obj:GDScriptParser.ParserClass, _local_vars:Dictionary):
+		var lookup = parser.get_type_lookup()
+		symbol = lookup.get_identifier_type_symbol(identifier, class_obj, _local_vars)
+		path = lookup.resolve_expression(identifier, class_obj, _local_vars)

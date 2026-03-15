@@ -41,6 +41,9 @@ func queue_refresh():
 func get_script_resource():
 	return script_resource
 
+func get_script_class_path():
+	return Utils.UString.dot_join(main_script_path, access_path)
+
 
 func set_lines(new_lines:PackedInt32Array):
 	line_indexes = new_lines

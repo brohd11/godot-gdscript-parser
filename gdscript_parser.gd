@@ -119,19 +119,16 @@ func get_function_at_line(line:int):
 func get_function_data(identifier_name:String, line:int=-1) -> Dictionary:
 	if line == -1:
 		line = code_edit.get_caret_line()
-	var _class_obj = _get_class_obj(line)
-	var result = _type_lookup.get_function_data(identifier_name, _class_obj, line)
+	
+	var result = _type_lookup.get_function_data_at_line(identifier_name, line)
 	print("GET FUNCTION DATA::", result)
 	return result
 
 func get_identifier_type(identifer_name:String, line:int=-1) -> String:
 	if line == -1:
 		line = code_edit.get_caret_line()
-	var _class_obj = _get_class_obj(line)
-	var _func_obj = _class_obj.functions.get(identifer_name)
-	if is_instance_valid(_func_obj):
-		_func_obj.parse()
-	var result = _type_lookup.get_indentifier_type(identifer_name, _class_obj, line)
+	
+	var result = _type_lookup.resolve_expression_at_line(identifer_name, line)
 	print("GET IDENTIFIER::", result)
 	return result
 

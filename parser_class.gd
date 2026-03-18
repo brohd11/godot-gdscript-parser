@@ -19,6 +19,7 @@ var main_script_path:String
 
 var access_path:String
 var script_resource:GDScript
+var script_base_type:String
 var script_access_path:String
 
 var source_code:String
@@ -38,6 +39,14 @@ func queue_refresh():
 	for f in functions.values():
 		f.queue_refresh()
 
+func set_script_resource(script:GDScript):
+	script_resource = script
+	if is_instance_valid(script):
+		script_base_type = script_resource.get_instance_base_type()
+	else:
+		script_base_type = "RefCounted"
+	
+
 func get_script_resource():
 	return script_resource
 
@@ -47,10 +56,6 @@ func get_script_class_path():
 
 func set_lines(new_lines:PackedInt32Array):
 	line_indexes = new_lines
-	#print("^^^^ " , access_path)
-	#for l in lines:
-		#print(parser.source_lines[l])
-	#_build_source_code()
 
 func set_members(members_dict:Dictionary):
 	members = members_dict
@@ -123,6 +128,11 @@ func get_function_at_line(line:int) -> String: # this
 			return functions.find_key(f)
 	return Keys.CLASS_BODY
 
+func has_enum(enum_name:String):
+	var var_data = constants.get(enum_name)
+	if var_data == null:
+		return false
+	return var_data.get(Keys.MEMBER_TYPE) == Keys.MEMBER_TYPE_ENUM
 
 func get_enum_members(enum_name:String):
 	var enum_data = constants.get(enum_name)
@@ -156,10 +166,24 @@ func get_constant_or_class(identifier:String):
 	elif inner_classes.has(identifier):
 		return inner_classes[identifier]
 
-func has_preload(path:String):
+func has_preload(path:String): # doesnt handle inherited, should cache this somehow
+	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET PRELOAD")
+	var inherited = get_inherited_members()
+	for member_name in inherited.keys():
+		var val = inherited[member_name]
+		if val is GDScript: # could add a enum check for this?, possibly move to a GDScriptParser implementation too
+			if val.resource_path == path:
+				return member_name
+	
+	
+	var parser = Utils.ParserRef.get_parser(self)
 	for c in constants.keys():
-		if constants[c].get(Keys.TYPE) == path:
+		var type = parser.resolve_expression(c, line_indexes[0])
+		print(type)
+		if type == path:
+			t.stop()
 			return c
+	t.stop()
 
 ## Get and cache the preloads of current scripts ancestors.
 func get_inherited_members() -> Dictionary:
@@ -182,13 +206,19 @@ func get_inherited_members() -> Dictionary:
 	#CacheHelper.store_data(script_resource.resource_path, inherited_members, inherited_section, inh_paths)
 	return inherited_members
 
-
-
-
-func _build_source_code():
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("Class build source")
-	var lines := []
-	for i in line_indexes:
-		lines.append(ParserRef.get_parser(self).code_edit.get_line(i))
-	source_code = "\n".join(lines)
-	t.stop()
+func class_has_member(identifier:String):
+	if ClassDB.class_has_enum(script_base_type, identifier):
+		return true
+	elif ClassDB.class_has_integer_constant(script_base_type, identifier):
+		return true
+	elif ClassDB.class_has_method(script_base_type, identifier):
+		return true
+	elif ClassDB.class_has_signal(script_base_type, identifier):
+		return true
+	#var prop_list = ClassDB.class_get_property_list(script_base_type)
+	#print("CALLING CLASS HAS MEMBER")
+	#for p:Dictionary in prop_list:
+		#print(p.name)
+		#if p.name == identifier:
+			#return true
+	return false

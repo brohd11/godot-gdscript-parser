@@ -1,7 +1,4 @@
 
-#const GlobalChecker = preload("res://addons/addon_lib/brohd/alib_runtime/misc/global_checker.gd")
-#const VariantChecker = preload("res://addons/addon_lib/brohd/alib_runtime/misc/variant_checker.gd")
-
 
 const GDScriptParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/gdscript_parser.gd")
 const ParserClass = GDScriptParser.ParserClass
@@ -41,12 +38,7 @@ func _get_parser_main_script():
 	return Utils.ParserRef.get_parser(self).get_current_script()
 
 
-
-
-
-
-
-#region Var Lookup
+#region Get Function Data
 
 func get_function_data_at_line(identifier:String, line:int):
 	var class_data = get_parser_objects_and_local_vars(line)
@@ -188,7 +180,7 @@ func _property_info_to_function_data(property_info:Dictionary):
 	
 	return data
 
-
+#endregion
 
 #region Resolve Expression
 
@@ -217,8 +209,10 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 		expression = expression.trim_prefix("self.")
 	
 	if _valid_identifier(expression):
+		PrintDebug.print(PrintDebug.T.RESOLVE, "EARLY EXIT", "IS VALID", expression)
 		return expression
 	if _simple_type_check(expression) != "":
+		PrintDebug.print(PrintDebug.T.RESOLVE, "EARLY EXIT", "IS SIMPLE", expression)
 		return _simple_type_check(expression)
 	
 	var string_map = parser.get_string_map(expression)
@@ -227,7 +221,11 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 	var current_class_obj:ParserClass = initial_class_obj
 	var current_type_path = ""
 	#var current_script_path = main_script_path
-	var current_script = main_script # GDScript Resource
+	
+	var external_script_path:String
+	var external_script_class_access:String
+	
+	#var current_script = main_script # GDScript Resource
 	var current_part_in_script = true
 	
 	PrintDebug.print(PrintDebug.T.RESOLVE, "START:%s - %s ----------" % [recursions, expression])
@@ -253,10 +251,14 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 			resolved_type = identifier
 		elif UClassDetail.get_global_class_path(identifier) != "":
 			resolved_type = UClassDetail.get_global_class_path(identifier)
+		elif _class_has_member(current_type_path, identifier):
+			return _class_member_type(current_type_path, identifier)
+		if current_class_obj.class_has_member(identifier):
+			return _class_member_type(current_class_obj.script_base_type, identifier)
 		
 		if resolved_type == "":
 			if current_part_in_script: #^ --- IN SCRIPT ---
-				PrintDebug.print(PrintDebug.T.RESOLVE, "IN_SCRIPT", identifier, current_class_obj.access_path, " in ", main_script_path)
+				PrintDebug.print(PrintDebug.T.RESOLVE, "IN_SCRIPT", identifier, "IN", main_script_path, "CLASS", current_class_obj.access_path)
 				PrintDebug.print(PrintDebug.T.RESOLVE, "CLASS OR LOCAL" if member_in_class_or_local_vars(identifier, current_class_obj, local_vars) else "NON SCRIPT")
 				
 				if member_in_class_or_local_vars(identifier, current_class_obj, local_vars):
@@ -267,7 +269,7 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 				
 			else: #^ --- OUTSIDE SCRIPT ---
 				if current_type_path.begins_with("res://"):
-					resolved_type = _process_external_identifier(identifier, current_script)
+					resolved_type = _process_external_identifier(identifier, external_script_path, external_script_class_access)
 					PrintDebug.print(PrintDebug.T.RESOLVE, "EXTERNAL", "%s -> %s" % [identifier, resolved_type])
 		
 		
@@ -300,7 +302,7 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 				PrintDebug.print(PrintDebug.T.RESOLVE, "RECUR == INPUT", resolved_type)
 				return ""
 		else:
-			PrintDebug.print(PrintDebug.T.RESOLVE, "RESOLVED_EXPRESSION::", resolved_type)
+			PrintDebug.print(PrintDebug.T.RESOLVE, "RESOLVED_EXPRESSION", resolved_type)
 		
 		if resolved_type.ends_with(Keys.ENUM_PATH_SUFFIX):
 			return resolved_type
@@ -313,7 +315,7 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 			var access_path = script_data[1]
 			current_part_in_script = resolved_type.begins_with(main_script_path)
 			if current_part_in_script:
-				current_script = main_script
+				#current_script = main_script
 				var new_class_obj = parser.get_class_object(access_path)
 				PrintDebug.print(PrintDebug.T.RESOLVE, "SWITCH OBJ", script_data, "%s -> %s" % [current_class_obj, new_class_obj])
 				current_class_obj = new_class_obj
@@ -321,9 +323,11 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 					PrintDebug.print(PrintDebug.T.RESOLVE, "UNHANDLED CLASS OBJECT", resolved_type)
 				
 			else:
-				if access_path != "":
-					parts.push_front(access_path)
-				current_script = load(current_script_path)
+				external_script_path = current_script_path
+				external_script_class_access = access_path
+				#if access_path != "":
+					#parts.push_front(access_path)
+				#current_script = load(current_script_path)
 		
 		var old_path = current_type_path
 		PrintDebug.print(PrintDebug.T.RESOLVE, "SET PATH %s -> %s" % [old_path, resolved_type])
@@ -343,6 +347,11 @@ func _is_unresolved_expression(identifier:String):
 	elif identifier.begins_with("typedarray::"):
 		return false
 	elif identifier.find(".") > -1:
+		var sm = Utils.ParserRef.get_parser(self).get_string_map(identifier)
+		var front = UString.get_member_access_front(identifier, sm)
+		var back = UString.trim_member_access_front(identifier, sm)
+		if _class_has_member(front, back):
+			return false
 		return true
 	return true
 
@@ -396,19 +405,25 @@ func _resolve_builtin_class_member(identifier:String, current_type_path:String, 
 
 
 
-func _process_external_identifier(identifier:String, script:GDScript):
-	if not use_parsers_for_outside_script:
+func _process_external_identifier(identifier:String, script_path:String, class_access_path:String = ""):
+	var script = load(script_path) as GDScript
+	if not use_parsers_for_outside_script:# or _class_has_member(script.get_instance_base_type(), identifier):
+		if class_access_path != "":
+			script = get_script_member_info_by_path(script, class_access_path)
+		if script == null:
+			print("EXTERNAL NO SCRIPT::", script_path, "::ACCESS::" ,class_access_path)
 		var member_info = get_script_member_info_by_path(script, identifier)
 		if member_info != null:
 			return _property_info_to_type_no_class(member_info)
 		return ""
-	else: #TODO this should maybe be a script path sent, need to accouint for nested classes
-		var t = ALibRuntime.Utils.UProfile.TimeFunction.new("OUTSIDE PARSER")
+	else:
+		var t = ALibRuntime.Utils.UProfile.TimeFunction.new("OUTSIDE PARSER: " + identifier + " -> " + str(script))
 		var parser = GDScriptParser.new()
 		parser.set_current_script(script)
 		parser.set_source_code(script.source_code)
 		parser.parse()
-		var type = parser.get_identifier_type(identifier)
+		var class_obj = parser.get_class_object(class_access_path) as ParserClass
+		var type = parser.resolve_expression(identifier, class_obj.line_indexes[0])
 		t.stop()
 		
 		return type
@@ -420,50 +435,81 @@ func _get_inherited_member_type(identifier:String, class_obj:ParserClass):
 		PrintDebug.print(PrintDebug.T.INHERITED, "INVALID SCRIPT", class_obj.script_access_path)
 		return ""
 	
+	var base_type = script.get_instance_base_type()
+	if _class_has_member(base_type, identifier):
+		return identifier
+	
 	var base_script = script.get_base_script()
 	if is_instance_valid(base_script):
 		var inheriting_script = _find_member_inheriting_script(identifier, base_script)
 		if inheriting_script != "":
-			base_script = load(inheriting_script)
 			PrintDebug.print(PrintDebug.T.INHERITED, "EXTERNAL SCRIPT", base_script)
-			return _process_external_identifier(identifier, base_script)
+			return _process_external_identifier(identifier, inheriting_script) # may need access path for class?
 	return ""
 
 
 #endregion
 
+#region Resolve Access Object
 
+func resolve_expression_to_access_object_at_line(expression:String, line:int):
+	var parser_data = get_parser_objects_and_local_vars(line)
+	return resolve_expression_to_access_object(expression, parser_data.class_obj, parser_data.local_vars)
 
-func resolve_identifier_to_symbol(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary, recursions:int=0) -> String:
-	if recursions >= 10:
-		return expression
+func resolve_expression_to_access_object(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary):
 	
 	var parser = _get_parser()
 	var main_script = parser.get_current_script()
 	var main_script_path = main_script.resource_path
 	
 	if expression.begins_with("res://"):
-		PrintDebug.print(PrintDebug.T.RESOLVE, "EARLY EXIT", "BEGIN WITH RES", expression)
+		PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "EARLY EXIT", "BEGIN WITH RES", expression)
 		return expression
-	
-	if expression == "self": # if self, we can just return the path to the class
-		return UString.dot_join(main_script_path, initial_class_obj.access_path)
-	elif expression.begins_with("self."):
-		expression = expression.trim_prefix("self.")
-	
-	if _valid_identifier(expression):
-		return expression
-	if _simple_type_check(expression) != "":
-		return _simple_type_check(expression)
 	
 	var string_map = parser.get_string_map(expression)
-	var parts: Array = UString.split_member_access(expression, string_map)
+	var front = UString.get_member_access_front(expression, string_map)
 	
+	
+	var access_object = AccessObject.new()
+	
+	
+	var dec_symbol = _resolve_access_object([front], initial_class_obj, local_vars, true)
+	print("DECLARATION RAW::", dec_symbol)
+	if dec_symbol.begins_with("res://"):
+		var script_data = UString.get_script_path_and_suffix(dec_symbol)
+		if script_data[0] == main_script_path:
+			var access = script_data[1]
+			if access == "":
+				access = "self"
+			dec_symbol = access
+	
+	access_object.declaration_symbol = dec_symbol
+	
+	var access_symbol = _resolve_access_object([front], initial_class_obj, local_vars)
+	print("ACCESS RAW::", access_symbol)
+	if access_symbol.begins_with("res://"):
+		var script_data = UString.get_script_path_and_suffix(access_symbol)
+		if script_data[0] == main_script_path:
+			var access = script_data[1]
+			if access == "":
+				access = "self"
+			access_symbol = access
+	access_object.access_symbol = access_symbol
+	
+	#access_object.type = resolve_expression(front, initial_class_obj, local_vars)
+	access_object.type = resolve_expression(dec_symbol, initial_class_obj, local_vars)
+	
+	PrintDebug.print(PrintDebug.T.VAR_TO_CONST, access_object.type, access_object.declaration_symbol, access_object.access_symbol)
+	return access_object
+
+
+func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_vars:Dictionary, first_const:=false):
+	if parts[0] == "self": # if self, we can just return the path to the class
+		return "self"
 	var current_class_obj:ParserClass = initial_class_obj
-	var current_type_path = ""
 	
-	PrintDebug.print(PrintDebug.T.RESOLVE, "START:%s - %s ----------" % [recursions, expression])
-	PrintDebug.print(PrintDebug.T.RESOLVE, "PARTS", parts)
+	PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "&&&& START: %s ----------" % [parts[0]])
+	PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "PARTS", parts)
 	
 	var count = 0
 	while parts.size() > 0 and count < 10:
@@ -473,141 +519,64 @@ func resolve_identifier_to_symbol(expression: String, initial_class_obj: ParserC
 		var identifier = current_part.split("(", false, 1)[0] if is_func else current_part
 		
 		if is_func and identifier == "new":
-			if current_type_path == "":
-				current_type_path = current_class_obj.get_script_class_path()
-			continue
+			return current_class_obj.get_script_class_path()
 		
-		PrintDebug.print(PrintDebug.T.RESOLVE, "CYCLE ----------")
-		PrintDebug.print(PrintDebug.T.RESOLVE, "CHECK", identifier, "CURRENT TYPE", current_type_path)
+		PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "CYCLE ----------")
+		PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "CHECK", identifier)
 		
 		var resolved_type = ""
+		if member_in_class_or_local_vars(identifier, current_class_obj, local_vars):
+			PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "IN CLASS", identifier)
+			if current_class_obj.has_constant_or_class(identifier):
+				if first_const:
+					return identifier
+				else:
+					pass
+					#return _resolve_const_path(identifier, current_class_obj)
+			
+			resolved_type = _var_to_const(identifier, current_class_obj, local_vars, first_const)
+			if resolved_type != identifier:
+				parts.push_front(UString.get_member_access_front(resolved_type))
+				continue
+			else:
+				return resolved_type
+		elif current_class_obj.has_inherited_member(identifier):
+			PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "INHERITED", identifier) # should this return self? func could return something else
+			if is_func:
+				PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "INHERITED FUNC", identifier, "TO IMPLEMENT")
+				#resolved_type = ret
+				pass
+			else:
+				return identifier
+				#resolved_type = identifier
+		
 		if BuiltInChecker.is_builtin_class(identifier):
-			resolved_type = identifier
+			return identifier
 		elif UClassDetail.get_global_class_path(identifier) != "":
-			resolved_type = UClassDetail.get_global_class_path(identifier)
+			return identifier
+		elif _is_class_name_valid(identifier):
+			return identifier
 		
-		if resolved_type == "":
-			if member_in_class_or_local_vars(identifier, current_class_obj, local_vars):
-				resolved_type = _var_to_const(identifier, current_class_obj, local_vars)
+		#if resolved_type == "":# pass through current part so that you can get full context
+			#PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "OUTSIDE BUILT IN", identifier)
+			#resolved_type = _resolve_builtin_class_member(current_part, current_type_path, current_class_obj, local_vars) # ie. Dictionary.get(), can infer default
 		
-		
-		if resolved_type == "":# pass through current part so that you can get full context
-			PrintDebug.print(PrintDebug.T.RESOLVE, "OUTSIDE BUILT IN", identifier)
-			resolved_type = _resolve_builtin_class_member(current_part, current_type_path, current_class_obj, local_vars) # ie. Dictionary.get(), can infer default
-		
-		if resolved_type == "" and UClassDetail.get_global_class_path(identifier) != "":
-			PrintDebug.print(PrintDebug.T.RESOLVE, "ATTEMPT GLOBAL", identifier)
-			resolved_type = identifier
-		
-		PrintDebug.print(PrintDebug.T.RESOLVE, "BASE ID", resolved_type)
+		PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "NONE", identifier, "RES", resolved_type)
 		
 		#^ --- HANDLE THE RESULT ---
-		if resolved_type is not String:
-			resolved_type = ""
-		if resolved_type == "": # If we hit a dead end (untyped var, unknown function)
+		if resolved_type is not String or resolved_type == "":
 			return ""
-		
-		# RECURSION CHECK: Did the variable return a literal expression instead of a parsed type?
-		# e.g., local_vars["my_var"] resulted in the string "SomeClass.get_instance()"
-		# We must resolve that expression into a true path before continuing!
-		if resolved_type.find(".") > -1:
-			# Pass the initial context because expressions are evaluated where they were declared!
-			var recursive = resolve_identifier_to_symbol(resolved_type, initial_class_obj, local_vars, recursions + 1)
-			if recursive != resolved_type:
-				PrintDebug.print(PrintDebug.T.RESOLVE, "RECURSE RESOLVED TYPE %s -> %s" %[resolved_type, recursive])
-				resolved_type = recursive
-			else:
-				PrintDebug.print(PrintDebug.T.RESOLVE, "RECUR == INPUT", resolved_type)
-				return ""
-		else:
-			PrintDebug.print(PrintDebug.T.RESOLVE, "RESOLVED_EXPRESSION::", resolved_type)
-		
-		current_type_path = resolved_type # last thing
-	
-	PrintDebug.print(PrintDebug.T.RESOLVE, "RETURN", str(recursions), " ==== ", current_type_path)
-	return current_type_path
+	return ""
 
 
 
-func resolve_identifier_to_symbol_at_line(identifier:String, line:int):
-	var parser_data = get_parser_objects_and_local_vars(line)
-	return get_identifier_type_symbol(identifier, parser_data.class_obj, parser_data.local_vars)
-
-func get_identifier_type_symbol(identifier:String, class_obj:ParserClass, local_vars:Dictionary):
-	prints("ACCESS OBJ:: GET ID",identifier, member_in_class_or_local_vars(identifier, class_obj, local_vars))
-	print("NEW CHECK::", identifier, "::", resolve_identifier_to_symbol(identifier, class_obj, local_vars))
-	if member_in_class_or_local_vars(identifier, class_obj, local_vars):
-		print("ACCESS OBJ::, IN MEMBER::", identifier)
-		return _var_to_const(identifier, class_obj, local_vars)
-		
-	else:
-		var is_global = UClassDetail.get_global_class_path(identifier) != ""
-		if is_global:
-			return identifier
-	
-	return identifier
-
-
-func _var_to_const(identifier:String, class_obj:ParserClass, local_vars:Dictionary):
-	var count = 0
-	var final_identifier:String = ""
-	var result = identifier
-	
-	var to_check = [Keys.MEMBER_TYPE_FUNC_ARG, Keys.MEMBER_TYPE_VAR, Keys.MEMBER_TYPE_VAR]
-	
-	var resolved_type = resolve_expression(identifier, class_obj, local_vars)
-	PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "RESOLVED", identifier, "->", resolved_type)
-	
-	var parts = []
-	
-	while member_in_class_or_local_vars(result, class_obj, local_vars):
-		count += 1
-		if count > 50:
-			PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "COUNTED OUT")
-			break
-		
-		var next_result = ""
-		
-		var member_data = class_obj.get_member(result)
-		if member_data == null:
-			member_data = local_vars.get(result)
-		var member_type = member_data.get(Keys.MEMBER_TYPE)
-		PrintDebug.print(PrintDebug.T.VAR_TO_CONST, result, "TYPE", member_type)
-		if member_data is ParserFunc:
-			next_result =  member_data.get_return_type()
-			PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "FUNC NEXT", next_result)
-		#elif member_data in resolved_types:
-			#break
-		elif member_type in to_check:
-			next_result = _check_class_obj_member_data(result, class_obj, local_vars)
-			if next_result.begins_with("res://"):
-				break
-		elif member_type == Keys.MEMBER_TYPE_CONST or member_type == Keys.MEMBER_TYPE_CLASS:
-			var resolve = resolve_constant(result, class_obj)
-			PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "RESOLVE CONST", resolve)
-			return resolve
-		else:
-			PrintDebug.print(PrintDebug.T.VAR_TO_CONST,"BREAK MEMBER TYPE", member_type)
-			break
-		
-		if next_result == null:
-			break
-		if result == next_result:
-			break
-		
-		parts.append(next_result)
-		result = next_result
-		
-	
-	PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "FINAL IDENTIFIER", final_identifier, "PARTS", parts)
-	return final_identifier
-
-
-
-func _var_to_const2(member_name:String, class_obj:ParserClass, local_vars:Dictionary):
+func _var_to_const(member_name:String, class_obj:ParserClass, local_vars:Dictionary, first_const:=false):
 	var count = 0
 	var result = member_name
 	while member_in_class_or_local_vars(result, class_obj, local_vars):
+		if first_const:
+			if class_obj.has_constant_or_class(result):
+				return result
 		count += 1
 		if count > 50:
 			print("COUNTED OUT")
@@ -615,10 +584,8 @@ func _var_to_const2(member_name:String, class_obj:ParserClass, local_vars:Dictio
 		var next_result = _check_class_obj_member_data(result, class_obj, local_vars)
 		if next_result == null:
 			break
-		if result == next_result:
+		if result == next_result or next_result.begins_with("res://"):
 			break
-		if next_result.begins_with("res://"):
-			return result
 		result = next_result
 	
 	return result
@@ -628,290 +595,35 @@ func _var_to_const2(member_name:String, class_obj:ParserClass, local_vars:Dictio
 	#test_tf_sim()
 
 
-
+func _resolve_const_path(member_name:String, class_obj:ParserClass):
+	var full_chain_parts:= []
+	var count = 0
+	var result = member_name
+	while member_in_class_or_local_vars(result, class_obj, {}):
+		count += 1
+		if count > 50:
+			print("COUNTED OUT")
+			break
+		var next_result = _check_class_obj_member_data(result, class_obj, {})
+		var not_valid = next_result == null or result == next_result or next_result.begins_with("res://")
+		if not_valid:
+			break
+		var parts = next_result.split(".", false)
+		parts.reverse()
+		var p_sz = parts.size()
+		for i in range(p_sz):
+			var part = parts[i]
+			if i == p_sz - 1:
+				result = part
+			else:
+				full_chain_parts.push_front(part)
 	
-
-
-
-
-
-
-
-
-
+	full_chain_parts.push_front(result)
+	return ".".join(full_chain_parts)
 
 #endregion
 
-
-
-const TestPre = preload("res://addons/addon_lib/brohd/alib_editor/file_system/util/fs_classes.gd").FSFilter
-const TestConst = UString
-const SM = TestConst.StringMap
-
-
-func test2():
-	
-	var t :=TestPre.new()
-	#test_tf()
-	pass
-
-func test_tf(arg:ALibRuntime.Utils.UProfile.TimeFunction.TimeScale):
-	#arg=
-	pass
-
-const Ut = ALibRuntime.Utils
-const TS = Ut.UProfile.TimeFunction.TimeScale
-
-func test_tf_sim(arg:TS):
-	
-	pass
-
-
-class Test:
-	
-	static func some_func() -> String:
-		var n = Nest.new()
-		n.get_some()
-		var sm:=SM.new("")
-		
-		#sm.get_comment_index()
-		
-		var u:=U.new()
-		
-		
-		
-		var t = new()
-		var g = t.get_ins()
-		g.get_some()
-		
-		
-		
-		return ""
-	
-	func get_ins() -> Nest:
-		return Nest.new()
-	const U=Utils
-	func a_string() -> StringName:
-		return &""
-	class Nest extends U:
-		var my_var:Test
-		func get_some() -> int:
-			return 1
-		func my_dict() -> Dictionary:
-			
-			return {}
-		
-		func my_recur() -> String:
-			return my_recur()
-		
-	
-	
-	func test():
-		
-		var g = get_ins()
-		
-		var m = g.my_dict()
-
-
-func test():
-	
-	var t= Test.new()
-	var n = t.get_ins()
-	
-	n.my_dict()
-	
-	#if n.my_var.U.get_class_name_in_line("") == 
-	
-	
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#^ these may be obsoleted
-#
-#func resolve_full_const_type(var_name, class_obj:ParserClass):
-	##if not class_obj.has_constant_or_class(var_name):
-		##return null
-	#var type = _resolve_constant(var_name, class_obj)
-	#print("RESOLVED TYPE: ", type)
-	#return type
-
-
-func resolve_constant(var_name: String, class_obj: ParserClass) -> String:
-	var parser = _get_parser()
-	var parser_main_script_path = parser._script_path
-	
-	# Treat the identifier as a queue of parts to resolve.
-	# e.g., "SC.Class.Another" -> ["SC", "Class", "Another"]
-	var parts: Array = Array(var_name.split("."))
-	
-	var resolved_path: String = ""
-	var working_class_obj: ParserClass = class_obj
-	var visited_aliases: Dictionary = {}
-
-	# Keep processing as long as we have parts in our chain
-	while parts.size() > 0:
-		var current_part = parts[0]
-		
-		# If the current class object doesn't know what this part is, 
-		# we've gone as deep as we can statically resolve. Break the loop.
-		if not working_class_obj.has_constant_or_class(current_part):
-			PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "NOT CONST OR CLASS", current_part)
-			break
-		
-		# Cycle Detection (Class Instance + Alias Name ensures we don't falsely flag identical names in different classes)
-		var cycle_key = str(working_class_obj) + "::" + current_part
-		if visited_aliases.has(cycle_key):
-			if PRINT_DEBUG:
-				printerr("Cycle detected in constant resolution! Alias '", current_part, "' is part of a loop.")
-			resolved_path += "[CYCLE_ERROR:" + current_part + "]"
-			parts.pop_front()
-			break
-		
-		visited_aliases[cycle_key] = true
-		
-		var data = working_class_obj.get_constant_or_class(current_part)
-		#print("RESOLVEDATA ", data)
-		
-		
-		var full_definition: String = _check_class_obj_member_data(current_part, class_obj, {})
-		
-		PrintDebug.print(PrintDebug.T.VAR_TO_CONST, current_part, "::->::", full_definition)
-		
-		# CASE 1: It's a preload/script path (e.g., "res://another.gd")
-		if full_definition.begins_with("res://"):
-			var remainder = ".".join(parts)
-			resolved_path = UString.dot_join(resolved_path, remainder)
-			return resolved_path
-			
-			
-			var script_path_data = UString.get_script_path_and_suffix(full_definition)
-			var path = script_path_data[0]
-			var suffix = script_path_data[1]
-			
-			resolved_path = full_definition
-			# Consume this part
-			parts.pop_front()
-			
-			if path == parser_main_script_path:
-				resolved_path = path # Just the res:// path for now
-				var inner_class_name = parser.get_class_at_line(0)
-				working_class_obj = parser.get_class_object(inner_class_name)
-				
-				# If the preload definition itself had a suffix (e.g. res://script.gd.Inner),
-				# we must prepend that suffix to our queue so the while-loop processes it!
-				if suffix != "":
-					var suffix_parts = Array(suffix.split(".", false))
-					var new_queue = suffix_parts
-					new_queue.append_array(parts)
-					parts = new_queue
-					
-			else: 
-				# At this point it is out of script, so rely on GDScript Resource
-				var script = load(path) 
-				
-				# CRITICAL: Combine the preload's suffix AND the remaining queue parts
-				var remaining_chain_parts = []
-				if suffix != "":
-					remaining_chain_parts.append(suffix)
-				if parts.size() > 0:
-					remaining_chain_parts.append(".".join(parts))
-					
-				var full_remaining_chain = ".".join(remaining_chain_parts)
-				
-				if full_remaining_chain == "":
-					return path
-				var member_info = get_script_member_info_by_path(script, full_remaining_chain)
-				print("OUT OF SCRIPT DATA: ", script.resource_path, " -> ", full_remaining_chain)
-				# Return the final resulting string
-				return _property_info_to_type_no_class(member_info)
-			
-			
-			
-		# CASE 2: It is the inner class itself (definition is the same as the name)
-		elif full_definition == current_part or full_definition == "":
-			PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "IS SELF",full_definition,current_part)
-			resolved_path = UString.dot_join(resolved_path, current_part)
-			parts.pop_front() # Consume this part
-			
-			# Move our context deep into the inner class
-			var idx = data.get(Keys.LINE_INDEX)
-			var inner_class_name = parser.get_class_at_line(idx)
-			working_class_obj = parser.get_class_object(inner_class_name)
-			
-		# CASE 3: It is an Alias/Constant (e.g., const SC = SubClass.Sub)
-		else:
-			PrintDebug.print(PrintDebug.T.VAR_TO_CONST, "ALIAS", current_part)
-			parts.pop_front() # Remove 'SC'
-			
-			# Split "SubClass.Sub" into ["SubClass", "Sub"]
-			var alias_parts: Array = Array(full_definition.split("."))
-			
-			# Prepend the alias definition to the front of our remaining queue
-			# So ["Class", "Another"] becomes ["SubClass", "Sub", "Class", "Another"]
-			var new_queue: Array = []
-			new_queue.append_array(alias_parts)
-			new_queue.append_array(parts)
-			parts = new_queue
-			
-			# Notice we DO NOT change working_class_obj here, because the alias
-			# needs to be resolved starting from the current class context!
-
-	# If there are leftover parts we couldn't resolve natively (e.g. standard Godot properties),
-	# we just append them to whatever path we successfully built.
-	if parts.size() > 0:
-		var remainder = ".".join(parts)
-		resolved_path = UString.dot_join(resolved_path, remainder)
-
-	return resolved_path
-
-
-#^ not sure that this is really needed
-##
-#func resolve_static_path(script:GDScript, member_path:String):
-	#if member_path.begins_with("res://"):
-		#var path_data = get_script_path_and_suffix(member_path)
-		#script = load(path_data[0])
-		#member_path = path_data[1]
-	
-	#var parts = UString.split_member_access(member_path) as Array
-	#var current_script = script
-	#var working_path = ""
-	#while not parts.is_empty():
-		#var p = parts.pop_front()
-		#var to_check = p
-		#if to_check.find("(") > -1:
-			#to_check = to_check.substr(0, to_check.find("("))
-		#
-		#var member_info = UClassDetail.get_member_info_by_path(current_script, to_check)
-		#if member_info is GDScript:
-			#current_script = member_info
-			#working_path = UString.dot_join(working_path, p)
-		#elif member_info == null:
-			#working_path = UString.dot_join(working_path, ".".join(parts))
-			#break
-		#else:
-			#var type = _property_info_to_type_no_class(member_info)
-			#if type != "":
-				#return type
-			#else:
-				#working_path = UString.dot_join(working_path, p)
-			#break
-	#
-	#return working_path
-
-
+#region Utils
 
 
 func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, local_vars:Dictionary):
@@ -943,18 +655,13 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 	
 	var type_check = _simple_type_check(type_declaration)
 	if type_check != "":
-		print("TYPE CHECK SUCCESS: ", type_check)
+		print("TYPE CHECK SUCCESS: ", type_declaration, " -> ", type_check)
 		return type_check
 	
 	print("FUNC OR VAR: ", type_declaration)
 	
 	return type_declaration
 
-
-
-
-#^ HELPER FUNCS
-#
 
 ## Get script member info, ignores Godot Native class inheritance properties.
 func get_script_member_info_by_path(script:GDScript, member_path:String, member_hints:=UClassDetail._MEMBER_ARGS, check_global:=true):
@@ -983,6 +690,47 @@ func _is_class_name_valid(identifier:String):
 	ClassDB.class_has_method(base, identifier) or ClassDB.class_has_signal(base, identifier)):
 		return true
 	return false
+
+## Check that ClassDB class contains member.
+func _class_has_member(base_type:String, identifier:String):
+	if not ClassDB.class_exists(base_type):
+		return false
+	if ClassDB.class_has_enum(base_type, identifier):
+		return true
+	elif ClassDB.class_has_integer_constant(base_type, identifier):
+		return true
+	elif ClassDB.class_has_method(base_type, identifier):
+		return true
+	elif ClassDB.class_has_signal(base_type, identifier):
+		return true
+	#var prop_list = ClassDB.class_get_property_list(base_type)
+	#print("HAS MEMBER")
+	#for p:Dictionary in prop_list:
+		#print(p)
+		#if p.name == identifier:
+			#return true
+	return false
+
+func _class_member_type(base_type:String, identifier:String):
+	if ClassDB.class_has_enum(base_type, identifier):
+		return UString.dot_join(base_type, identifier)
+	elif ClassDB.class_has_integer_constant(base_type, identifier):
+		return UString.dot_join(base_type, identifier)
+	elif ClassDB.class_has_signal(base_type, identifier):
+		return "Signal"
+	elif ClassDB.class_has_method(base_type, identifier):
+		var func_data_array = ClassDB.class_get_method_list(base_type)
+		for d:Dictionary in func_data_array:
+			if d.name != identifier:
+				continue
+			var resolved_data = _property_info_to_function_data(d)
+			return resolved_data.get(Keys.FUNC_RETURN)
+	#var prop_list = ClassDB.class_get_property_list(base_type)
+	#for p:Dictionary in prop_list:
+		#if identifier.begins_with(p.get("hint_string"), ""):
+			#return 
+			#
+	return ""
 
 ## Get a class_name from property info and convert to a type if possible.
 ## If method data, uses return data.
@@ -1106,6 +854,11 @@ func _simple_type_check(type_hint:String):
 	
 	return ""
 
+func test3():
+	for s:String in "this":
+		
+		
+		pass
 
 
 
@@ -1173,6 +926,7 @@ func get_parser_objects_and_local_vars(line:int) -> ClassData:
 	var class_data = ClassData.new(parser, line)
 	return class_data
 
+#endregion
 
 class ClassData:
 	var class_obj:ParserClass
@@ -1188,6 +942,12 @@ class ClassData:
 				func_obj.parse()
 				local_vars = func_obj.get_in_scope_local_vars(line)
 
+class AccessObject:
+	var type:String
+	var declaration_symbol:String
+	var access_symbol:String
+
+
 
 class PrintDebug:
 	#! arg_location section:T
@@ -1195,7 +955,12 @@ class PrintDebug:
 		if section in _PRINT:
 			print(section, "::" ,"::".join(msg))
 	
-	const _PRINT = [T.BUILTIN, T.INHERITED, T.VAR_TO_CONST]
+	const _PRINT = [
+		T.BUILTIN, 
+		T.INHERITED,
+		T.VAR_TO_CONST,
+		#T.RESOLVE
+		]
 	
 	class T:
 		const RESOLVE = "RESOLVE"

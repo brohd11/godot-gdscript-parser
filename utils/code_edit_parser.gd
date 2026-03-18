@@ -125,7 +125,10 @@ func parse_text():
 			_class_obj = ParserClass.new()
 			Utils.ParserRef.set_refs(_class_obj, parser)
 			_class_obj.access_path = path
-			_class_obj.indent_level = get_indent_access_path(_pc.access_path)
+			#_class_obj.indent_level = get_indent_access_path(_pc.access_path)
+			_class_obj.indent_level = get_indent_access_path(path)
+			
+			#print("COMPARE::", path, "::NEW::", get_indent_access_path(path), "::OLD::", get_indent_access_path(_pc.access_path))
 		
 		
 		
@@ -141,22 +144,13 @@ func parse_text():
 		
 		_class_obj.main_script_path = _pc.main_script_path
 		if path == "":
-			_class_obj.script_resource = parser._script_resource
-			#_class_obj.script_access_path = main_script_path
+			_class_obj.set_script_resource(parser._script_resource)
 		else:
-			#_class_obj.script_access_path = valid_classes[path].get(Keys.TYPE)
-			var script = UClassDetail.get_member_info_by_path(main_script, _pc.access_path)
-			if script != null:
-				_class_obj.script_resource = script
+			#_class_obj.set_script_resource(UClassDetail.get_member_info_by_path(main_script, _pc.access_path))
+			_class_obj.set_script_resource(UClassDetail.get_member_info_by_path(main_script, path))
 		
 		var class_lines = class_access_map[path]
-		#for line_idx in class_lines:
-			#_class_mask[line_idx] = path
-		
 		_class_obj.set_lines(class_lines)
-		#print("___ %s ___" % path)
-		
-		
 		
 		_class_obj.set_members(_pc.member_map.get(path, {}))
 		_class_obj.set_constants(valid_constants)
@@ -306,9 +300,13 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 							if control_flow == Keywords.FOR:
 								var var_dec = "var " + stripped.get_slice("for ", 1).get_slice(" in ", 0).strip_edges()
 								var var_data = Utils.add_var_to_dict(var_dec, context_start_line, local_vars)
-								blocks.append({"type":"for", "var":{"name": var_data[0], "type": var_data[1]}})
+								blocks.append({"type":"for",
+								"indent": line_indent,
+								"var":{"name": var_data[0], "type": var_data[1]}})
 							else:
-								blocks.append({"type":control_flow.strip_edges(), "expr": _get_control_flow_expression(context_start_line, control_flow)})
+								blocks.append({"type":control_flow.strip_edges(),
+								"indent": line_indent,
+								"expr": _get_control_flow_expression(context_start_line, control_flow)})
 							current_indent = line_indent
 				
 				if map_local_vars:
@@ -661,9 +659,14 @@ func get_type_from_line(line:int, column:int=0):
 
 ## returns an array with [member_name, member_type], except functions, which return a dict {func_args, func_return}, keys are in Keys class
 func get_type_from_line_text(stripped_line_text:String):
-	for dec in Keywords.DECLARATIONS:
+	var data = {}
+	if stripped_line_text.begins_with(Keywords.FOR):
+		stripped_line_text = "var " + stripped_line_text.get_slice("for ", 1).get_slice(" in ", 0).strip_edges()
+		data["result"] = Utils.get_var_or_const_info(stripped_line_text)
+		data["type"] = Keys.MEMBER_TYPE_VAR
+		return data
+	for dec:StringName in Keywords.DECLARATIONS:
 		if stripped_line_text.begins_with(dec):
-			var data = {}
 			if dec == &"var " or dec == &"static var ":
 				data["result"] = Utils.get_var_or_const_info(stripped_line_text)
 			elif dec == &"enum ":
@@ -791,6 +794,7 @@ class Keywords:
 	const SIGNAL = &"signal "
 	const ENUM = &"enum "
 	const CLASS = &"class "
+	
 	
 	const CONTROL_FLOW_KEYWORDS = [FOR, MATCH, IF, ELIF, ELSE, WHILE]
 	

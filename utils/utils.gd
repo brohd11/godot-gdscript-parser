@@ -3,6 +3,7 @@ const UString = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_strin
 const GDScriptParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/gdscript_parser.gd")
 const Keys = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/keys.gd")
 const CodeEditParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/code_edit_parser.gd")
+const BuiltInChecker = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/builtin/builtin_checker.gd")
 
 
 const DECLARATIONS = [&"class ", &"var ", &"static ", &"func ", &"enum ", &"const ", &"signal "]

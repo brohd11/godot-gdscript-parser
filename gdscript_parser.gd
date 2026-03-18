@@ -41,6 +41,8 @@ func set_current_script(script:GDScript):
 	if script != _script_resource:
 		clear_cache()
 	_script_resource = script
+	if _script_resource == null:
+		print("SCRIPT NULL::")
 	_script_path = _script_resource.resource_path
 
 func get_current_script():
@@ -124,13 +126,26 @@ func get_function_data(identifier_name:String, line:int=-1) -> Dictionary:
 	print("GET FUNCTION DATA::", result)
 	return result
 
-func get_identifier_type(identifer_name:String, line:int=-1) -> String:
+func resolve_expression(identifier_name:String, line:int=-1) -> String:
 	if line == -1:
 		line = code_edit.get_caret_line()
 	
-	var result = _type_lookup.resolve_expression_at_line(identifer_name, line)
+	var result = _type_lookup.resolve_expression_at_line(identifier_name, line)
 	print("GET IDENTIFIER::", result)
 	return result
+
+func get_identifier_type(identifier_name:String, line:int=-1) -> String:
+	if line == -1:
+		line = code_edit.get_caret_line()
+	
+	var result = _type_lookup.resolve_expression_at_line(identifier_name, line)
+	print("GET IDENTIFIER::", result)
+	return result
+
+func resolve_to_access_object(identifier:String, line:int=-1):
+	if line == -1:
+		line = code_edit.get_caret_line()
+	return _type_lookup.resolve_expression_to_access_object_at_line(identifier, line)
 
 func _get_class_obj(line:int=-1) -> ParserClass:
 	if line == -1:
@@ -150,7 +165,32 @@ func get_member_info(identifier:String, line:int=-1):
 func get_line_context(line:int, column:int=0, insert_caret:=false):
 	return code_edit_parser.get_line_context(line, column, insert_caret).get(Keys.CONTEXT_TEXT)
 
+func resolve_expression_in_script(expression:String, script_path:String, class_path:String):
+	var target_parser = get_parser_and_class_obj(script_path, class_path)
+	return target_parser.parser.resolve_expression(expression, target_parser.class_obj.line_indexes[0])
 
+func resolve_to_access_object_in_script(expression:String, script_path:String, class_path:String):
+	var target_parser = get_parser_and_class_obj(script_path, class_path)
+	return target_parser.parser.resolve_to_access_object(expression, target_parser.class_obj.line_indexes[0])
+
+
+
+func new_parser(script_path:String):
+	var parser = new()
+	var script = load(script_path)
+	parser.set_current_script(script)
+	parser.set_source_code(script.source_code)
+	parser.parse()
+	return parser
+
+func get_parser_and_class_obj(script_path:String, class_path:String):
+	if script_path == _script_path:
+		var class_obj = _class_access.get(class_path) as ParserClass
+		return {"parser": self, "class_obj":class_obj}
+	else:
+		var parser = new_parser(script_path)
+		var class_obj = parser.get_class_object(class_path)
+		return {"parser": parser, "class_obj":class_obj}
 
 func _create_buffer_code_edit():
 	if not is_instance_valid(code_edit):

@@ -179,7 +179,7 @@ func has_preload(path:String): # doesnt handle inherited, should cache this some
 	var parser = Utils.ParserRef.get_parser(self)
 	for c in constants.keys():
 		var type = parser.resolve_expression(c, line_indexes[0])
-		print(type)
+		#print(type)
 		if type == path:
 			t.stop()
 			return c

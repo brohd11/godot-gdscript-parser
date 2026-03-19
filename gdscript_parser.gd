@@ -123,7 +123,7 @@ func get_function_data(identifier_name:String, line:int=-1) -> Dictionary:
 		line = code_edit.get_caret_line()
 	
 	var result = _type_lookup.get_function_data_at_line(identifier_name, line)
-	print("GET FUNCTION DATA::", result)
+	#print("GET FUNCTION DATA::", result)
 	return result
 
 func resolve_expression(identifier_name:String, line:int=-1) -> String:
@@ -131,7 +131,7 @@ func resolve_expression(identifier_name:String, line:int=-1) -> String:
 		line = code_edit.get_caret_line()
 	
 	var result = _type_lookup.resolve_expression_at_line(identifier_name, line)
-	print("GET IDENTIFIER::", result)
+	#print("GET IDENTIFIER::", result)
 	return result
 
 func get_identifier_type(identifier_name:String, line:int=-1) -> String:
@@ -139,7 +139,7 @@ func get_identifier_type(identifier_name:String, line:int=-1) -> String:
 		line = code_edit.get_caret_line()
 	
 	var result = _type_lookup.resolve_expression_at_line(identifier_name, line)
-	print("GET IDENTIFIER::", result)
+	#print("GET IDENTIFIER::", result)
 	return result
 
 func resolve_to_access_object(identifier:String, line:int=-1):

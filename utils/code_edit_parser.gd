@@ -159,7 +159,8 @@ func parse_text():
 		temp_class_access[path] = _class_obj
 	
 	parser._class_access = temp_class_access
-	t.stop()
+	
+	#t.stop()
 	#print("CLASSES ",temp_class_access.keys())
 	_pc = null
 	return temp_class_access
@@ -361,7 +362,7 @@ func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=fal
 		context_regex = RegEx.new()
 		context_regex.compile("[\"'(){}\\[\\]]")
 	
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("Get Caret Context")
+	#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("Get Caret Context")
 	if start_data.is_empty():
 		start_data = get_line_context_start_simple(target_line_index)
 	
@@ -439,7 +440,7 @@ func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=fal
 		context_text = context_text.substr(semi_prev, semi_next - semi_prev)
 	
 	
-	t.stop()
+	#t.stop()
 	var return_data = {
 		Keys.CONTEXT_TEXT: context_text,
 		Keys.CONTEXT_START: context_start_line,

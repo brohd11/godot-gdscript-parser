@@ -374,8 +374,9 @@ func get_function_call_data() -> FunctionCallData:
 	_active_function_call.function_name = back.substr(0, back.find("("))
 	#var access_obj = AccessObject.new()
 	print("FUNC OBJ ACCESS DATA SET::")
-	var access_obj = parser.get_type_lookup().resolve_expression_to_access_object(full_call, get_current_class_object(), local_vars)
+	
 	if front == full_call:
+		
 		if GDScriptParser.TypeLookup.BuiltInChecker.is_global_method(full_call):
 			_active_function_call.function_object = &"global_method"
 		else:
@@ -394,9 +395,11 @@ func get_function_call_data() -> FunctionCallData:
 		else:
 			pass
 			#_active_function_call.access_object = func_obj
-		
 	
-	_active_function_call.access_object = access_obj
+	_active_function_call.access_object = parser.get_type_lookup().resolve_expression_to_access_object(front, get_current_class_object(), local_vars)
+	
+	#var access_obj = parser.get_type_lookup().resolve_expression_to_access_object(full_call, get_current_class_object(), local_vars)
+	#_active_function_call.access_object = access_obj
 	
 	print("FULLCALL::", full_call)
 	print("ACCESS OBJ::", _active_function_call.access_object)

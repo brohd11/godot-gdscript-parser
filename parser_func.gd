@@ -11,8 +11,6 @@ var _class_obj:WeakRef
 var _code_edit_parser:WeakRef
 @warning_ignore_restore("unused_private_class_variable")
 
-var dirty_flag:=true
-
 var _cache_dirty:=true
 
 var func_lines:PackedInt32Array
@@ -20,13 +18,11 @@ var declaration_line:int
 var end_line:int
 var class_indent:int = 0
 
-
-
 var name:String
-
 var member_data:={}
 
-var return_type := "" # done
+var _return_type_raw:= ""
+var _return_type := "" # done
 var arguments = {} # done
 
 var local_vars:= {}
@@ -34,11 +30,14 @@ var local_vars:= {}
 var in_scope_local_vars:= {}
 var _local_vars_set:=false
 
+
+func is_static():
+	return member_data.get(Keys.MEMBER_TYPE).begins_with("static")
+
 func queue_refresh():
 	_cache_dirty = true
 	_local_vars_set = false
-	in_scope_local_vars.clear()
-
+	in_scope_local_vars.clear() # not sure how this will interact with parse
 
 func set_in_scope_local_vars(new_vars:Dictionary):
 	_local_vars_set = true
@@ -46,7 +45,6 @@ func set_in_scope_local_vars(new_vars:Dictionary):
 	_set_function_data()
 	in_scope_local_vars = new_vars
 	in_scope_local_vars.merge(arguments.duplicate())
-	
 
 func parse():
 	end_line = func_lines[func_lines.size() - 1]
@@ -54,24 +52,30 @@ func parse():
 	map_variables()
 
 
+
 func _set_function_data():
 	if not _cache_dirty:
 		return arguments
+	#var parser = Utils.ParserRef.get_parser(self)
 	var column = member_data.get(Keys.COLUMN_INDEX, 0)
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)
+	if not code_edit_parser.check_member_line(member_data.get(Keys.MEMBER_TYPE), name, declaration_line, column):
+		print("FUNCTION DATA: NOT VALID")
+		pass
 	var func_data = code_edit_parser.get_type_from_line(declaration_line, column)
+	
 	print("FUNCTION DATA: ",func_data)
 	arguments.clear()
 	var result = func_data.get("result")
 	_cache_dirty = false # at this point it has been read
 	if result == null:
-		return_type = ""
+		_return_type_raw = ""
 		return
 	
 	var arg_data = result.get(Keys.FUNC_ARGS, {})
 	for arg in arg_data.keys():
 		arguments[arg] = {Keys.TYPE: arg_data[arg], Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_FUNC_ARG}
-	return_type = result.get(Keys.FUNC_RETURN, "")
+	_return_type_raw = result.get(Keys.FUNC_RETURN, "")
 	#print("SET FUNC DATA: ", result)
 
 
@@ -164,11 +168,18 @@ func get_arguments():
 	_set_function_data()
 	return arguments
 
-func get_return_type(): # this could be used to parse
+func get_return_type(inferred:=true): # this could be used to parse
 	_set_function_data()
-	if return_type == "":
-		return_type = _infer_return_type()
-	return return_type
+	if _return_type_raw == "":
+		_return_type_raw = _infer_return_type()
+	if not inferred:
+		return _return_type_raw
+	print("FUNC RETURN")
+	print(_return_type)
+	if _return_type == "":
+		var parser = Utils.ParserRef.get_parser(self)
+		_return_type = parser.resolve_expression(_return_type_raw, declaration_line)
+	return _return_type
 
 
 # this may be slowww, possibly do it in the mapping step
@@ -213,12 +224,7 @@ func _infer_return_type() -> String:
 			if valid:
 				break
 	
-	
-	
-	var result = potential_return.strip_edges().trim_prefix("return").strip_edges()
-	
+	var raw_result = potential_return.strip_edges().trim_prefix("return").strip_edges()
 	var parser = Utils.ParserRef.get_parser(self)
-	print("CALLING IDEN")
-	result = parser.get_identifier_type(result, i)
-	
-	return result
+	_return_type = parser.resolve_expression(raw_result, i)
+	return raw_result

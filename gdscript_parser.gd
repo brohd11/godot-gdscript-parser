@@ -16,6 +16,11 @@ const Utils = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/
 const Keys = Utils.Keys
 
 
+static var _static_parser_cache:= {}
+var _parser_cache:= {}
+var _get_cached_parser_callable:Callable
+var _max_cache_size = 10
+
 var code_edit_parser:CodeEditParser
 var _caret_context:CaretContext
 var _type_lookup:TypeLookup
@@ -35,11 +40,47 @@ func _init() -> void:
 	
 	_type_lookup = TypeLookup.new()
 	_type_lookup._parser = weakref(self)
+	
+	_parser_cache = _static_parser_cache
 
+#region ParserCache
+func set_parser_cache(cache_dict:Dictionary):
+	_parser_cache = cache_dict
+
+func set_parser_cache_size(size:int):
+	_max_cache_size = size
+
+func set_get_parser_callable(callable:Callable):
+	_get_cached_parser_callable = callable
+
+func clean_parser_cache():
+	if _max_cache_size == -1 or _parser_cache.size() <= _max_cache_size:
+		return
+	print("ERASE::", _parser_cache.size())
+	var paths = _parser_cache.keys()
+	var current_size = paths.size()
+	var erased = 0
+	for path in paths:
+		_parser_cache.erase(path)
+		erased += 1
+		if current_size - erased <= _max_cache_size:
+			break
+	print("CACHE SIZE::", current_size, " -> ", _parser_cache.size())
+
+func clear_parser_cache():
+	_parser_cache.clear()
+	_static_parser_cache.clear()
+#endregion
+
+#region ParserSetup
+
+func clear_current_class():
+	_class_access.clear()
+	code_edit_parser.string_map_cache.clear()
 
 func set_current_script(script:GDScript):
 	if script != _script_resource:
-		clear_cache()
+		clear_current_class()
 	_script_resource = script
 	if _script_resource == null:
 		print("SCRIPT NULL::")
@@ -54,7 +95,7 @@ func set_code_edit(new_code_edit:CodeEdit, free_existing:=false):
 			_code_edit_dispose()
 	code_edit = new_code_edit
 
-
+## Set script path and load
 func set_script_path(new_path:String):
 	_script_path = new_path
 	_script_resource = load(_script_path)
@@ -63,22 +104,17 @@ func set_script_path(new_path:String):
 func get_script_path():
 	return _script_path
 
-
 func set_source_code(source:String): # need a version if the script editor is set externally, maybe just parse_source()
 	_create_buffer_code_edit()
 	code_edit.text = source
 
-func clear_cache():
-	_class_access.clear()
-	code_edit_parser.string_map_cache.clear()
+#endregion
 
-func parse():
-	code_edit_parser.parse_text()
+
+func parse(force:=false):
+	code_edit_parser.parse_text(force)
 	
 	#print_hierarchy()
-
-
-
 
 
 func get_code_edit_parser():
@@ -102,7 +138,7 @@ func reset_caret_context():
 func has_class(identifier:String):
 	return _class_access.has(identifier)
 
-func get_class_object(identifier:String):
+func get_class_object(identifier:String=""):
 	return _class_access.get(identifier)
 
 func get_class_at_line(line:int):
@@ -158,7 +194,8 @@ func get_member_info(identifier:String, line:int=-1):
 	var _class = get_class_at_line(line)
 	if _class == null:
 		return
-	var member = _class.get_member(identifier)
+	var class_obj = get_class_object(_class)
+	var member = class_obj.get_member(identifier)
 	return member
 
 
@@ -173,22 +210,50 @@ func resolve_to_access_object_in_script(expression:String, script_path:String, c
 	var target_parser = get_parser_and_class_obj(script_path, class_path)
 	return target_parser.parser.resolve_to_access_object(expression, target_parser.class_obj.line_indexes[0])
 
-
-
-func new_parser(script_path:String):
-	var parser = new()
-	var script = load(script_path)
-	parser.set_current_script(script)
-	parser.set_source_code(script.source_code)
-	parser.parse()
+func get_parser_for_path(script_path:String) -> GDScriptParser:
+	if script_path == _script_path:
+		return self
+	if _get_cached_parser_callable.is_valid():
+		return _get_cached_parser_callable.call()
+	if _parser_cache == null:
+		print("PARSER CACHE NULL::", _script_path)
+	
+	var parser_data = _parser_cache.get(script_path, {})
+	
+	var cached_modified_time = parser_data.get(Keys.CACHE_MODIFIED, -1)
+	var modified_time = FileAccess.get_modified_time(script_path)
+	var need_script_update = cached_modified_time != modified_time
+	if cached_modified_time == -1:
+		need_script_update = true
+	parser_data[Keys.CACHE_MODIFIED] = modified_time
+	
+	var parser = parser_data.get(Keys.CACHE_PARSER)
+	if is_instance_valid(parser):
+		#print("EXISTING PARSER::", script_path)
+		_parser_cache.erase(script_path)
+	else:
+		need_script_update = true
+		parser = new()
+		parser.set_parser_cache(_parser_cache)
+		parser_data[Keys.CACHE_PARSER] = parser
+	
+	if need_script_update:
+		print("NEED UPDATE::", script_path)
+		var script = load(script_path)
+		parser.set_current_script(script)
+		parser.set_source_code(script.source_code)
+	
+	parser.parse(need_script_update)
+	_parser_cache[script_path] = parser_data
 	return parser
+
 
 func get_parser_and_class_obj(script_path:String, class_path:String):
 	if script_path == _script_path:
 		var class_obj = _class_access.get(class_path) as ParserClass
 		return {"parser": self, "class_obj":class_obj}
 	else:
-		var parser = new_parser(script_path)
+		var parser = get_parser_for_path(script_path)
 		var class_obj = parser.get_class_object(class_path)
 		return {"parser": parser, "class_obj":class_obj}
 
@@ -247,16 +312,3 @@ func print_hierarchy():
 		for f in _class.functions.keys():
 			print(member_indent_str + f)
 		print("")
-
-
-
-
-static func test():
-	var old_gd = "res://addons/code_completions/src/class/gdscript_parser.gd"
-	var this = "res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/gdscript_parser.gd"
-	var ins = new()
-	var script = load(old_gd)
-	ins.set_source_code(script.source_code)
-	#ins.code_edit.queue_free()
-	print(ins.get_member_info("EditorSet"))
-	print(ins.get_class_at_line(1000))

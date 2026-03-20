@@ -11,6 +11,8 @@ const AccessObject = GDScriptParser.TypeLookup.AccessObject
 
 const _MAP_BLOCKS = [Keywords.FOR, Keywords.MATCH]
 
+const _VALID_OPERATORS = ["=", "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "%"]
+
 enum TokenState {
 	NONE,
 	COMMENT,
@@ -115,6 +117,7 @@ func parse():
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("CARET CONTEXT")
 	var parser = ParserRef.get_parser(self)
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)
+	code_edit_parser.ensure_first_parse() # ensure it has been done at least once
 	
 	current_line_text = code_edit_parser.get_line(caret_line)
 	var caret_left = current_line_text.substr(0, caret_column).strip_edges(false, true)
@@ -610,9 +613,10 @@ class OperationData:
 	var operator:String
 	var right_text:String
 	
-	func get_left_declaration():
-		
-		pass
+	func get_type_access_path(current_script_path:String, type_path:String=left_type):
+		if not type_path.begins_with("res://"):
+			return type_path
+		return Utils.find_path_to_type_operation(left_access_object, type_path)
 
 class MatchBlockData:
 	var is_valid:=false
@@ -621,6 +625,12 @@ class MatchBlockData:
 	var indent:int
 	
 	var access_object:AccessObject
+	
+	func get_type_access_path(current_script_path:String, type_path:String=type):
+		if not type_path.begins_with("res://"):
+			return type_path
+		return Utils.find_path_to_type_operation(access_object, type_path)
+	
 
 
 
@@ -731,11 +741,25 @@ class FunctionCallData:
 			return ""
 		return arg_names[current_arg_index]
 	
+	func get_type_access_path(current_script_path:String, type_path:String="", argument_object:AccessObject=null):
+		if argument_object == null or type_path == "":
+			var arg = func_get_current_arg()
+			argument_object = arg.access_object
+			type_path = arg.type
+		
+		if not type_path.begins_with("res://"):
+			return type_path
+		
+		var type_script_data = UString.get_script_path_and_suffix(type_path)
+		var type_script_path = type_script_data[0]
+		var primary_access_object = Utils.get_access_object(current_script_path, type_script_path, access_object, argument_object)
+		if primary_access_object == argument_object:
+			argument_object = null
+		return Utils.find_path_to_type_function(primary_access_object, argument_object, type_path, function_object)
+	
 	
 	class Argument:
 		var name:String
 		var type
 		var declaration
 		var access_object:AccessObject
-
-const _VALID_OPERATORS = ["=", "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "%"]

@@ -30,12 +30,30 @@ var _annotation_regex:RegEx
 	#"*gd"
 #)var ff = ""; var fg= ""
 
+var _first_parse_complete:=false
+var cache_dirty:=true
 
 
 var g="";var t = ";not this";func my_func(arg:Vector2) -> int: return 1;var fh;
 
-var _pc:_ParserContext
+func _set_code_edit(new_code_edit:CodeEdit):
+	if is_instance_valid(code_edit):
+		if code_edit != new_code_edit:
+			if code_edit.text_changed.is_connected(_on_text_changed):
+				code_edit.text_changed.disconnect(_on_text_changed)
+			cache_dirty = true
+			_first_parse_complete = false
+	
+	code_edit = new_code_edit
+	if not code_edit.text_changed.is_connected(_on_text_changed):
+		code_edit.text_changed.connect(_on_text_changed)
+	
+	pass
 
+func _on_text_changed():
+	cache_dirty = true
+
+var _pc:_ParserContext
 
 class _ParserContext:
 	var class_access_map = {"":[]}
@@ -51,11 +69,15 @@ class _ParserContext:
 	var in_function:= false
 	var current_func_dict:={}
 	
+	var class_name_data:= {}
 	var main_script_path:=""
 
+func ensure_first_parse():
+	if _first_parse_complete:
+		return
+	parse_text()
 
-
-func parse_text():
+func parse_text(force:=false):
 	if not is_instance_valid(_map_regex):
 		_map_regex = RegEx.new()
 		_map_regex.compile("^(?:(static)\\s+)?(var|func|enum|const|signal|class_name|class)\\s+([a-zA-Z_]\\w*)")
@@ -63,11 +85,17 @@ func parse_text():
 		_annotation_regex = RegEx.new()
 		_annotation_regex.compile("^@[A-Za-z0-9_]+(?:\\([^)]*\\))?\\s*")
 	
+	
+	
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("S")
 	
 	var parser = _get_parser()
-	code_edit = parser.code_edit
+	_set_code_edit(parser.code_edit)
 	indent_size = code_edit.get_tab_size()
+	
+	if not cache_dirty and not force: # cache_dirty means text is changed. If it hasn't then everything should be valid
+		t.stop()
+		return
 	
 	var existing_class_access = parser._class_access
 	var main_script = parser._script_resource
@@ -145,6 +173,7 @@ func parse_text():
 		_class_obj.main_script_path = _pc.main_script_path
 		if path == "":
 			_class_obj.set_script_resource(parser._script_resource)
+			_class_obj.class_name_data = _pc.class_name_data
 		else:
 			#_class_obj.set_script_resource(UClassDetail.get_member_info_by_path(main_script, _pc.access_path))
 			_class_obj.set_script_resource(UClassDetail.get_member_info_by_path(main_script, path))
@@ -160,8 +189,10 @@ func parse_text():
 	
 	parser._class_access = temp_class_access
 	
-	#t.stop()
+	t.stop()
 	#print("CLASSES ",temp_class_access.keys())
+	cache_dirty = false
+	_first_parse_complete = true
 	_pc = null
 	return temp_class_access
 
@@ -231,7 +262,6 @@ func _parse_line(stripped:String, line:int, column:int=0):
 			_pc.current_indentation_level += indent_size
 			_pc.access_path = new_access_path
 			_pc.class_access_map[_pc.access_path] = []
-			
 		else:#if _pc.current_indentation_level == indentation_level:
 			data[Keys.COLUMN_INDEX] = column
 			if keyword.ends_with("func"):
@@ -239,6 +269,8 @@ func _parse_line(stripped:String, line:int, column:int=0):
 				_pc.in_function = true
 				data[Keys.FUNC_LINES] = PackedInt32Array()
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
+			elif keyword == "class_name":
+				_pc.class_name_data = data
 			elif keyword.begins_with("c") or keyword == "enum":
 				_pc.constant_map.get_or_add(_pc.access_path, {})[member_name] = data
 			else:
@@ -652,6 +684,39 @@ func get_line_no_comment(line:int):
 		else:
 			break
 	return line_text.substr(0, com_idx).strip_edges(false)
+
+
+func check_member_line(member_type:String, member_name:String, line:int, column:int=0, rebuild:=true):
+	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("CHECK MEMBER" + str([member_type, " ", member_name]))
+	var line_text = get_line(line).strip_edges(true, false)
+	if column != 0:
+		line_text = get_line(line).substr(column).strip_edges(true, false)
+	if line_text.begins_with(member_type):
+		var stripped = line_text.trim_prefix(member_type).strip_edges(true, false)
+		#t.stop()
+		return stripped.begins_with(member_name)
+	#t.stop()
+	if rebuild:
+		parse_text()
+	return false
+
+#func find_member_line(member_type:String, member_name:String, class_obj:ParserClass):
+	#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("FIND MEMBER")
+	#var class_indent = class_obj.indent_level + get_indent_size()
+	#for i in range(code_edit.get_line_count()):
+		#var line = get_line(i).strip_edges(true, false)
+		#if line.contains(";"):
+			#pass
+		#if not line.begins_with(member_type):
+			#continue
+		#var stripped = line.trim_prefix(member_type).strip_edges(true, false)
+		#if not stripped.begins_with(member_name):
+			#continue
+		#if code_edit.get_indent_level(i) == class_indent:
+			##t.stop()
+			#return i
+	##t.stop()
+	#return -1
 
 func get_type_from_line(line:int, column:int=0):
 	var context = get_line_context(line, column).get(Keys.CONTEXT_TEXT, "")

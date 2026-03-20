@@ -1,4 +1,3 @@
-
 #! import-p Keys,
 
 const GDScriptParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/gdscript_parser.gd")
@@ -13,29 +12,30 @@ var _parser:WeakRef
 var _code_edit_parser:WeakRef
 @warning_ignore_restore("unused_private_class_variable")
 
-var dirty_flag:=true
+
+var _resolve_cache:={}
 
 var main_script_path:String
+var class_name_data:= {}
 
 var access_path:String
 var script_resource:GDScript
 var script_base_type:String
 var script_access_path:String
 
-var source_code:String
-
 var line_indexes:PackedInt32Array
 var indent_level:int
-
-var inherited_members = {}
 
 var inner_classes:= {}
 var constants:= {}
 var members:= {}
 var functions:={}
 
-func queue_refresh():
-	inherited_members.clear()
+var inherited_members := {}
+var _inherited_script_mod_cache := {}
+
+func queue_refresh(): # need to figure out a cache for this
+	_check_inherited_valid() # if any of inherited have changed, clear inh members dict
 	for f in functions.values():
 		f.queue_refresh()
 
@@ -112,6 +112,9 @@ func has_inherited_member(identifier:String):
 func get_inherited_member(identifier:String):
 	return get_inherited_members().get(identifier)
 
+func has_function(func_name:String):
+	return functions.has(func_name)
+
 func get_function(func_name:String):
 	if func_name == "new":
 		func_name = "_init"
@@ -168,43 +171,89 @@ func get_constant_or_class(identifier:String):
 
 func has_preload(path:String): # doesnt handle inherited, should cache this somehow
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET PRELOAD")
-	var inherited = get_inherited_members()
-	for member_name in inherited.keys():
-		var val = inherited[member_name]
-		if val is GDScript: # could add a enum check for this?, possibly move to a GDScriptParser implementation too
-			if val.resource_path == path:
-				return member_name
+	#var inherited = get_inherited_members()
+	#for member_name in inherited.keys():
+		#var val = inherited[member_name]
+		#if val is GDScript: # could add a enum check for this?, possibly move to a GDScriptParser implementation too
+			#if val.resource_path == path:
+				#return member_name
 	
 	
 	var parser = Utils.ParserRef.get_parser(self)
+	var type_lookup = parser.get_type_lookup()
 	for c in constants.keys():
-		var type = parser.resolve_expression(c, line_indexes[0])
-		#print(type)
+		var declaration = type_lookup.get_class_obj_member_type(c, self, {})
+		var cached = _resolve_cache.get_or_add(c, {})
+		var type:String
+		if declaration != cached.get(Keys.CLASS_CACHE_DEC, ""):
+			type = parser.resolve_expression(c, line_indexes[0])
+			cached[Keys.CLASS_CACHE_TYPE] = type
+		else:
+			type = cached.get(Keys.CLASS_CACHE_TYPE, "")
+		
+		cached[Keys.CLASS_CACHE_DEC] = declaration
+		_resolve_cache[c] = cached
 		if type == path:
 			t.stop()
 			return c
+	
+	
+	var base_script = get_class_base_script()
+	if base_script == null:
+		return
+	var script_path = base_script.resource_path
+	if script_path != "":
+		var script_parser = parser.get_parser_for_path(script_path) #^ this assumes root class, I think is only way that it could work?
+		var class_obj = script_parser.get_class_object() as GDScriptParser.ParserClass #^ possibly could hybrid, if the script has no path use class detail
+		var preload_name = class_obj.has_preload(path)
+		if preload_name != null:
+			t.stop()
+			return preload_name
 	t.stop()
 
 ## Get and cache the preloads of current scripts ancestors.
 func get_inherited_members() -> Dictionary:
-	#var inherited_section = data_cache.get_or_add(_Keys.SCRIPT_INHERITED_MEMBERS, {})
-	#var cached_data = CacheHelper.get_cached_data(script.resource_path, inherited_section)
-	#if cached_data != null:
-		#return cached_data
-	if not is_instance_valid(script_resource):
-		print("NOT VALID SCRIPT")
-		return {}
+	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET INH")
 	if not inherited_members.is_empty():
 		return inherited_members
-	var base_script = script_resource.get_base_script()
-	if base_script == null:
-		inherited_members = UClassDetail.class_get_all_members(script_resource)
-	else:#^c I was not getting class data before, now I am... should I?? Either way, should cache.
-		#var inherited_members = UClassDetail.script_get_all_members(base_script, UClassDetail.IncludeInheritance.SCRIPTS_ONLY)
-		inherited_members = UClassDetail.script_get_all_members(base_script, UClassDetail.IncludeInheritance.ALL)
-	#var inh_paths = UClassDetail.script_get_inherited_script_paths(base_script)
-	#CacheHelper.store_data(script_resource.resource_path, inherited_members, inherited_section, inh_paths)
+	
+	_get_inherited_members()
+	inherited_members.merge(UClassDetail.class_get_all_members(script_resource))
+	t.stop()
+	var base_script = get_class_base_script()
+	if base_script != null:
+		pass
+		#print("COMPARE INHERITEDS")
+		#var test = UClassDetail.script_get_all_members(base_script, UClassDetail.IncludeInheritance.ALL)
+		#var smaller_str = "inh"
+		#var smaller = test
+		#var bigger = inherited_members
+		#if inherited_members.size() < test.size():
+			#smaller_str = "test"
+			#smaller = inherited_members
+			#bigger = test
+		#elif inherited_members.size() == test.size():
+			#print("EQUAL SIZE")
+		#
+		#for k in bigger.keys():
+			#if not smaller.has(k):
+				#print(k, " not in ", smaller_str)
+				#print(bigger[k])
+	
 	return inherited_members
+	
+
+func _get_inherited_members():
+	inherited_members.clear()
+	var parser = Utils.ParserRef.get_parser(self)
+	var inherited_scripts = get_inherited_scripts()
+	for script_path in inherited_scripts:
+		var script_parser = parser.get_parser_for_path(script_path)
+		var class_obj = script_parser.get_class_object()
+		inherited_members.merge(class_obj.get_members())
+	
+
+
 
 func class_has_member(identifier:String):
 	if ClassDB.class_has_enum(script_base_type, identifier):
@@ -222,3 +271,29 @@ func class_has_member(identifier:String):
 		#if p.name == identifier:
 			#return true
 	return false
+
+func get_class_base_script():
+	if is_instance_valid(script_resource):
+		return script_resource.get_base_script()
+
+func get_inherited_scripts() -> Array:
+	var base_script = get_class_base_script()
+	if base_script == null:
+		return []
+	return UClassDetail.script_get_inherited_script_paths(base_script)
+
+func _check_inherited_valid():
+	if _inherited_script_mod_cache == null:
+		_inherited_script_mod_cache = {}
+	if is_instance_valid(script_resource):
+		if script_base_type != script_resource.get_instance_base_type():
+			inherited_members.clear()
+	
+	var inherited_scripts = get_inherited_scripts()
+	for path in inherited_scripts:
+		var mod_time = FileAccess.get_modified_time(path)
+		var cached = _inherited_script_mod_cache.get(path, -1)
+		if mod_time != cached:
+			inherited_members.clear()
+		_inherited_script_mod_cache[path] = mod_time
+	

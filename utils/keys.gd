@@ -2,6 +2,14 @@
 const _BLANK = &""
 const CARET_UNI_CHAR = &"\uFFFF"
 
+# gdscript parser cache
+const CACHE_MODIFIED = &"modified"
+const CACHE_PARSER = &"parser"
+
+# class resolve cache
+const CLASS_CACHE_DEC = &"class_cache_dec"
+const CLASS_CACHE_TYPE = &"class_cache_type"
+
 const PARSER_CODE_EDIT = &"_parser_code_edit"
 
 const CONTEXT_TEXT = &"context_text"

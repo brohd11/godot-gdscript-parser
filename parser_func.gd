@@ -162,7 +162,7 @@ func get_in_scope_local_vars(line:int):
 
 func get_function_data():
 	var return_string = get_return_type()
-	return {Keys.FUNC_ARGS: arguments, Keys.FUNC_RETURN:return_string}
+	return {Keys.FUNC_ARGS: arguments.duplicate(), Keys.FUNC_RETURN:return_string}
 
 func get_arguments():
 	_set_function_data()
@@ -173,12 +173,13 @@ func get_return_type(inferred:=true): # this could be used to parse
 	if _return_type_raw == "":
 		_return_type_raw = _infer_return_type()
 	if not inferred:
+		print("PARSER FUNC::RETURN::", _return_type_raw)
 		return _return_type_raw
-	print("FUNC RETURN")
-	print(_return_type)
-	if _return_type == "":
+	print("PARSER FUNC::RETURN::", _return_type)
+	if _return_type == "" or not _return_type.begins_with("res://"):
 		var parser = Utils.ParserRef.get_parser(self)
 		_return_type = parser.resolve_expression(_return_type_raw, declaration_line)
+		print("RESOLVING ", _return_type)
 	return _return_type
 
 

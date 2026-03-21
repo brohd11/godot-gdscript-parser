@@ -41,6 +41,7 @@ const LINE_INDEX = &"line_index"
 const COLUMN_INDEX = &"column_index"
 const FUNC_LINES = &"func_lines"
 const ANNOTATIONS = &"annotations"
+const ACCESS_PATH = &"access_path"
 
 const TYPE = &"type"
 const TYPE_RESOLVED = &"type_resolved"

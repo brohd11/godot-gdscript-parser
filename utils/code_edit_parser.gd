@@ -165,8 +165,8 @@ func parse_text(force:=false):
 		if path != "":
 			var working_path = path
 			for x in range(path.count(".") + 1):
-				valid_constants.merge(_pc.constant_map.get(working_path, {}))
-				valid_classes.merge(_pc.inner_class_map.get(working_path, {}))
+				valid_constants.merge(_pc.constant_map.get(working_path, {}), true)
+				valid_classes.merge(_pc.inner_class_map.get(working_path, {}), true)
 				working_path = working_path.substr(0, working_path.rfind("."))
 		
 		
@@ -244,18 +244,20 @@ func _parse_line(stripped:String, line:int, column:int=0):
 		var member_name = result.get_string(3)
 		
 		var data = {
-			Keys.MEMBER_TYPE: keyword,
+			Keys.MEMBER_TYPE:keyword,
 			Keys.MEMBER_NAME:member_name,
 			Keys.LINE_INDEX:line,
-			Keys.ANNOTATIONS: _pc.pending_annotations.duplicate()
 		}
+		if not _pc.pending_annotations.is_empty():
+			data[Keys.ANNOTATIONS] = _pc.pending_annotations.duplicate()
+			_pc.pending_annotations.clear()
 		
-		_pc.pending_annotations.clear()
 		_pc.in_function = false
 		if keyword == "class":
 			var new_access_path = UString.dot_join(_pc.access_path, member_name)
 			#data[Keys.MEMBER_TYPE] = Keys.MEMBER_TYPE_CLASS
 			data[Keys.TYPE] = UString.dot_join(_pc.main_script_path, new_access_path)
+			data[Keys.ACCESS_PATH] = _pc.access_path # i think this would the old? exclusive of current name
 			
 			_pc.inner_class_map.get_or_add(_pc.access_path, {})[member_name] = data
 			
@@ -272,6 +274,7 @@ func _parse_line(stripped:String, line:int, column:int=0):
 			elif keyword == "class_name":
 				_pc.class_name_data = data
 			elif keyword.begins_with("c") or keyword == "enum":
+				data[Keys.ACCESS_PATH] = _pc.access_path
 				_pc.constant_map.get_or_add(_pc.access_path, {})[member_name] = data
 			else:
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
@@ -302,9 +305,12 @@ static func _parse_source2(source:String):
 
 
 func get_line_context_start_data(target_line_index:int, params:Dictionary={}) -> Dictionary:
+	var all_blocks_array = Keywords.CONTROL_FLOW_KEYWORDS
 	var map_blocks_array = params.get(Keys.CONTEXT_BLOCKS, []) as Array
 	var has_blocks = not map_blocks_array.is_empty()
 	var map_local_vars = params.get(Keys.CONTEXT_LOCAL_VARS, true) as bool
+	
+	var respect_scope = has_blocks or map_local_vars
 	
 	var blocks:= []
 	var local_vars:= {}
@@ -325,26 +331,29 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 		if code_edit.is_in_string(context_start_line, 0) != -1:
 			continue
 		
-		var line_indent = get_indent_code_edit(context_start_line)
-		if line_indent <= current_indent:
-				if has_blocks and line_indent < current_indent:
-					for control_flow in map_blocks_array:
+		if respect_scope:
+			var line_indent = get_indent_code_edit(context_start_line)
+			if line_indent <= current_indent:
+				if line_indent < current_indent:
+					for control_flow in Keywords.CONTROL_FLOW_KEYWORDS:
 						if stripped.begins_with(control_flow):
-							if control_flow == Keywords.FOR:
-								var var_dec = "var " + stripped.get_slice("for ", 1).get_slice(" in ", 0).strip_edges()
-								var var_data = Utils.add_var_to_dict(var_dec, context_start_line, local_vars)
-								blocks.append({"type":"for",
-								"indent": line_indent,
-								"var":{"name": var_data[0], "type": var_data[1]}})
-							else:
-								blocks.append({"type":control_flow.strip_edges(),
-								"indent": line_indent,
-								"expr": _get_control_flow_expression(context_start_line, control_flow)})
 							current_indent = line_indent
+							if control_flow in map_blocks_array:
+								if control_flow == Keywords.FOR:
+									var var_dec = "var " + stripped.get_slice("for ", 1).get_slice(" in ", 0).strip_edges()
+									var var_data = Utils.add_var_to_dict(var_dec, context_start_line, local_vars)
+									blocks.append({"type":"for",
+									"indent": line_indent,
+									"var":{"name": var_data[0], "type": var_data[1]}})
+								else:
+									blocks.append({"type":control_flow.strip_edges(),
+									"indent": line_indent,
+									"expr": _get_control_flow_expression(context_start_line, control_flow)})
 				
 				if map_local_vars:
 					var var_data = Utils.add_var_to_dict(stripped, context_start_line, local_vars)
 					if var_data != null:
+						#print("MAP LOCAL::", var_data, "::IND::CUR::", current_indent, "::LINE::", line_indent)
 						continue
 				else:
 					if not Utils.line_has_any_declaration(stripped):

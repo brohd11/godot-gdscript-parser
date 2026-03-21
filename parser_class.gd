@@ -169,6 +169,29 @@ func get_constant_or_class(identifier:String):
 	elif inner_classes.has(identifier):
 		return inner_classes[identifier]
 
+func get_member_type(identifier:String):
+	var member_data = get_member(identifier)
+	if member_data == null:
+		return ""
+	elif member_data is ParserFunc:
+		return member_data.get_return_type(true)
+	else:
+		var parser = Utils.ParserRef.get_parser(self)
+		var type_lookup = parser.get_type_lookup()
+		var declaration = type_lookup.get_class_obj_member_type(identifier, self, {})
+		var cached = _resolve_cache.get_or_add(identifier, {})
+		var type:String
+		if declaration != cached.get(Keys.CLASS_CACHE_DEC, ""):
+			type = parser.resolve_expression(identifier, line_indexes[0])
+			cached[Keys.CLASS_CACHE_TYPE] = type
+		else:
+			type = cached.get(Keys.CLASS_CACHE_TYPE, "")
+		
+		cached[Keys.CLASS_CACHE_DEC] = declaration
+		_resolve_cache[identifier] = cached
+		return type
+	return ""
+
 func has_preload(path:String): # doesnt handle inherited, should cache this somehow
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET PRELOAD")
 	#var inherited = get_inherited_members()

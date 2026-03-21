@@ -7,7 +7,7 @@ const ParserRef = Utils.ParserRef
 const Keys = Utils.Keys
 const UString = GDScriptParser.UString
 const UClassDetail = GDScriptParser.UClassDetail
-const AccessObject = GDScriptParser.TypeLookup.AccessObject
+const AccessObject = GDScriptParser.Access.AccessObject
 
 const _MAP_BLOCKS = [Keywords.FOR, Keywords.MATCH]
 
@@ -144,6 +144,7 @@ func parse():
 			if is_instance_valid(current_func_obj):
 				#current_func_obj.parse() # I think handled if func data functions called or setting vars, local vars already scanned
 				local_vars = code_context_start_data.get(Keys.CONTEXT_LOCAL_VARS, {})
+				#print("LOCAL VARS::", local_vars)
 				current_func_obj.set_in_scope_local_vars(local_vars)
 	
 	word_before_caret = code_edit_parser.parse_identifier_at_position(caret_left, caret_left.length() - 1)
@@ -285,14 +286,17 @@ func get_operation_data() -> OperationData:
 	var parser = Utils.ParserRef.get_parser(self)
 	var left = _operation_data.left_text
 	
-	_operation_data.left_access_object = parser.get_type_lookup().resolve_expression_to_access_object(left, get_current_class_object(), local_vars)
+	var left_dec = left
 	
 	if left.begins_with("var "):
 		var data = Utils.get_var_or_const_info(left)
 		if data != null:
-			_operation_data.left_type = parser.get_identifier_type(data[1], caret_line)
-	else:
-		_operation_data.left_type = parser.get_identifier_type(left, caret_line)
+			left_dec = data[1]
+		else:
+			left_dec = ""
+	print("ACCESS PATH:: LEFT DEC::", left_dec)
+	_operation_data.left_type = parser.resolve_expression(left_dec, caret_line)
+	_operation_data.left_access_object = parser.get_type_lookup().resolve_expression_to_access_object(left_dec, get_current_class_object(), local_vars)
 	
 	_operation_data.inferred = true
 	return _operation_data
@@ -300,6 +304,9 @@ func get_operation_data() -> OperationData:
 
 func _set_operation_at_caret():
 	_operation_data = OperationData.new()
+	Utils.ParserRef.set_refs(_operation_data, Utils.ParserRef.get_parser(self))
+	_operation_data.class_obj = get_current_class_object()
+	
 	var current_pos = code_context_caret_pos - 1
 	
 	# use this to check if we accidentally passed a logical boundary (like 'and', 'or')
@@ -404,11 +411,15 @@ func get_function_call_data() -> FunctionCallData:
 	#var access_obj = parser.get_type_lookup().resolve_expression_to_access_object(full_call, get_current_class_object(), local_vars)
 	#_active_function_call.access_object = access_obj
 	
+	
+	_active_function_call.function_data = parser.get_function_data(full_call, caret_line)
+	#_active_function_call.function_data = #^ this needs to operate on function object, it will be faster and ensure proper return
+	
 	print("FULLCALL::", full_call)
 	print("ACCESS OBJ::", _active_function_call.access_object)
 	print("FUNCTION OBJ::", _active_function_call.function_object)
-	_active_function_call.function_data = parser.get_function_data(full_call, caret_line)
-	#_active_function_call.function_data = #^ this needs to operate on function object, it will be faster and ensure proper return
+	print("FUNCTION DATA::", _active_function_call.function_data)
+	
 	
 	_active_function_call.inferred = true
 	return _active_function_call
@@ -538,6 +549,8 @@ func get_match_block_data() -> MatchBlockData:
 	if is_instance_valid(_match_data) and _match_data.is_valid:
 		return _match_data
 	_match_data = MatchBlockData.new()
+	Utils.ParserRef.set_refs(_match_data, Utils.ParserRef.get_parser(self))
+	_match_data.class_obj = get_current_class_object()
 	if not scope_state == ScopeState.MATCH_BRANCH:
 		return _match_data
 	_match_data.indent = current_block.get("indent")
@@ -603,6 +616,11 @@ func get_line_indent(line:int=caret_line):
 
 
 class OperationData:
+	var class_obj:GDScriptParser.ParserClass
+	
+	var _parser:WeakRef #
+	var _code_edit_parser:WeakRef
+	
 	var is_valid:=false
 	var inferred:=false
 	
@@ -613,12 +631,19 @@ class OperationData:
 	var operator:String
 	var right_text:String
 	
-	func get_type_access_path(current_script_path:String, type_path:String=left_type):
+	func get_type_access_path(type_path:String=left_type):
 		if not type_path.begins_with("res://"):
 			return type_path
-		return Utils.find_path_to_type_operation(left_access_object, type_path)
+		var parser = Utils.ParserRef.get_parser(self)
+		var access = parser.get_access()
+		return access.find_path_to_type_operation(class_obj, left_access_object, type_path)
 
 class MatchBlockData:
+	var class_obj:GDScriptParser.ParserClass
+	
+	var _parser:WeakRef #
+	var _code_edit_parser:WeakRef
+	
 	var is_valid:=false
 	var expression:String
 	var type:String
@@ -626,10 +651,12 @@ class MatchBlockData:
 	
 	var access_object:AccessObject
 	
-	func get_type_access_path(current_script_path:String, type_path:String=type):
+	func get_type_access_path(type_path:String=type):
 		if not type_path.begins_with("res://"):
 			return type_path
-		return Utils.find_path_to_type_operation(access_object, type_path)
+		var parser = Utils.ParserRef.get_parser(self)
+		var access = parser.get_access()
+		return access.find_path_to_type_operation(class_obj, access_object, type_path)
 	
 
 
@@ -685,7 +712,7 @@ class FunctionCallData:
 			arg.access_object = arg_access_obj
 		else:
 			var arg_access_obj = AccessObject.new()
-			arg_access_obj.type = arg.type
+			arg_access_obj.declaration_type = arg.type
 			arg_access_obj.access_symbol = "self"
 			arg_access_obj.declaration_symbol = "self"
 			arg.access_object = arg_access_obj
@@ -726,11 +753,6 @@ class FunctionCallData:
 	
 	func _func_get_current_arg_data():
 		var arg_data = function_data.get(Keys.FUNC_ARGS, {})
-		#var arg_names = arg_data.keys()
-		#if current_arg_index >= arg_names.size():
-			#return
-		#var current_arg_name = arg_names[current_arg_index]
-		#return arg_data[current_arg_name]
 		return arg_data.get(_func_get_current_arg_name())
 		
 	
@@ -741,7 +763,7 @@ class FunctionCallData:
 			return ""
 		return arg_names[current_arg_index]
 	
-	func get_type_access_path(current_script_path:String, type_path:String="", argument_object:AccessObject=null):
+	func get_type_access_path(type_path:String="", argument_object:AccessObject=null):
 		if argument_object == null or type_path == "":
 			var arg = func_get_current_arg()
 			argument_object = arg.access_object
@@ -750,12 +772,15 @@ class FunctionCallData:
 		if not type_path.begins_with("res://"):
 			return type_path
 		
+		var parser = Utils.ParserRef.get_parser(self)
+		var access = parser.get_access()
+		
 		var type_script_data = UString.get_script_path_and_suffix(type_path)
 		var type_script_path = type_script_data[0]
-		var primary_access_object = Utils.get_access_object(current_script_path, type_script_path, access_object, argument_object)
+		var primary_access_object = access.get_access_object(class_obj.main_script_path, type_script_path, access_object, argument_object)
 		if primary_access_object == argument_object:
 			argument_object = null
-		return Utils.find_path_to_type_function(primary_access_object, argument_object, type_path, function_object)
+		return access.find_path_to_type_function(class_obj, primary_access_object, argument_object, type_path, function_object)
 	
 	
 	class Argument:

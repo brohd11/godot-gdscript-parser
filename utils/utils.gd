@@ -85,7 +85,7 @@ static func get_enum_info(stripped_line: String) -> Array:
 	if not is_instance_valid(_enum_regex):
 		_enum_regex = RegEx.new()
 		_enum_regex.compile("^enum\\s+([a-zA-Z_]\\w*)?\\s*\\{([^}]*)\\}")
-	
+	r"^enum\s+([a-zA-Z_]\w*)?\s*\{([^}]*)\}"
 	var _match = _enum_regex.search(stripped_line)
 	if not _match:
 		return []
@@ -277,7 +277,7 @@ static func get_access_object(current_script_path:String, type_path:String, acce
 		print_deb(T.ACCESS_PATH, "ACCESS")
 		return access_object
 	
-	var access_script_data = UString.get_script_path_and_suffix(access_object.type)
+	var access_script_data = UString.get_script_path_and_suffix(access_object.declaration_type)
 	var access_script_path = access_script_data[0]
 	
 	var type_script_data = UString.get_script_path_and_suffix(type_path)
@@ -301,7 +301,7 @@ static func get_access_object(current_script_path:String, type_path:String, acce
 static func find_path_to_type_operation(from_access:AccessObject, to_find:String):
 	print_deb(T.ACCESS_PATH, "TO FIND",to_find)
 	var symbol = from_access.declaration_symbol
-	var access_obj_type = from_access.type
+	var access_obj_type = from_access.declaration_type
 	print_deb(T.ACCESS_PATH, "DEC",  symbol, access_obj_type)
 	print_deb(T.ACCESS_PATH, "ACCESS", from_access.access_symbol, from_access.access_type)
 	if access_obj_type.ends_with(ENUM_SUFFIX): # if direct declaration is enum, switch to access symbol
@@ -330,7 +330,7 @@ static func find_path_to_type_operation(from_access:AccessObject, to_find:String
 		if access_obj_type.ends_with(ENUM_SUFFIX): # at this point, this would mean we've switched to access symbol and it is still enum
 			print_deb(T.ACCESS_PATH, "OBJ IS ENUM")
 			return from_access.declaration_symbol  # switch back to declaration which will have full path from access to declaration or named var, i think
-		elif from_access.type.ends_with(ENUM_SUFFIX): #^ not sure about this, but is needed for when classes imported as const in the current file
+		elif from_access.declaration_type.ends_with(ENUM_SUFFIX): #^ not sure about this, but is needed for when classes imported as const in the current file
 			return from_access.declaration_symbol
 		return UString.dot_join(symbol, to_find_class_path)
 	else: # access is not the type script, but we accessed it from this so it should be somewhere. Search for the script preloaded
@@ -351,7 +351,7 @@ static func find_path_to_type_function(from_access:AccessObject, argument_access
 	
 	print_deb(T.ACCESS_PATH, "FUNCTION")
 	var symbol = from_access.declaration_symbol
-	var access_obj_type = from_access.type
+	var access_obj_type = from_access.declaration_type
 	print_deb(T.ACCESS_PATH, "DEC",  symbol, access_obj_type)
 	print_deb(T.ACCESS_PATH, "ACCESS", from_access.access_symbol, from_access.access_type)
 	if access_obj_type.ends_with(ENUM_SUFFIX): # same logic as above
@@ -381,7 +381,7 @@ static func find_path_to_type_function(from_access:AccessObject, argument_access
 		if access != null:
 			path_access = UString.dot_join(symbol, access) # if we find func script in the access script, append access to symbol
 	
-	print_deb(T.ACCESS_PATH, "ARG DEC", argument_access.declaration_symbol, argument_access.type)
+	print_deb(T.ACCESS_PATH, "ARG DEC", argument_access.declaration_symbol, argument_access.declaration_type)
 	print_deb(T.ACCESS_PATH, "ARG ACCESS", argument_access.access_symbol, argument_access.access_type)
 	
 	# attempt to find the declaration symbol in the script, this would be for consts in the body but used in inner classes
@@ -389,7 +389,7 @@ static func find_path_to_type_function(from_access:AccessObject, argument_access
 	print_deb(T.ACCESS_PATH, "REV FIND", "FUNC OBJ", function_object, rev_find)
 	
 	if rev_find != null: # found a path to the symbol, reverse search returns a path without symbol
-		if argument_access.type.ends_with(ENUM_SUFFIX): # arg is direct enum declaration
+		if argument_access.declaration_type.ends_with(ENUM_SUFFIX): # arg is direct enum declaration
 			print_deb(T.ACCESS_PATH, "IS NUM", rev_find, argument_access.declaration_symbol)
 			to_find_class_path = UString.dot_join(rev_find, argument_access.declaration_symbol) # to class path ovewritten to new path
 			if func_script.get_global_name() != "": # found the arg in the function object, rebase if global name. But what if no global name?

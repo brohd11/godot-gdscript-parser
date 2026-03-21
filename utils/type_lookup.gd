@@ -8,9 +8,11 @@ const Keys = Utils.Keys
 const UString = GDScriptParser.UString
 const UFile = GDScriptParser.UFile
 const UClassDetail = GDScriptParser.UClassDetail
+const AccessObject = GDScriptParser.Access.AccessObject
 
 const BuiltInChecker = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/builtin/builtin_checker.gd")
 
+const ENUM_SUFFIX = Keys.ENUM_PATH_SUFFIX
 const OTHER_TYPES = ["void", "Variant"]
 
 
@@ -61,6 +63,7 @@ func get_function_data(identifier, class_obj:ParserClass, line:int=-1):
 		else:
 			var func_obj = class_obj.get_function(identifier) as ParserFunc
 			if is_instance_valid(func_obj):
+				print("SIMPLE GET::", func_obj.get_function_data())
 				return func_obj.get_function_data()
 			return {}
 	
@@ -117,6 +120,7 @@ func _outside_script_get_function_data(script_path:String, access_path:String, i
 		var class_obj = parser.get_class_object(access_path) as ParserClass
 		var function = class_obj.get_function(identifier) as ParserFunc
 		if is_instance_valid(function):
+			print("SIMPLE GET::", function.get_function_data())
 			return function.get_function_data()
 	
 	var data = UClassDetail.get_member_info_by_path(script, UString.dot_join(access_path, identifier))
@@ -475,10 +479,10 @@ func resolve_expression_to_access_object(expression: String, initial_class_obj: 
 		access_symbol = "self"
 	access_object.access_symbol = access_symbol
 	
-	access_object.type = resolve_expression(dec_symbol, initial_class_obj, local_vars)
+	access_object.declaration_type = resolve_expression(dec_symbol, initial_class_obj, local_vars)
 	access_object.access_type = resolve_expression(access_symbol, initial_class_obj, local_vars)
 	
-	print_deb(T.VAR_TO_CONST, "TYPE", access_object.type, "DEC",access_object.declaration_symbol, "ACCESS" ,access_object.access_symbol)
+	print_deb(T.VAR_TO_CONST, "TYPE", access_object.declaration_type, "DEC",access_object.declaration_symbol, "ACCESS" ,access_object.access_symbol)
 	return access_object
 
 
@@ -524,6 +528,8 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 			#return ""
 			#^c Unsure about this, technically, if it is inherited, the access is self? Not sure what this should resolve to.
 			var inh_script_path = _find_member_inheriting_script(identifier, current_class_obj.script_resource)
+			if inh_script_path == "":
+				return ""
 			var parser = _get_parser_for_script(inh_script_path)
 			var type_lookup = parser.get_type_lookup()
 			var inh_class_obj = parser.get_class_object()
@@ -618,6 +624,9 @@ func _resolve_const_path(member_name:String, class_obj:ParserClass):
 
 
 #endregion
+
+
+
 
 #region Utils
 ## Get member type in class obj. Returns declaration or converted to type if it is a simple check [method _simple_type_check].
@@ -744,57 +753,57 @@ func _class_member_type(base_type:String, identifier:String):
 
 ## Get a class_name from property info and convert to a type if possible.
 ## If method data, uses return data.
-func property_info_to_type(property_info, class_obj:ParserClass) -> String:
-	var type = _property_info_to_type(property_info, class_obj)
-	return type
-
-func _property_info_to_type(property_info, class_obj:ParserClass) -> String:
-	if property_info is Dictionary:
-		if property_info.has("return"):
-			property_info = property_info.get("return", {})
-		
-		if property_info.has("class_name"):
-			var _class_name = property_info.get("class_name")
-			if _class_name == "":
-				var type = property_info.get("type")
-				return type_string(type)
-			
-			if not _class_name.begins_with("res://"):
-				return _class_name
-			
-			var class_path = _class_name
-			var const_name = class_obj.has_preload(class_path)
-			if const_name:
-				return const_name
-			
-			#var class_path = _class_name #^ old version
-			#var access_name = ""
-			##if _class_name.find(".gd.") > -1: #^ maybe able comment this with preload map modified
-				##class_path = _class_name.substr(0, _class_name.find(".gd.") + 3) # + 3 to keep ext
-				##access_name = _class_name.substr(_class_name.find(".gd.") + 4) # + 4 to omit ext
-			#var const_name = preload_map.get(class_path)
+#func property_info_to_type(property_info, class_obj:ParserClass) -> String:
+	#var type = _property_info_to_type(property_info, class_obj)
+	#return type
+#
+#func _property_info_to_type(property_info, class_obj:ParserClass) -> String:
+	#if property_info is Dictionary:
+		#if property_info.has("return"):
+			#property_info = property_info.get("return", {})
+		#
+		#if property_info.has("class_name"):
+			#var _class_name = property_info.get("class_name")
+			#if _class_name == "":
+				#var type = property_info.get("type")
+				#return type_string(type)
+			#
+			#if not _class_name.begins_with("res://"):
+				#return _class_name
+			#
+			#var class_path = _class_name
+			#var const_name = class_obj.has_preload(class_path)
 			#if const_name:
-				#if access_name == "":
-					#return const_name
-				#else:
-					#return const_name + "." + access_name
-			
-			return _class_name # return class name as path or class to process elsewhere
-		
-	elif property_info is GDScript:
-		var current_script = _get_parser_main_script()
-		var member_path = UClassDetail.script_get_member_by_value(current_script, property_info)
-		if member_path != null:
-			return member_path
-		
-		var path = property_info.resource_path
-		var const_name = class_obj.has_preload(path)
-		if const_name:
-			return const_name
-	
-	if PRINT_DEBUG:
-		printerr("UNHANDLED PROPERTY INFO OR UNFOUND: ", property_info)
-	return ""
+				#return const_name
+			#
+			##var class_path = _class_name #^ old version
+			##var access_name = ""
+			###if _class_name.find(".gd.") > -1: #^ maybe able comment this with preload map modified
+				###class_path = _class_name.substr(0, _class_name.find(".gd.") + 3) # + 3 to keep ext
+				###access_name = _class_name.substr(_class_name.find(".gd.") + 4) # + 4 to omit ext
+			##var const_name = preload_map.get(class_path)
+			##if const_name:
+				##if access_name == "":
+					##return const_name
+				##else:
+					##return const_name + "." + access_name
+			#
+			#return _class_name # return class name as path or class to process elsewhere
+		#
+	#elif property_info is GDScript:
+		#var current_script = _get_parser_main_script()
+		#var member_path = UClassDetail.script_get_member_by_value(current_script, property_info)
+		#if member_path != null:
+			#return member_path
+		#
+		#var path = property_info.resource_path
+		#var const_name = class_obj.has_preload(path)
+		#if const_name:
+			#return const_name
+	#
+	#if PRINT_DEBUG:
+		#printerr("UNHANDLED PROPERTY INFO OR UNFOUND: ", property_info)
+	#return ""
 
 
 func _property_info_to_type_no_class(property_info) -> String:
@@ -865,14 +874,13 @@ func _simple_type_check(type_hint:String):
 	return ""
 
 
-
-
-
 func _get_script_member_type(line:int, column:int=0): # thjs could be a bit more efficient, if not needed, could use what you got already, 
 	var code_edit_parser = _get_code_edit_parser() # but also maybe speeding up scan by not getting types could be good
 	var get_type_data = code_edit_parser.get_type_from_line(line, column)
 	var result = get_type_data.get("result")
 	if result == null:
+		return ""
+	elif result is Array and result.is_empty():
 		return ""
 	var dec_type = get_type_data.get("type", &"")
 	if dec_type == Keys.MEMBER_TYPE_CONST or dec_type == Keys.MEMBER_TYPE_VAR or dec_type == Keys.MEMBER_TYPE_STATIC_VAR:
@@ -934,6 +942,13 @@ func _get_parser_for_script(script_path:String):
 	var parser = Utils.ParserRef.get_parser(self)
 	return parser.get_parser_for_path(script_path)
 
+func _get_parser_and_class_for_script(full_script_path:String):
+	var parser = Utils.ParserRef.get_parser(self)
+	var script_data = UString.get_script_path_and_suffix(full_script_path)
+	var script_path = script_data[0]
+	var class_access = script_data[1]
+	return parser.get_parser_and_class_obj(script_path, class_access)
+
 
 func get_parser_objects_and_local_vars(line:int) -> ClassData:
 	var parser = Utils.ParserRef.get_parser(self)
@@ -956,11 +971,6 @@ class ClassData:
 				func_obj.parse()
 				local_vars = func_obj.get_in_scope_local_vars(line)
 
-class AccessObject:
-	var type:String
-	var declaration_symbol:String
-	var access_type:String
-	var access_symbol:String
 
 #! arg_location section:T
 static func print_deb(section:String, ...msg:Array):
@@ -971,10 +981,11 @@ static func print_deb(section:String, ...msg:Array):
 		ALibEditor.PrintDebug.print(msg)
 
 const _PRINT = [
-	T.BUILTIN, 
+	#T.BUILTIN, 
 	T.INHERITED,
 	#T.VAR_TO_CONST,
-	T.RESOLVE
+	#T.RESOLVE,
+	T.ACCESS_PATH
 	]
 
 
@@ -983,3 +994,4 @@ class T:
 	const BUILTIN = "BUILTIN"
 	const INHERITED = "INHERITED"
 	const VAR_TO_CONST = "VAR TO CONST"
+	const ACCESS_PATH = "ACCESS PATH"

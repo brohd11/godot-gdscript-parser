@@ -11,6 +11,7 @@ const ParserFunc = preload("res://addons/addon_lib/brohd/alib_runtime/utils/reso
 const CaretContext = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/caret_context.gd")
 const CodeEditParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/code_edit_parser.gd")
 const TypeLookup = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/type_lookup.gd")
+const Access = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/access.gd")
 
 const Utils = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/utils.gd")
 const Keys = Utils.Keys
@@ -24,6 +25,7 @@ var _max_cache_size = 10
 var code_edit_parser:CodeEditParser
 var _caret_context:CaretContext
 var _type_lookup:TypeLookup
+var _access:Access
 
 var code_edit:CodeEdit
 
@@ -36,10 +38,12 @@ var _class_access:Dictionary = {}
 
 func _init() -> void:
 	code_edit_parser = CodeEditParser.new()
-	code_edit_parser._parser = weakref(self)
-	
 	_type_lookup = TypeLookup.new()
-	_type_lookup._parser = weakref(self)
+	_access = Access.new()
+	
+	var ref_objs = [code_edit_parser, _type_lookup, _access]
+	for object in ref_objs:
+		Utils.ParserRef.set_refs(object, self)
 	
 	_parser_cache = _static_parser_cache
 
@@ -116,12 +120,18 @@ func parse(force:=false):
 	
 	#print_hierarchy()
 
+func get_global_name():
+	var root_class = get_class_object() as ParserClass
+	return root_class.class_name_data.get(Keys.MEMBER_NAME, "")
 
 func get_code_edit_parser():
 	return code_edit_parser
 
 func get_type_lookup():
 	return _type_lookup
+
+func get_access():
+	return _access
 
 func get_string_map(string:String):
 	return code_edit_parser.get_string_map(string)
@@ -153,6 +163,7 @@ func get_function_at_line(line:int):
 	var access_path = get_class_at_line(line)
 	var class_obj = _class_access[access_path] as ParserClass
 	return class_obj.get_function_at_line(line)
+
 
 func get_function_data(identifier_name:String, line:int=-1) -> Dictionary:
 	if line == -1:

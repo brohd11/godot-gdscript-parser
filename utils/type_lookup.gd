@@ -433,7 +433,6 @@ func resolve_expression_to_access_object_at_line(expression:String, line:int):
 	return resolve_expression_to_access_object(expression, parser_data.class_obj, parser_data.local_vars)
 
 func resolve_expression_to_access_object(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary):
-	
 	var parser = _get_parser()
 	var main_script = parser.get_current_script()
 	var main_script_path = main_script.resource_path
@@ -446,13 +445,19 @@ func resolve_expression_to_access_object(expression: String, initial_class_obj: 
 	var front = UString.get_member_access_front(expression, string_map)
 	var back = UString.get_member_access_back(expression, string_map)
 	
+	print_deb(T.VAR_TO_CONST, "ACCESS OBJECT START", expression)
 	
 	var access_object = AccessObject.new()
 	
 	# ALERT testing with back, was front before
 	var dec_symbol = _resolve_access_object([front], initial_class_obj, local_vars, true)
 	if dec_symbol == front:
-		dec_symbol = expression # this is for type hints var:SomeClass.Type, returns the whole string
+		var new = expression
+		#new = _validate_const_chain(expression, initial_class_obj)
+		print_deb(T.VAR_TO_CONST, "DECLARATION RAW SWITCH", dec_symbol, " -> ", new)
+		dec_symbol = expression
+		#dec_symbol = _validate_const_chain(expression, initial_class_obj) # this is for type hints var:SomeClass.Type, returns the whole string
+	# ALERT
 	print_deb(T.VAR_TO_CONST, "DECLARATION RAW", dec_symbol)
 	if dec_symbol.begins_with("res://"):
 		var script_data = UString.get_script_path_and_suffix(dec_symbol)
@@ -519,8 +524,14 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 			
 			resolved_type = _var_to_const(identifier, current_class_obj, local_vars, first_const)
 			print_deb(T.VAR_TO_CONST, "IN CLASS RESOLVED", resolved_type)
+			var front = UString.get_member_access_front(resolved_type)
+			
+			if current_class_obj.has_constant_or_class(front):
+				if resolved_type.contains("."):
+					resolved_type = _validate_const_chain(resolved_type, current_class_obj)
+				return resolved_type
 			if resolved_type != identifier:
-				parts.push_front(UString.get_member_access_front(resolved_type))
+				parts.push_front(front)
 				continue
 			else:
 				return resolved_type
@@ -622,6 +633,44 @@ func _resolve_const_path(member_name:String, class_obj:ParserClass):
 	full_chain_parts.push_front(result)
 	return ".".join(full_chain_parts)
 
+const CONST_TYPES = [Keys.MEMBER_TYPE_CLASS, Keys.MEMBER_TYPE_CONST]
+func _validate_const_chain(chain_text:String, class_obj:ParserClass):
+	var parser = _get_parser()
+	
+	if chain_text.begins_with("res://"):
+		print_deb(T.VAR_TO_CONST, "EARLY EXIT", "BEGIN WITH RES", chain_text)
+		return chain_text
+	
+	var string_map = parser.get_string_map(chain_text)
+	var parts = UString.split_member_access(chain_text, string_map)
+	
+	var working_path = ""
+	for i in range(parts.size()):
+		var part = parts[i]
+		var type = ""
+		if UClassDetail.get_global_class_path(part) != "":
+			type = UClassDetail.get_global_class_path(part)
+		else:
+			var member_data = class_obj.get_member(part)
+			if member_data == null or member_data is ParserFunc:
+				break
+			var member_type = member_data.get(Keys.MEMBER_TYPE)
+			if member_type == Keys.MEMBER_TYPE_ENUM:
+				working_path = UString.dot_join(working_path, part)
+				break
+			if member_type not in CONST_TYPES:
+				break
+			
+			type = class_obj.get_member_type(part)
+			if not type.begins_with("res://"):
+				break
+		working_path = UString.dot_join(working_path, part)
+		var next_parser_data = parser.get_parser_and_class_obj_for_script(type)
+		parser = next_parser_data.parser
+		class_obj = next_parser_data.class_obj
+		#var result = next_parser.
+	
+	return working_path
 
 #endregion
 
@@ -982,10 +1031,10 @@ static func print_deb(section:String, ...msg:Array):
 
 const _PRINT = [
 	#T.BUILTIN, 
-	T.INHERITED,
+	#T.INHERITED,
 	#T.VAR_TO_CONST,
 	#T.RESOLVE,
-	T.ACCESS_PATH
+	#T.ACCESS_PATH
 	]
 
 

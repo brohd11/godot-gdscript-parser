@@ -299,6 +299,9 @@ func get_class_base_script():
 	if is_instance_valid(script_resource):
 		return script_resource.get_base_script()
 
+func inherits_script(script_path:String):
+	return script_path in get_inherited_scripts()
+
 func get_inherited_scripts() -> Array:
 	var base_script = get_class_base_script()
 	if base_script == null:

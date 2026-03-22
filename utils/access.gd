@@ -18,202 +18,230 @@ const PRINT_DEBUG = true # not PLUGIN_EXPORTED
 
 var _parser:WeakRef
 
-func get_access_object(current_script_path:String, type_path:String, access_object:AccessObject, external_object:AccessObject):
-	if external_object == null:
-		print_deb(T.ACCESS_PATH, "ACCESS")
-		return access_object
+
+## Find path to 'to_find' from current class. current_access is the current_script symbol used to access the type. secondary_access is from the script where the
+## function or var is defined. Secondary path is that script path.
+func find_path_to_type(class_obj:ParserClass, current_access:AccessObject, secondary_access:AccessObject, to_find:String, secondary_path:String):
+	var result = _find_path_to_type(class_obj, current_access, secondary_access, to_find, secondary_path)
+	# ensure no suffixes, or self prefix
+	result.standard = _clean_path(result.standard)
+	result.script_alias = _clean_path(result.script_alias)
+	result.global = _clean_path(result.global)
+	return result
+
+func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, secondary_access:AccessObject, to_find:String, secondary_path:String):
+	if secondary_access == null or current_access == secondary_access: # if no valid argument access or is our main object, can just do the operation func
+		return find_path_to_type_simple(class_obj, current_access, to_find)
 	
-	var access_script_data = UString.get_script_path_and_suffix(access_object.declaration_type)
+	var current_script_path = class_obj.main_script_path
+	print_deb(T.ACCESS_PATH, "FUNCTION", "----------------------------------------")
+	print_deb(T.ACCESS_PATH,"FROM", current_script_path, "TO FIND",to_find)
+	
+	var access_options = AccessOptions.new()
+	# get global name and script alias are easy to run
+	get_global_name_and_script_alias(to_find, class_obj, access_options)
+	
+	# script where func or var is, this may or may not be the current script
+	var secondary_script_data = UString.get_script_path_and_suffix(secondary_path)
+	var secondary_script_path = secondary_script_data[0]
+	
+	var to_find_script_data = UString.get_script_path_and_suffix(to_find) # same logic as above
+	var to_find_script_path = to_find_script_data[0]
+	var to_find_script = load(to_find_script_path) as GDScript
+	var to_find_class_path = to_find_script_data[1].trim_suffix(ENUM_SUFFIX) # trim suffix here? should not be needed after since we knew it going in
+	
+	var access_script_data = UString.get_script_path_and_suffix(current_access.access_type) # same logic as above
 	var access_script_path = access_script_data[0]
+	#var access_script = load(access_script_path) as GDScript
+	#var access_class_path = access_script_data[1].trim_suffix(ENUM_SUFFIX) # don't need for a search by val
 	
-	var type_script_data = UString.get_script_path_and_suffix(type_path)
-	var type_script_path = type_script_data[0]
-	#var arg_front = UString.get_member_access_front(external_object.access_symbol) # not sure about doing this, it does simplify though
+	var declaration_script_data = UString.get_script_path_and_suffix(current_access.declaration_type) # same logic as above
+	var declaration_script_path = declaration_script_data[0]
+	var declaration_class_path = declaration_script_data[1]
 	
-	 # if access object is current script and type is outside of script, use argument. Then if argument is current, that is fine
-	#var func_access_is_current_script = access_script_path.begins_with(current_script_path)
-	#if func_access_is_current_script and type_script_path != access_script_path:
-		#print_deb(T.ACCESS_PATH, "ARG")
-		#return external_object
-	#elif UClassDetail.get_global_class_path(arg_front) != "": # if arg uses a global access, use it
-		#print_deb(T.ACCESS_PATH, "ARG")
-		#return external_object
-	#else: # finally, use access object
-		#print_deb(T.ACCESS_PATH, "ACCESS")
-	return access_object
+	var parser = Utils.ParserRef.get_parser(self)
+	
+	print_deb(T.ACCESS_PATH, "DEC",  current_access.declaration_symbol, current_access.declaration_type)
+	print_deb(T.ACCESS_PATH, "ACCESS", current_access.access_symbol, current_access.access_type)
+	print_deb(T.ACCESS_PATH, "DEC",  secondary_access.declaration_symbol, secondary_access.declaration_type)
+	print_deb(T.ACCESS_PATH, "ACCESS", secondary_access.access_symbol, secondary_access.access_type)
+	print_deb(T.ACCESS_PATH, "FUNCTION", secondary_path)
+	
+	# if current script is relevant, can simplify process. if to find is in current or external is current
+	if current_script_path == to_find_script_path or current_script_path == secondary_script_path or parser.script_inherits(current_script_path, to_find_script_path):
+		
+		# if current script has the declaration symbol, we are good. This function automatically splits member access parts
+		if class_has_const(secondary_access.declaration_symbol, class_obj) and secondary_access.declaration_type == to_find:
+			access_options.standard = secondary_access.declaration_symbol
+			return access_options
+		elif class_has_const(current_access.access_symbol, class_obj):
+			# if it has the access symbol, can check for a path to declaration symbol
+			var search = get_member_by_value(access_script_path, secondary_access.declaration_type)
+			print_deb(T.ACCESS_PATH, "HAS ACCESS", "SEARCH", search)
+			if search != null: # if it does, can safely use the path, otherwise defer to simple logic
+				access_options.standard = UString.dot_join(current_access.access_symbol, secondary_access.declaration_symbol)
+				return access_options
+		
+		print_deb(T.ACCESS_PATH, "FUNC -> OPERATION") # possibly this should be only for script == external object? to find seems to work fine though
+		return find_path_to_type_simple(class_obj, secondary_access, to_find) # since we are in the external object it should be safe to use it 
+	
+	
+	# secondary external to current script and primary access object.
+	if secondary_script_path != access_script_path:
+		# attempt to find a path from the declaration in current script to the secondary script
+		var dec_to_sec_path = get_member_by_value(declaration_script_path, secondary_script_path)
+		if dec_to_sec_path != null: # if found, can extend the path from declaration symbol to the secondary symbol
+			print_deb(T.ACCESS_PATH, "FUNCTION OUT OF ACCESS SCRIPT, FOUND DEC PATH", dec_to_sec_path)
+			access_options.standard = UString.dot_joinv([current_access.declaration_symbol, dec_to_sec_path, secondary_access.declaration_symbol])
+			return access_options
+		
+		# attempt the same with the access symbol
+		var access_to_sec_path = get_member_by_value(access_script_path, secondary_script_path)
+		print_deb(T.ACCESS_PATH, "SECONDARY NOT ACCESS SCRIPT", "PATH TO", access_to_sec_path)
+		if access_to_sec_path != null: # if found, can extend the path from access symbol to the secondary symbol
+			print_deb(T.ACCESS_PATH, "SECONDARY OUT OF ACCESS SCRIPT, BUT FOUND PATH")
+			access_options.standard = UString.dot_joinv([current_access.access_symbol, access_to_sec_path, secondary_access.declaration_symbol])
+			return access_options
+		else: # can not reach this from here, can attempt a global or abort, a valid global would be there already if possible
+			var to_find_global_name = to_find_script.get_global_name()
+			if to_find_global_name != "": # if yes, set it, if not, there is not much left we can do. return the options without a standard path
+				var class_access = _find_constant_relative_path(secondary_path, secondary_access.declaration_symbol)
+				access_options.standard = UString.dot_joinv([to_find_global_name, class_access, secondary_access.declaration_symbol])
+			print_deb(T.ACCESS_PATH, "SECONDARY OUT OF ACCESS SCRIPT, NO PATH", access_options.standard)
+			return access_options
+	
+	
+	print_deb(T.ACCESS_PATH, "SECONDARY IS ACCESS SCRIPT")
+	# access script is the secondary script at this point
+	# check id the declaration exists in the current file and at what scope. inner classes can use const in the root for example
+	var declaration_access = _find_constant_relative_path(access_script_path, secondary_access.declaration_symbol)
+	print_deb(T.ACCESS_PATH, "DECLARATION ACCESS", declaration_access)
+	if declaration_access != null: # if found, we can extend access to the declaration. #^r should this be from the secondary access to dec? Seems to work as is
+		access_options.standard = UString.dot_joinv([current_access.declaration_symbol, declaration_access, secondary_access.declaration_symbol])
+		return access_options
+	else:
+		print_deb(T.ACCESS_PATH, "ACCESS SCRIPT COULD NOT FIND CLASS ACCESS")
+	
+	# if declaration has global name, use it
+	var front_dec = UString.get_member_access_front(secondary_access.declaration_symbol)
+	if UClassDetail.get_global_class_path(front_dec) != "":
+		print_deb(T.ACCESS_PATH, "ARG IS GLOBAL", front_dec)
+		var declaration_suffix = "" # if the declation script is to_find or inherits, trim the class access in case of inner classes
+		if to_find_script_path.begins_with(declaration_script_path) or parser.script_inherits(declaration_script_path, to_find_script_path):
+			declaration_suffix = remove_suffixes(to_find_class_path.trim_prefix(declaration_class_path).trim_prefix("."))
+			print_deb(T.ACCESS_PATH, "DEC SUFFIX", declaration_suffix)
+		
+		access_options.standard = UString.dot_joinv([secondary_access.declaration_symbol, declaration_suffix])
+		return access_options
+	
+	# last check, search class and it's preloads for to_find. This is a recursive search
+	var access_to_find_path = get_member_by_value(access_script_path, to_find)
+	if access_to_find_path != null:
+		print_deb(T.ACCESS_PATH, "FINAL GET BY VAL", access_to_find_path)
+		access_options.standard = UString.dot_joinv([current_access.declaration_symbol, access_to_find_path])
+		return access_options
+	
+	# nothing found, return no standard
+	print_deb(T.ACCESS_PATH, "END OF FUNC")
+	return access_options
 
 
-func find_path_to_type_operation(class_obj:ParserClass, from_access:AccessObject, to_find:String):
+
+func find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject, to_find:String):
 	var parser = Utils.ParserRef.get_parser(self)
 	var current_script_path = class_obj.main_script_path
 	print_deb(T.ACCESS_PATH, "OPERATION", "----------------------------------------")
-	print_deb(T.ACCESS_PATH, "TO FIND",to_find)
+	print_deb(T.ACCESS_PATH,"FROM", current_script_path, "TO FIND",to_find)
 	
 	var access_options = AccessOptions.new()
 	get_global_name_and_script_alias(to_find, class_obj, access_options)
 	
 	var to_find_script_data = UString.get_script_path_and_suffix(to_find)
-	var to_find_script_path = to_find_script_data[0] # get script of type to find
-	var to_find_script = load(to_find_script_path) as GDScript
+	var to_find_script_path = to_find_script_data[0]
+	#var to_find_script = load(to_find_script_path) as GDScript
 	var to_find_class_path = to_find_script_data[1].trim_suffix(ENUM_SUFFIX) # trim suffix here? should not be needed after since we knew it going in
 	
-	var access_script_data = UString.get_script_path_and_suffix(from_access.access_type)
+	var access_script_data = UString.get_script_path_and_suffix(access_object.access_type)
 	var access_script_path = access_script_data[0] # get script of access object resolved type
-	var access_script = load(access_script_path) as GDScript
-	var access_class_path = access_script_data[1].trim_suffix(ENUM_SUFFIX)
+	#var access_script = load(access_script_path) as GDScript
+	#var access_class_path = access_script_data[1].trim_suffix(ENUM_SUFFIX)
 	
-	if current_script_path == to_find_script_path:# or current_script_path == access_script_path:
-		if class_obj.has_constant_or_class(from_access.declaration_symbol) and from_access.declaration_type == to_find:
-			access_options.standard = from_access.declaration_symbol
-		else:
+	print_deb(T.ACCESS_PATH, "DEC",  access_object.declaration_symbol, access_object.declaration_type)
+	print_deb(T.ACCESS_PATH, "ACCESS", access_object.access_symbol, access_object.access_type)
+	
+	# if current script is to find or inherits, should be simple to get access
+	if current_script_path == to_find_script_path or parser.script_inherits(current_script_path, to_find_script_path):# or current_script_path == access_script_path:
+		# if it has the declaration symbol, use it. This would be if it has been redefined in another const
+		if class_has_const(access_object.declaration_symbol, class_obj) and access_object.declaration_type == to_find:
+			access_options.standard = access_object.declaration_symbol
+		else: # if not just use the script class path
 			access_options.standard = to_find_class_path
 		return access_options
 	
-	var declaration_script_data = UString.get_script_path_and_suffix(from_access.declaration_type)
+	var declaration_script_data = UString.get_script_path_and_suffix(access_object.declaration_type)
 	var declaration_script_path = declaration_script_data[0]
 	var declaration_class_path = declaration_script_data[1].trim_suffix(ENUM_SUFFIX)
 	
-	
-	print_deb(T.ACCESS_PATH, "DEC",  from_access.declaration_symbol, from_access.declaration_type)
-	print_deb(T.ACCESS_PATH, "ACCESS", from_access.access_symbol, from_access.access_type)
-	
-	
-	
-	
-	var front_dec = UString.get_member_access_front(from_access.declaration_symbol)
-	if class_has_const(from_access.declaration_symbol, class_obj):
-		if declaration_script_path == to_find_script_path: # declaration and to find are the same, sub declaration symbol and append suffix
+	# to find not in current script, need to use access object
+	if class_has_const(access_object.declaration_symbol, class_obj):
+		# if class has declaration symbol, check if declaration is to_find
+		if declaration_script_path == to_find_script_path: # trim class path in case we are in inner class
 			var trimmed_path = to_find_class_path.trim_prefix(declaration_class_path).trim_prefix(".")
-			access_options.standard = UString.dot_joinv([from_access.declaration_symbol, trimmed_path])
+			access_options.standard = UString.dot_joinv([access_object.declaration_symbol, trimmed_path])
 			print_deb(T.ACCESS_PATH, "HAS CONST AND DEC == TO FIND")
 			return access_options
 		
 		print_deb(T.ACCESS_PATH, "HAS CONST")
-		
+		# attempt to find it within the declaration script
 		var path_to_type = get_member_by_value(declaration_script_data[0], to_find)
 		print_deb(T.ACCESS_PATH, "HAS CONST", "PATH TO TPYE", path_to_type)
-		if path_to_type != null:
-			access_options.standard = UString.dot_joinv([from_access.declaration_symbol, path_to_type])
+		if path_to_type != null: # if found, return dec to path found
+			access_options.standard = UString.dot_joinv([access_object.declaration_symbol, path_to_type])
 			return access_options
 		
 		print_deb(T.ACCESS_PATH, "HAS CONST NO RESOLUTION")
 	
-	
+	# attempt another search from the access script
 	var to_find_access_path = get_member_by_value(access_script_path, to_find)
 	if to_find_access_path != null:
-		print_deb(T.ACCESS_PATH, "to_find_access_path", to_find_access_path)
-		
-		access_options.standard = UString.dot_joinv([from_access.access_symbol, to_find_access_path])
+		print_deb(T.ACCESS_PATH, "TO FIND IN ACCESS PATH", to_find_access_path)
+		access_options.standard = UString.dot_joinv([access_object.access_symbol, to_find_access_path])
 		return access_options
 	else:
-		print_deb(T.ACCESS_PATH, "Could not find to find in access script")
+		print_deb(T.ACCESS_PATH, "COULD NOT FIND TO FIND IN ACCESS SCRIPT")
 	
 	
 	
 	if access_script_path == to_find_script_path:
-		var declaration_access = _find_constant_relative_path(access_script_path, from_access.declaration_symbol)
+		# if access script is the to find, make sure access path is correct
+		var declaration_access = _find_constant_relative_path(access_script_path, access_object.declaration_symbol)
 		if declaration_access != null:
-			access_options.standard = UString.dot_joinv([from_access.declaration_symbol, declaration_access, from_access.declaration_symbol])
+			#^r not sure about this, why is declaration twice? Thinking this doesn't trigger much
+			#^r on that note, this seems like it would make sense above the search from the access script.
+			#^r perhaps that is why this never triggers? it is already being caught above
+			printerr("access.gd - ln:214 - ACCESS == TO FIND, DOES THIS TRIGGER")
+			access_options.standard = UString.dot_joinv([access_object.declaration_symbol, declaration_access, access_object.declaration_symbol])
 			return access_options
 		else:
 			print_deb(T.ACCESS_PATH, "ACCESS SCRIPT COULD NOT FIND CLASS ACCESS")
+		
+		# attempt to find a global name
+		var front_dec = UString.get_member_access_front(access_object.declaration_symbol)
+		if UClassDetail.get_global_class_path(front_dec) != "": # this can fail easily
+			access_options.standard = access_object.declaration_symbol
+			return access_options
 	
-	
-	if UClassDetail.get_global_class_path(front_dec) != "":
-		access_options.standard = from_access.declaration_symbol
-		return access_options
-	
+	# nothing found, return without standard path
 	print_deb(T.ACCESS_PATH, "END OF OP")
 	return access_options
 
 
-func find_path_to_type_function(class_obj:ParserClass, from_access:AccessObject, external_access:AccessObject, to_find:String, function_object:String):
-	if external_access == null or from_access == external_access: # if no valid argument access or is our main object, can just do the operation func
-		return find_path_to_type_operation(class_obj, from_access, to_find)
-	
-	var current_script_path = class_obj.main_script_path
-	print_deb(T.ACCESS_PATH, "FUNCTION", "----------------------------------------")
-	print_deb(T.ACCESS_PATH, "TO FIND",to_find)
-	
-	var access_options = AccessOptions.new()
-	get_global_name_and_script_alias(to_find, class_obj, access_options)
-	
-	var function_object_script_data = UString.get_script_path_and_suffix(function_object) # function object is script where the function is
-	var function_object_path = function_object_script_data[0]
-	#var func_script = load(function_object_path) as GDScript
-	
-	var to_find_script_data = UString.get_script_path_and_suffix(to_find) # same logic as above
-	var to_find_script_path = to_find_script_data[0]
-	var to_find_script = load(to_find_script_path) as GDScript
-	#var to_find_class_path = to_find_script_data[1].trim_suffix(ENUM_SUFFIX) # trim suffix here? should not be needed after since we knew it going in
-	
-	print_deb(T.ACCESS_PATH, "DEC",  from_access.declaration_symbol, from_access.declaration_type)
-	print_deb(T.ACCESS_PATH, "ACCESS", from_access.access_symbol, from_access.access_type)
-	print_deb(T.ACCESS_PATH, "DEC",  external_access.declaration_symbol, external_access.declaration_type)
-	print_deb(T.ACCESS_PATH, "ACCESS", external_access.access_symbol, external_access.access_type)
-	print_deb(T.ACCESS_PATH, "FUNCTION", function_object)
-	
-	
-	if current_script_path == to_find_script_path or current_script_path == function_object_path:
-		if class_has_const(external_access.declaration_symbol, class_obj) and external_access.declaration_type == to_find:
-			access_options.standard = external_access.declaration_symbol # in current script, switch out for declaration if possible
-			print_deb(T.ACCESS_PATH, "CURRENT SCRIPT EXIT")
-			return access_options
-		return find_path_to_type_operation(class_obj, external_access, to_find) # or try a simple operation? this is similar to select object from above
-	
-	var access_script_data = UString.get_script_path_and_suffix(from_access.access_type) # same logic as above
-	var access_script_path = access_script_data[0]
-	#var access_script = load(access_script_path) as GDScript
-	#var access_class_path = access_script_data[1].trim_suffix(ENUM_SUFFIX) # don't need for a search by val
-	
-	var declaration_script_data = UString.get_script_path_and_suffix(from_access.declaration_type) # same logic as above
-	var declaration_script_path = declaration_script_data[0]
-	
-	if function_object_path != access_script_path: # function external to current script and access object.
-		var dec_to_func_path = get_member_by_value(declaration_script_path, function_object_path)
-		if dec_to_func_path != null:
-			print_deb(T.ACCESS_PATH, "FUNCTION OUT OF ACCESS SCRIPT, FOUND DEC PATH", dec_to_func_path)
-			access_options.standard = UString.dot_joinv([from_access.declaration_symbol, dec_to_func_path, external_access.declaration_symbol])
-			return access_options
-		
-		var access_to_func_path = get_member_by_value(access_script_path, function_object_path)
-		print_deb(T.ACCESS_PATH, "FUNCTION NOT ACCESS SCRIPT", "PATH TO", access_to_func_path)
-		if access_to_func_path != null: # could reach function from access path
-			print_deb(T.ACCESS_PATH, "FUNCTION OUT OF ACCESS SCRIPT, BUT FOUND PATH")
-			access_options.standard = UString.dot_joinv([from_access.access_symbol, access_to_func_path, external_access.declaration_symbol])
-			return access_options
-		else: # can not reach this from here, can attempt a global or abort, a valid global would be there already if possible,
-			var to_find_global_name = to_find_script.get_global_name()
-			if to_find_global_name != "":# this would be to 'personalize' the symbol, overwrite global?
-				var class_access = _find_constant_relative_path(function_object, external_access.declaration_symbol)
-				access_options.standard = UString.dot_joinv([to_find_global_name, class_access, external_access.declaration_symbol])
-			
-			return access_options
-	
-	
-	print_deb(T.ACCESS_PATH, "FUNCTION IS ACCESS SCRIPT")
-	
-	#if access_script_path == to_find_script_path:
-	var declaration_access = _find_constant_relative_path(access_script_path, external_access.declaration_symbol)
-	if declaration_access != null:
-		access_options.standard = UString.dot_joinv([from_access.declaration_symbol, declaration_access, external_access.declaration_symbol])
-		return access_options
-	else:
-		print_deb(T.ACCESS_PATH, "ACCESS SCRIPT COULD NOT FIND CLASS ACCESS")
-	
-	var front_arg_dec = UString.get_member_access_front(external_access.declaration_symbol)
-	if UClassDetail.get_global_class_path(front_arg_dec) != "":
-		access_options.standard = external_access.declaration_symbol
-	
-	print_deb(T.ACCESS_PATH, "END OF FUNC")
-	return access_options
-
 
 func _find_constant_relative_path(full_script_path:String, member_to_find:String):
-	var fwd_find = forward_search_for_member(full_script_path, member_to_find)
+	var parser_find = parser_search_for_member(full_script_path, member_to_find)
 	var rev_find = reverse_search_for_member(full_script_path, member_to_find)
-	print_deb(T.ACCESS_PATH, "FWD SEARCH", full_script_path.get_file(), "FWD FIND", fwd_find, "REV FIND", rev_find, "EQUAL", fwd_find == rev_find)
-	return fwd_find
+	print_deb(T.ACCESS_PATH, "FWD SEARCH",member_to_find, "IN", full_script_path.get_file(), "PARSER FIND", parser_find, "REV FIND", rev_find, "EQUAL", parser_find == rev_find)
+	return parser_find
 
 
 func reverse_search_for_member(full_script_path:String, to_find:String):
@@ -242,9 +270,8 @@ func reverse_search_for_member(full_script_path:String, to_find:String):
 		return class_access
 	return null
 
-# this one uses parser, no class detail
-func forward_search_for_member(full_script_path:String, to_find:String):
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("FWD")
+# this one uses parser, access path is cached
+func parser_search_for_member(full_script_path:String, to_find:String):
 	var script_data = UString.get_script_path_and_suffix(full_script_path)
 	var script_path = script_data[0]
 	var script_parser = _get_parser_for_script(script_path)
@@ -254,51 +281,11 @@ func forward_search_for_member(full_script_path:String, to_find:String):
 	if front != to_find:
 		print_deb(T.ACCESS_PATH, "SEARCH FOR MEMBER FRONT NOT FULL", to_find)
 	var constant_data = class_obj.get_constant_or_class(front)
-	t.stop()
+	if constant_data == null:
+		constant_data = class_obj.get_inherited_member(front)
 	if constant_data == null:
 		return null
 	return constant_data.get(Keys.ACCESS_PATH)
-	
-	var class_access_parts = UString.split_member_access(class_access)
-	class_access_parts.push_front("")
-	print("FWD TO FIND ", to_find, "  ", class_access_parts)
-	var search_result = null
-	var working_path = ""
-	for part in class_access_parts:
-		working_path = UString.dot_join(working_path, part)
-		
-		var result = parser_has_path(to_find, script_parser)
-		print("HAS PART ", result)
-		if result:
-			search_result = working_path
-			break
-	t.stop()
-	return search_result
-
-# this one uses parser, no class detail
-func _reverse_search_for_member(full_script_path:String, to_find:String):
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("FWD")
-	var script_data = UString.get_script_path_and_suffix(full_script_path)
-	var script_path = script_data[0]
-	var script_parser = _get_parser_for_script(script_path)
-	var class_access = script_data[1] as String
-	var class_access_parts = UString.split_member_access(class_access)
-	class_access_parts.push_front("")
-	print("FWD TO FIND ", to_find, "  ", class_access_parts)
-	var search_result = null
-	var working_path = ""
-	for part in class_access_parts:
-		working_path = UString.dot_join(working_path, part)
-		
-		var result = parser_has_path(to_find, script_parser)
-		print("HAS PART ", result)
-		if result:
-			search_result = working_path
-			break
-	t.stop()
-	return search_result
-
-
 
 
 # make this available to parser? Possibly should return data though of some type, maybe class obj, then you could run class.get_type() on the last part?
@@ -481,7 +468,7 @@ func class_has_const(symbol:String, class_obj:ParserClass):
 		member_data = class_obj.get_inherited_member(front_arg_dec)
 	if member_data != null:
 		var member_type = member_data.get(Keys.MEMBER_TYPE)
-		if member_type == Keys.MEMBER_TYPE_CLASS or member_type == Keys.MEMBER_TYPE_CONST:
+		if member_type == Keys.MEMBER_TYPE_CLASS or member_type == Keys.MEMBER_TYPE_CONST or member_type == Keys.MEMBER_TYPE_ENUM:
 			return true
 	return false
 
@@ -492,11 +479,13 @@ func get_global_name_and_script_alias(to_find:String, class_obj:ParserClass, acc
 	var to_find_class_path = to_find_script_data[1]
 	if to_find_script.get_global_name() != "":
 		access_options.global = remove_suffixes(UString.dot_join(to_find_script.get_global_name(), to_find_class_path))
+	if access_options.script_alias != "":
+		return # early exit if it has been changed, this can be expensive
 	var preloaded_name = class_obj.has_preload(to_find)
 	if preloaded_name != null:
 		access_options.script_alias = remove_suffixes(preloaded_name)
-	else:
-		if to_find_class_path.contains("."):
+	else: # if the type is not directly found, check if the script or class can be found
+		if to_find_class_path.contains("."): #^r this should maybe be an empty string check, as it is, only inner classes will be checked for, not the script
 			preloaded_name = class_obj.has_preload(UString.trim_member_access_back(to_find))
 			if preloaded_name != null:
 				var back = UString.get_member_access_back(to_find)
@@ -546,6 +535,9 @@ const _PRINT = [
 	#T.RESOLVE,
 	T.ACCESS_PATH
 	]
+
+#func t():
+	#print_deb(T.ACCESS_PATH)
 
 
 class T:

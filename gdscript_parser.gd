@@ -258,6 +258,17 @@ func get_parser_for_path(script_path:String) -> GDScriptParser:
 	_parser_cache[script_path] = parser_data
 	return parser
 
+func get_parser_and_class_obj_for_script(script_path:String):
+	var script_data = UString.get_script_path_and_suffix(script_path)
+	var script_main_path = script_data[0]
+	var class_path = script_data[1]
+	if script_main_path == _script_path:
+		var class_obj = _class_access.get(class_path) as ParserClass
+		return {"parser": self, "class_obj":class_obj}
+	else:
+		var parser = get_parser_for_path(script_main_path)
+		var class_obj = parser.get_class_object(class_path)
+		return {"parser": parser, "class_obj":class_obj}
 
 func get_parser_and_class_obj(script_path:String, class_path:String):
 	if script_path == _script_path:
@@ -278,6 +289,10 @@ func _create_buffer_code_edit():
 		code.set_meta(Keys.PARSER_CODE_EDIT, true)
 		set_code_edit(code)
 
+func script_inherits(to_check:String, inherit_script:String):
+	var parser = get_parser_and_class_obj_for_script(to_check)
+	var class_obj = parser.class_obj as ParserClass
+	return class_obj.inherits_script(inherit_script)
 
 func _code_edit_dispose():
 	var meta = code_edit.get_meta(Keys.PARSER_CODE_EDIT, false)

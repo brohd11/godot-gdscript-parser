@@ -2,6 +2,10 @@
 const _BLANK = &""
 const CARET_UNI_CHAR = &"\uFFFF"
 
+# parser
+const GET_PARSER = &"parser"
+const GET_CLASS_OBJ = &"class_obj"
+
 # gdscript parser cache
 const CACHE_MODIFIED = &"modified"
 const CACHE_PARSER = &"parser"
@@ -34,6 +38,7 @@ const ENUM_PATH_SUFFIX = &"::Enum"
 
 # map keys
 
+const EXTENDS = &"extends"
 const CLASS_INDENT = &"class_indent"
 const MEMBER_NAME = &"member_name"
 const MEMBER_TYPE = &"member_type"
@@ -42,6 +47,7 @@ const COLUMN_INDEX = &"column_index"
 const FUNC_LINES = &"func_lines"
 const ANNOTATIONS = &"annotations"
 const ACCESS_PATH = &"access_path"
+const SCRIPT_PATH = &"script_path"
 
 const TYPE = &"type"
 const TYPE_RESOLVED = &"type_resolved"

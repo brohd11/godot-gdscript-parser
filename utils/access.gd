@@ -37,6 +37,12 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 	print_deb(T.ACCESS_PATH, "FUNCTION", "----------------------------------------")
 	print_deb(T.ACCESS_PATH,"FROM", current_script_path, "TO FIND",to_find)
 	
+	print_deb(T.ACCESS_PATH, "DEC",  current_access.declaration_symbol, current_access.declaration_type)
+	print_deb(T.ACCESS_PATH, "ACCESS", current_access.access_symbol, current_access.access_type)
+	print_deb(T.ACCESS_PATH, "DEC-SEC",  secondary_access.declaration_symbol, secondary_access.declaration_type)
+	print_deb(T.ACCESS_PATH, "ACCESS-SEC", secondary_access.access_symbol, secondary_access.access_type)
+	print_deb(T.ACCESS_PATH, "FUNCTION", secondary_path)
+	
 	var access_options = AccessOptions.new()
 	# get global name and script alias are easy to run
 	get_global_name_and_script_alias(to_find, class_obj, access_options)
@@ -51,6 +57,9 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 	var to_find_class_path = to_find_script_data[1].trim_suffix(ENUM_SUFFIX) # trim suffix here? should not be needed after since we knew it going in
 	
 	var access_script_data = UString.get_script_path_and_suffix(current_access.access_type) # same logic as above
+	if access_script_data.is_empty(): # should not happen any more, any object that does not have script will become 'self', however this is valid
+		return find_path_to_type_simple(class_obj, secondary_access, to_find) # since the function would still be similar to how this would be handle 
+	
 	var access_script_path = access_script_data[0]
 	#var access_script = load(access_script_path) as GDScript
 	#var access_class_path = access_script_data[1].trim_suffix(ENUM_SUFFIX) # don't need for a search by val
@@ -61,14 +70,16 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 	
 	var parser = Utils.ParserRef.get_parser(self)
 	
-	print_deb(T.ACCESS_PATH, "DEC",  current_access.declaration_symbol, current_access.declaration_type)
-	print_deb(T.ACCESS_PATH, "ACCESS", current_access.access_symbol, current_access.access_type)
-	print_deb(T.ACCESS_PATH, "DEC",  secondary_access.declaration_symbol, secondary_access.declaration_type)
-	print_deb(T.ACCESS_PATH, "ACCESS", secondary_access.access_symbol, secondary_access.access_type)
-	print_deb(T.ACCESS_PATH, "FUNCTION", secondary_path)
+	
 	
 	# if current script is relevant, can simplify process. if to find is in current or external is current
 	if current_script_path == to_find_script_path or current_script_path == secondary_script_path or parser.script_inherits(current_script_path, to_find_script_path):
+		
+		#var preload_path = class_obj.has_preload(to_find)
+		#if preload_path != null:
+			#print_deb(T.ACCESS_PATH, "HAS PRELOAD", preload_path)
+			#access_options.standard = preload_path
+			#return access_options
 		
 		# if current script has the declaration symbol, we are good. This function automatically splits member access parts
 		if class_has_const(secondary_access.declaration_symbol, class_obj) and secondary_access.declaration_type == to_find:
@@ -95,18 +106,24 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 			access_options.standard = UString.dot_joinv([current_access.declaration_symbol, dec_to_sec_path, secondary_access.declaration_symbol])
 			return access_options
 		
+		
+		
 		# attempt the same with the access symbol
 		var access_to_sec_path = get_member_by_value(access_script_path, secondary_script_path)
 		print_deb(T.ACCESS_PATH, "SECONDARY NOT ACCESS SCRIPT", "PATH TO", access_to_sec_path)
 		if access_to_sec_path != null: # if found, can extend the path from access symbol to the secondary symbol
 			print_deb(T.ACCESS_PATH, "SECONDARY OUT OF ACCESS SCRIPT, BUT FOUND PATH")
-			access_options.standard = UString.dot_joinv([current_access.access_symbol, access_to_sec_path, secondary_access.declaration_symbol])
+			var class_access = _find_constant_relative_path(secondary_path, secondary_access.declaration_symbol)
+			if class_access != null:
+				access_options.standard = UString.dot_joinv([current_access.access_symbol, access_to_sec_path, class_access, secondary_access.declaration_symbol])
 			return access_options
 		else: # can not reach this from here, can attempt a global or abort, a valid global would be there already if possible
 			var to_find_global_name = to_find_script.get_global_name()
 			if to_find_global_name != "": # if yes, set it, if not, there is not much left we can do. return the options without a standard path
 				var class_access = _find_constant_relative_path(secondary_path, secondary_access.declaration_symbol)
-				access_options.standard = UString.dot_joinv([to_find_global_name, class_access, secondary_access.declaration_symbol])
+				if class_access != null:
+					access_options.standard = UString.dot_joinv([to_find_global_name, class_access, secondary_access.declaration_symbol])
+			
 			print_deb(T.ACCESS_PATH, "SECONDARY OUT OF ACCESS SCRIPT, NO PATH", access_options.standard)
 			return access_options
 	
@@ -493,8 +510,8 @@ func get_global_name_and_script_alias(to_find:String, class_obj:ParserClass, acc
 
 
 func _clean_path(string:String):
-	if string.begins_with("self."):
-		string = string.trim_prefix("self.")
+	#if string.begins_with("self."):
+	string = string.trim_prefix("self.").trim_suffix(".self")
 	return remove_suffixes(string)
 
 func remove_suffixes(string:String):
@@ -517,6 +534,7 @@ class AccessOptions:
 class AccessObject:
 	var declaration_type:String
 	var declaration_symbol:String
+	var declaration_access_path:String
 	var access_type:String
 	var access_symbol:String
 

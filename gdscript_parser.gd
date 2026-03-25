@@ -87,7 +87,8 @@ func set_current_script(script:GDScript):
 		clear_current_class()
 	_script_resource = script
 	if _script_resource == null:
-		print("SCRIPT NULL::")
+		print("GDScriptParser.set_current_script - SCRIPT NULL")
+		return
 	_script_path = _script_resource.resource_path
 
 func get_current_script():
@@ -116,6 +117,8 @@ func set_source_code(source:String): # need a version if the script editor is se
 
 
 func parse(force:=false):
+	get_code_edit_parser().string_map_cache.clear() # clear this everytime so this doesn't get out of hand
+	
 	code_edit_parser.parse_text(force)
 	
 	#print_hierarchy()
@@ -148,6 +151,9 @@ func reset_caret_context():
 func has_class(identifier:String):
 	return _class_access.has(identifier)
 
+func get_classes():
+	return _class_access.keys()
+
 func get_class_object(identifier:String=""):
 	return _class_access.get(identifier)
 
@@ -161,8 +167,10 @@ func get_class_at_line(line:int):
 
 func get_function_at_line(line:int):
 	var access_path = get_class_at_line(line)
-	var class_obj = _class_access[access_path] as ParserClass
-	return class_obj.get_function_at_line(line)
+	var class_obj = _class_access.get(access_path)
+	if class_obj != null:
+		return class_obj.get_function_at_line(line)
+	return ""
 
 
 func get_function_data(identifier_name:String, line:int=-1) -> Dictionary:
@@ -209,6 +217,24 @@ func get_member_info(identifier:String, line:int=-1):
 	var member = class_obj.get_member(identifier)
 	return member
 
+func get_member_info_from_script(full_script_path:String):
+	var script_data = UString.get_script_path_and_suffix(full_script_path)
+	var script_path = script_data[0]
+	var parser = get_parser_for_path(script_path)
+	var class_path = script_data[1]
+	var access_path = ""
+	var member_name = class_path
+	if class_path.contains("."):
+		access_path = UString.trim_member_access_back(class_path)
+		member_name = UString.get_member_access_back(class_path)
+	
+	if member_name.ends_with(Keys.ENUM_PATH_SUFFIX):
+		member_name = member_name.trim_suffix(Keys.ENUM_PATH_SUFFIX)
+	
+	var class_obj = parser.get_class_object(access_path) as ParserClass
+	if is_instance_valid(class_obj):
+		return class_obj.get_member_data(member_name)
+
 
 func get_line_context(line:int, column:int=0, insert_caret:=false):
 	return code_edit_parser.get_line_context(line, column, insert_caret).get(Keys.CONTEXT_TEXT)
@@ -221,13 +247,18 @@ func resolve_to_access_object_in_script(expression:String, script_path:String, c
 	var target_parser = get_parser_and_class_obj(script_path, class_path)
 	return target_parser.parser.resolve_to_access_object(expression, target_parser.class_obj.line_indexes[0])
 
-func get_parser_for_path(script_path:String) -> GDScriptParser:
+func get_parser_for_path(full_script_path:String) -> GDScriptParser:
+	var script_data = UString.get_script_path_and_suffix(full_script_path)
+	var script_path = script_data[0]
+	
 	if script_path == _script_path:
 		return self
 	if _get_cached_parser_callable.is_valid():
 		return _get_cached_parser_callable.call()
 	if _parser_cache == null:
 		print("PARSER CACHE NULL::", _script_path)
+	
+	
 	
 	var parser_data = _parser_cache.get(script_path, {})
 	
@@ -264,20 +295,20 @@ func get_parser_and_class_obj_for_script(script_path:String):
 	var class_path = script_data[1]
 	if script_main_path == _script_path:
 		var class_obj = _class_access.get(class_path) as ParserClass
-		return {"parser": self, "class_obj":class_obj}
+		return {Keys.GET_PARSER: self, Keys.GET_CLASS_OBJ:class_obj}
 	else:
 		var parser = get_parser_for_path(script_main_path)
 		var class_obj = parser.get_class_object(class_path)
-		return {"parser": parser, "class_obj":class_obj}
+		return {Keys.GET_PARSER: parser, Keys.GET_CLASS_OBJ:class_obj}
 
 func get_parser_and_class_obj(script_path:String, class_path:String):
 	if script_path == _script_path:
 		var class_obj = _class_access.get(class_path) as ParserClass
-		return {"parser": self, "class_obj":class_obj}
+		return {Keys.GET_PARSER: self, Keys.GET_CLASS_OBJ:class_obj}
 	else:
 		var parser = get_parser_for_path(script_path)
 		var class_obj = parser.get_class_object(class_path)
-		return {"parser": parser, "class_obj":class_obj}
+		return {Keys.GET_PARSER: parser, Keys.GET_CLASS_OBJ:class_obj}
 
 func _create_buffer_code_edit():
 	if not is_instance_valid(code_edit):

@@ -61,10 +61,11 @@ func _set_function_data():
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)
 	if not code_edit_parser.check_member_line(member_data.get(Keys.MEMBER_TYPE), name, declaration_line, column):
 		print("FUNCTION DATA: NOT VALID")
-		pass
+		return
 	var func_data = code_edit_parser.get_type_from_line(declaration_line, column)
 	
-	print("FUNCTION DATA: ",func_data)
+	#print("FUNCTION DATA: ",func_data)
+	
 	arguments.clear()
 	var result = func_data.get("result")
 	_cache_dirty = false # at this point it has been read
@@ -226,6 +227,11 @@ func _infer_return_type() -> String:
 				break
 	
 	var raw_result = potential_return.strip_edges().trim_prefix("return").strip_edges()
+	if raw_result.find("(") > -1:
+		var func_call = raw_result.substr(0, raw_result.find("("))
+		if func_call == name: # if the func call is a recursive call, we can't do anything here, since we are here because there is not explicit return
+			return "void"
+	
 	var parser = Utils.ParserRef.get_parser(self)
 	_return_type = parser.resolve_expression(raw_result, i)
 	return raw_result

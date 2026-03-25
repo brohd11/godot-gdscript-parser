@@ -20,6 +20,9 @@ static var _func_regex:RegEx
 static var _arg_regex:RegEx
 static var _signal_regex:RegEx
 
+static func member_is_const_class_enum(member_type:String):
+	return member_type == Keys.MEMBER_TYPE_CLASS or member_type == Keys.MEMBER_TYPE_CONST or member_type == Keys.MEMBER_TYPE_ENUM
+
 
 static func get_func_name_in_line(stripped_line_text:String) -> String:
 	if not (stripped_line_text.begins_with("func ") or stripped_line_text.begins_with("static func ")):
@@ -137,7 +140,6 @@ static func get_func_info(stripped_text: String) -> Dictionary:
 		_func_regex = RegEx.new()
 		_func_regex.compile("^(?:static\\s+)?func\\s+([a-zA-Z_]\\w*)\\s*\\((.*)\\)(?:\\s*->\\s*([^:]+))?")
 	
-	print("GET FUNC::", stripped_text)
 	var func_data = { Keys.FUNC_ARGS: {} }
 	
 	var _match = _func_regex.search(stripped_text)

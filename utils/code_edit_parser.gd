@@ -56,12 +56,12 @@ func _on_text_changed():
 var _pc:_ParserContext
 
 class _ParserContext:
-	var class_access_map = {"":[]}
+	var class_access_map = {&"":[]}
 	var member_map := {}
 	var constant_map := {}
 	var inner_class_map := {}
 	
-	var access_path := ""
+	var access_path:StringName = &""
 	var current_indentation_level:int = 0
 	var extended_lines:= []
 	var pending_annotations:= []
@@ -80,7 +80,7 @@ func ensure_first_parse():
 func parse_text(force:=false):
 	if not is_instance_valid(_map_regex):
 		_map_regex = RegEx.new()
-		_map_regex.compile("^(?:(static)\\s+)?(var|func|enum|const|signal|class_name|class)\\s+([a-zA-Z_]\\w*)")
+		_map_regex.compile("^(?:(static)\\s+)?(var|func|enum|const|signal|class_name|class|extends)\\s+([a-zA-Z_]\\w*)")
 	if not is_instance_valid(_annotation_regex):
 		_annotation_regex = RegEx.new()
 		_annotation_regex.compile("^@[A-Za-z0-9_]+(?:\\([^)]*\\))?\\s*")
@@ -103,7 +103,7 @@ func parse_text(force:=false):
 	
 	
 	_pc = _ParserContext.new()
-	_pc.main_script_path = main_script_path
+	_pc.main_script_path = StringName(main_script_path)
 	
 	var class_access_map = _pc.class_access_map
 	var extended_lines = _pc.extended_lines
@@ -158,7 +158,10 @@ func parse_text(force:=false):
 			
 			#print("COMPARE::", path, "::NEW::", get_indent_access_path(path), "::OLD::", get_indent_access_path(_pc.access_path))
 		
-		
+		var members = _pc.member_map.get(path, {})
+		print(path,"::EXTENDS::", members.get("extends", "RefCounted"))
+		_class_obj.extended = members.get("extends", "RefCounted")
+		members.erase("extends")
 		
 		var valid_constants:Dictionary = _pc.constant_map.get("", {}).duplicate()
 		var valid_classes:Dictionary = _pc.inner_class_map.get("", {}).duplicate()
@@ -181,7 +184,7 @@ func parse_text(force:=false):
 		var class_lines = class_access_map[path]
 		_class_obj.set_lines(class_lines)
 		
-		_class_obj.set_members(_pc.member_map.get(path, {}))
+		_class_obj.set_members(members)
 		_class_obj.set_constants(valid_constants)
 		_class_obj.set_inner_classes(valid_classes)
 		
@@ -223,10 +226,10 @@ func _parse_line(stripped:String, line:int, column:int=0):
 			for z in range(iterations):
 				var dot = _pc.access_path.rfind(".")
 				if dot == -1:
-					_pc.access_path = ""
+					_pc.access_path = StringName("")
 					break
 				else:
-					_pc.access_path = _pc.access_path.substr(0, _pc.access_path.rfind("."))
+					_pc.access_path = StringName(_pc.access_path.substr(0, _pc.access_path.rfind(".")))
 			
 			#prints("DROP LEVEL:", indentation_level, current_indentation_level,old_access_path, " -> ", access_path)
 			_pc.current_indentation_level = indentation_level
@@ -258,8 +261,21 @@ func _parse_line(stripped:String, line:int, column:int=0):
 			#data[Keys.MEMBER_TYPE] = Keys.MEMBER_TYPE_CLASS
 			data[Keys.TYPE] = UString.dot_join(_pc.main_script_path, new_access_path)
 			data[Keys.ACCESS_PATH] = _pc.access_path # i think this would the old? exclusive of current name
+			data[Keys.SCRIPT_PATH] = _pc.main_script_path
 			
 			_pc.inner_class_map.get_or_add(_pc.access_path, {})[member_name] = data
+			
+			var line_context = stripped
+			if stripped.ends_with("\\"):
+				line_context = get_line_context(line, 0, false, {Keys.CONTEXT_START:line}).get(Keys.CONTEXT_TEXT, stripped).strip_edges()
+			if line_context.contains("extends "):
+				var class_info = Utils.get_class_info(line_context)
+				var extended = class_info[1]
+				if extended == "":
+					extended = "RefCounted"
+				print("YES EXTEDNS::", extended)
+				_pc.member_map.get_or_add(new_access_path, {})["extends"] = extended
+			
 			
 			_pc.current_indentation_level += indent_size
 			_pc.access_path = new_access_path
@@ -269,16 +285,30 @@ func _parse_line(stripped:String, line:int, column:int=0):
 			if keyword.ends_with("func"):
 				_pc.current_func_dict = data
 				_pc.in_function = true
+				data[Keys.SCRIPT_PATH] = _pc.main_script_path
+				data[Keys.ACCESS_PATH] = _pc.access_path
 				data[Keys.FUNC_LINES] = PackedInt32Array()
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
 			elif keyword == "class_name":
+				
 				_pc.class_name_data = data
 			elif keyword.begins_with("c") or keyword == "enum":
 				data[Keys.ACCESS_PATH] = _pc.access_path
+				data[Keys.SCRIPT_PATH] = _pc.main_script_path
 				_pc.constant_map.get_or_add(_pc.access_path, {})[member_name] = data
+			elif keyword.begins_with("ext"):
+				var class_info = Utils.get_class_info("class dummy " + stripped)
+				var extended = class_info[1]
+				if extended == "":
+					extended = "RefCounted"
+				_pc.member_map.get_or_add(_pc.access_path, {})["extends"] = extended
+				pass
 			else:
+				data[Keys.SCRIPT_PATH] = _pc.main_script_path
+				data[Keys.ACCESS_PATH] = _pc.access_path
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
 			
+
 
 
 
@@ -709,23 +739,25 @@ func check_member_line(member_type:String, member_name:String, line:int, column:
 		parse_text()
 	return false
 
-#func find_member_line(member_type:String, member_name:String, class_obj:ParserClass):
-	#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("FIND MEMBER")
-	#var class_indent = class_obj.indent_level + get_indent_size()
-	#for i in range(code_edit.get_line_count()):
-		#var line = get_line(i).strip_edges(true, false)
-		#if line.contains(";"):
-			#pass
-		#if not line.begins_with(member_type):
-			#continue
-		#var stripped = line.trim_prefix(member_type).strip_edges(true, false)
-		#if not stripped.begins_with(member_name):
-			#continue
-		#if code_edit.get_indent_level(i) == class_indent:
-			##t.stop()
-			#return i
-	##t.stop()
-	#return -1
+func find_member_line(member_type:String, member_name:String, class_obj:ParserClass, class_indent:=-1):
+	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("FIND MEMBER")
+	if class_indent == -1:
+		class_indent = class_obj.indent_level + get_indent_size()
+	print(class_indent)
+	for i in range(code_edit.get_line_count()):
+		var line = get_line(i).strip_edges(true, false)
+		if line.contains(";"):
+			pass
+		if not line.begins_with(member_type):
+			continue
+		var stripped = line.trim_prefix(member_type).strip_edges(true, false)
+		if not stripped.begins_with(member_name):
+			continue
+		if code_edit.get_indent_level(i) == class_indent:
+			#t.stop()
+			return i
+	#t.stop()
+	return -1
 
 func get_type_from_line(line:int, column:int=0):
 	var context = get_line_context(line, column).get(Keys.CONTEXT_TEXT, "")
@@ -857,6 +889,8 @@ func get_func_branch_start(line:int, target_indent_level:int, add_class_indent:=
 
 #endregion
 
+class Test extends Node:
+	pass
 
 class Keywords:
 	const DECLARATIONS = [VAR, STATIC_VAR, FUNC, STATIC_FUNC, CONST, SIGNAL, ENUM, CLASS]

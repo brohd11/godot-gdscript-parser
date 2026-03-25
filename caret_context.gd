@@ -131,7 +131,7 @@ func parse():
 	code_context_end_line = context_data.get(Keys.CONTEXT_END)
 	code_context = context_data.get(Keys.CONTEXT_TEXT)
 	code_context_stripped = code_context.strip_edges()
-	print(code_context)
+	#print(code_context)
 	code_context_caret_pos = code_context.find(Keys.CARET_UNI_CHAR)
 	code_context_string_map = parser.get_string_map(code_context)
 	
@@ -164,8 +164,8 @@ func parse():
 	_set_function_call_data()
 	_set_operation_at_caret()
 	
-	print("&*&*")
-	print(_operation_data.left_text)
+	#print("&*&*")
+	#print(_operation_data.left_text)
 	
 	#print("%s" % )
 	
@@ -219,16 +219,16 @@ func parse():
 	else:
 		scope_state = ScopeState.FUNCTION_BODY
 	
-	print("^&^&^&")
-	print(word_before_caret)
-	print(expression_before_caret)
-	print(
-"TOKEN STATE: %s
-EXPRESSION STATE: %s
-SCOPE STATE: %s" % [TokenState.keys()[token_state], ExpressionState.keys()[expression_state], ScopeState.keys()[scope_state]],
-"\nIN ENUM: %s
-IN DICT: %s" % [is_in_enum(), is_in_dictionary()]
-	)
+	#print("^&^&^&")
+	#print(word_before_caret)
+	#print(expression_before_caret)
+	#print(
+#"TOKEN STATE: %s
+#EXPRESSION STATE: %s
+#SCOPE STATE: %s" % [TokenState.keys()[token_state], ExpressionState.keys()[expression_state], ScopeState.keys()[scope_state]],
+#"\nIN ENUM: %s
+#IN DICT: %s" % [is_in_enum(), is_in_dictionary()]
+	#)
 	t.stop()
 
 
@@ -374,14 +374,14 @@ func get_function_call_data() -> FunctionCallData:
 	var parser = Utils.ParserRef.get_parser(self)
 	
 	var expression = _active_function_call.expression
-	print("FULLCALL::", expression)
+	#print("FULLCALL::", expression)
 	
 	_active_function_call.symbol_data = get_symbol_data(expression, get_current_class_object(), caret_line, local_vars)
 	_active_function_call.function_data = parser.get_function_data(expression, caret_line)
 	#_active_function_call.function_data = #^ this needs to operate on function object, it will be faster and ensure proper return
 	
 	
-	print("FUNCTION DATA::", _active_function_call.function_data)
+	#print("FUNCTION DATA::", _active_function_call.function_data)
 	
 	
 	_active_function_call.inferred = true
@@ -627,6 +627,26 @@ func is_in_multiline_expression():
 
 func is_valid_code(line:int, col:int):
 	return code_edit.is_in_string(line, col) == -1 and code_edit.is_in_comment(line, col) == -1
+
+func get_comment(line:int=caret_line):
+	var line_text:String
+	if line == caret_line:
+		line_text = current_line_text
+	else:
+		line_text = code_edit.get_line(line)
+	var com_i = UString.string_safe_find(line_text, "#")
+	if com_i == -1:
+		return ""
+	return line_text.substr(com_i)
+
+func get_expression_at_position(text:String, position:int=-1):
+	var code_edit_parser = Utils.ParserRef.get_code_edit_parser(self)
+	if position == -1:
+		position = text.length() - 1
+	return code_edit_parser.parse_expression_at_position(text, position)
+
+func get_string_map(text:String):
+	return Utils.ParserRef.get_code_edit_parser(self).get_string_map(text)
 
 func code_context_find(what:String, from:int=-1, string_safe:=true):
 	if string_safe:

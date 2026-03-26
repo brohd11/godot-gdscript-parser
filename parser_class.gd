@@ -86,18 +86,18 @@ func set_members(members_dict:Dictionary):
 	
 	#_set_inherited_scripts()
 
-func _create_function(name, data:Dictionary):
+func _create_function(_name, data:Dictionary):
 	var member_type = data.get(Keys.MEMBER_TYPE)
 	if member_type != Keys.MEMBER_TYPE_FUNC and member_type != Keys.MEMBER_TYPE_STATIC_FUNC:
 		return
 	var function = ParserFunc.new()
-	function.name = name
+	function.name = _name
 	Utils.ParserRef.set_refs(function, ParserRef.get_parser(self), self)
 	function.class_indent = indent_level
 	function.member_data = data
 	function.declaration_line = data.get(Keys.LINE_INDEX, -1)
 	function.func_lines = data.get(Keys.FUNC_LINES)
-	functions[name] = function
+	functions[_name] = function
 
 
 func set_constants(const_dict:Dictionary):

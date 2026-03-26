@@ -123,7 +123,7 @@ func parse(force:=false):
 	
 	#print_hierarchy()
 
-func get_global_name():
+func get_global_class_name():
 	var root_class = get_class_object() as ParserClass
 	return root_class.class_name_data.get(Keys.MEMBER_NAME, "")
 

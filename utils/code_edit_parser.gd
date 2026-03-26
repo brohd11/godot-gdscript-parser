@@ -6,6 +6,7 @@ const Utils = GDScriptParser.Utils
 const Keys = Utils.Keys
 const UString = GDScriptParser.UString
 const UClassDetail = GDScriptParser.UClassDetail
+const Keywords = Utils.Keywords
 
 var _parser:WeakRef
 var code_edit:CodeEdit
@@ -250,6 +251,8 @@ func _parse_line(stripped:String, line:int, column:int=0):
 			Keys.MEMBER_TYPE:keyword,
 			Keys.MEMBER_NAME:member_name,
 			Keys.LINE_INDEX:line,
+			Keys.SCRIPT_PATH: _pc.main_script_path,
+			Keys.ACCESS_PATH: _pc.access_path,
 		}
 		if not _pc.pending_annotations.is_empty():
 			data[Keys.ANNOTATIONS] = _pc.pending_annotations.duplicate()
@@ -260,8 +263,6 @@ func _parse_line(stripped:String, line:int, column:int=0):
 			var new_access_path = UString.dot_join(_pc.access_path, member_name)
 			#data[Keys.MEMBER_TYPE] = Keys.MEMBER_TYPE_CLASS
 			data[Keys.TYPE] = UString.dot_join(_pc.main_script_path, new_access_path)
-			data[Keys.ACCESS_PATH] = _pc.access_path # i think this would the old? exclusive of current name
-			data[Keys.SCRIPT_PATH] = _pc.main_script_path
 			
 			_pc.inner_class_map.get_or_add(_pc.access_path, {})[member_name] = data
 			
@@ -273,7 +274,7 @@ func _parse_line(stripped:String, line:int, column:int=0):
 				var extended = class_info[1]
 				if extended == "":
 					extended = "RefCounted"
-				print("YES EXTEDNS::", extended)
+				print(new_access_path, "YES EXTEDNS::", extended)
 				_pc.member_map.get_or_add(new_access_path, {})["extends"] = extended
 			
 			
@@ -285,16 +286,12 @@ func _parse_line(stripped:String, line:int, column:int=0):
 			if keyword.ends_with("func"):
 				_pc.current_func_dict = data
 				_pc.in_function = true
-				data[Keys.SCRIPT_PATH] = _pc.main_script_path
-				data[Keys.ACCESS_PATH] = _pc.access_path
 				data[Keys.FUNC_LINES] = PackedInt32Array()
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
 			elif keyword == "class_name":
 				
 				_pc.class_name_data = data
 			elif keyword.begins_with("c") or keyword == "enum":
-				data[Keys.ACCESS_PATH] = _pc.access_path
-				data[Keys.SCRIPT_PATH] = _pc.main_script_path
 				_pc.constant_map.get_or_add(_pc.access_path, {})[member_name] = data
 			elif keyword.begins_with("ext"):
 				var class_info = Utils.get_class_info("class dummy " + stripped)
@@ -304,8 +301,6 @@ func _parse_line(stripped:String, line:int, column:int=0):
 				_pc.member_map.get_or_add(_pc.access_path, {})["extends"] = extended
 				pass
 			else:
-				data[Keys.SCRIPT_PATH] = _pc.main_script_path
-				data[Keys.ACCESS_PATH] = _pc.access_path
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
 			
 
@@ -888,28 +883,3 @@ func get_func_branch_start(line:int, target_indent_level:int, add_class_indent:=
 
 
 #endregion
-
-class Test extends Node:
-	pass
-
-class Keywords:
-	const DECLARATIONS = [VAR, STATIC_VAR, FUNC, STATIC_FUNC, CONST, SIGNAL, ENUM, CLASS]
-	
-	const VAR = &"var "
-	const STATIC_VAR = &"static var " 
-	const FUNC = &"func "
-	const STATIC_FUNC = &"static func "
-	const CONST = &"const "
-	const SIGNAL = &"signal "
-	const ENUM = &"enum "
-	const CLASS = &"class "
-	
-	
-	const CONTROL_FLOW_KEYWORDS = [FOR, MATCH, IF, ELIF, ELSE, WHILE]
-	
-	const FOR = &"for "
-	const MATCH = &"match" # no space to allow for backslashes. Do I bother?
-	const IF = &"if "
-	const ELIF = &"elif "
-	const ELSE = &"else:"
-	const WHILE = &"while "

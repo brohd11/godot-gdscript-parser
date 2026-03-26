@@ -8,7 +8,9 @@ const AccessObject = GDScriptParser.TypeLookup.AccessObject
 
 const UClassDetail = GDScriptParser.UClassDetail
 
-const DECLARATIONS = [&"class ", &"var ", &"static ", &"func ", &"enum ", &"const ", &"signal "]
+
+
+
 
 const ENUM_SUFFIX = Keys.ENUM_PATH_SUFFIX
 
@@ -250,7 +252,7 @@ static func safe_split_args(args_str: String) -> Array[String]:
 
 
 static func line_has_any_declaration(stripped_line:String):
-	for dec in DECLARATIONS:
+	for dec in Keywords.DECLARATIONS:
 		if stripped_line.begins_with(dec):
 			return true
 	return false
@@ -276,6 +278,33 @@ static func _initialize_arg_regex():
 	if not is_instance_valid(_arg_regex):
 		_arg_regex = RegEx.new()
 		_arg_regex.compile("^([a-zA-Z_]\\w*)(?:\\s*:\\s*(?!=)([^=]+?))?(?:\\s*(?::?=)\\s*(.*))?$")
+
+
+
+class Keywords:
+	const DECLARATIONS = [VAR, STATIC_VAR, FUNC, STATIC_FUNC, CONST, SIGNAL, ENUM, CLASS]
+	
+	const VAR = &"var "
+	const STATIC_VAR = &"static var " 
+	const FUNC = &"func "
+	const STATIC_FUNC = &"static func "
+	const CONST = &"const "
+	const SIGNAL = &"signal "
+	const ENUM = &"enum "
+	const CLASS = &"class "
+	
+	const CONTROL_FLOW_KEYWORDS = [FOR, MATCH, IF, ELIF, ELSE, WHILE]
+	
+	const FOR = &"for "
+	const MATCH = &"match" # no space to allow for backslashes. Do I bother?
+	const IF = &"if "
+	const ELIF = &"elif "
+	const ELSE = &"else:"
+	const WHILE = &"while "
+	
+	const BOOL_OPERATORS = ["==", "!=", "<", "<=", ">", ">=", " and ", " not ", " or ", "&&", "!", "||"]
+	const NON_BOOL_OPERATORS = ["+", "-", "*", "/", "%"]
+
 
 
 class ParserRef:

@@ -258,9 +258,16 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 		elif UClassDetail.get_global_class_path(identifier) != "":
 			resolved_type = UClassDetail.get_global_class_path(identifier)
 		elif _class_has_member(current_type_path, identifier):
-			return _class_member_type(current_type_path, identifier)
+			#return _class_member_type(current_type_path, identifier) # this is how it was
+			# TEST
+			print("EXIT")
+			resolved_type = _class_member_type(current_type_path, identifier)
 		if current_class_obj.class_has_member(identifier):
-			return _class_member_type(current_class_obj.script_base_type, identifier)
+			print("EXIT CLASS HAS MEMBER")
+			if identifier != "get":
+				return _class_member_type(current_class_obj.script_base_type, identifier)
+			else: # get can be tricky, the built in returns Nil, but we can attempt to infer more. Maybe limit to Dictionary?
+				resolved_type = _resolve_builtin_class_member(current_part, current_type_path, current_class_obj, local_vars)
 		
 		if resolved_type == "":
 			if current_part_in_script: #^ --- IN SCRIPT ---
@@ -289,7 +296,7 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 		print_deb(T.RESOLVE, "BASE ID", resolved_type)
 		
 		#^ --- HANDLE THE RESULT ---
-		if resolved_type is not String:
+		if resolved_type is not String and resolved_type is not StringName:
 			resolved_type = ""
 		if resolved_type == "": # If we hit a dead end (untyped var, unknown function)
 			return ""
@@ -378,6 +385,9 @@ func _resolve_process_in_script_data(member_name:String, class_obj:ParserClass, 
 	
 	return result
 
+func get_dic():
+	var dic = {}
+	return dic.get(Keys.ACCESS_PATH)
 
 func _resolve_builtin_class_member(identifier:String, current_type_path:String, _class_obj:ParserClass, _local_vars:Dictionary):
 	var type_to_check = ""
@@ -391,7 +401,7 @@ func _resolve_builtin_class_member(identifier:String, current_type_path:String, 
 			print(identifier, args)
 			args = args.substr(0, args.rfind(")"))
 			if args.find(",") == -1:
-				return identifier
+				return "Variant"
 			type_to_check = args.get_slice(",", 1).strip_edges()
 			method_handled = true
 	
@@ -467,7 +477,6 @@ func _get_inherited_member_type(identifier:String, class_obj:ParserClass):
 			print_deb(T.INHERITED, "EXTERNAL SCRIPT", inheriting_script)
 			return _process_external_identifier(identifier, script_data[0], script_data[1]) # may need access path for class?
 	return ""
-
 
 #endregion
 
@@ -906,6 +915,13 @@ func _simple_type_check(type_hint:String):
 	if type_hint.begins_with("uid:"):
 		return UFile.uid_to_path(type_hint)
 	
+	#TEST
+	for bool_op in Utils.Keywords.BOOL_OPERATORS:
+		if type_hint.contains(bool_op):
+			print("TYPE HINT::BOOL::", type_hint, "::OP::", bool_op)
+			return "bool"
+	#TEST
+	
 	if type_hint == "true" or type_hint == "false":
 		return "bool"
 	elif type_hint.is_valid_int():
@@ -922,6 +938,25 @@ func _simple_type_check(type_hint:String):
 		return "NodePath"
 	elif type_hint.begins_with('"') or type_hint.begins_with("'"):
 		return "String"
+	elif type_hint.begins_with("Array"): # for Array[SomeType]
+		return "Array"
+	elif type_hint.begins_with("Dictionary"): # for keyed dicts Dictionary[Key, Val]
+		return "Dictionary"
+	
+	#TEST
+	for non_bool_op in Utils.Keywords.NON_BOOL_OPERATORS:
+		if type_hint.contains(non_bool_op):
+			var identifier = ""
+			var i = 0
+			while i < type_hint.length():
+				var _char = type_hint[i]
+				if _char in Utils.Keywords.NON_BOOL_OPERATORS:
+					break
+				identifier += _char
+				i += 1
+			print("TYPE HINT::NON-BOOL::", type_hint, "::OP::", non_bool_op, "::ID::", identifier)
+			return identifier.strip_edges()
+	#TEST
 	
 	if _is_class_name_valid(type_hint):
 		return type_hint

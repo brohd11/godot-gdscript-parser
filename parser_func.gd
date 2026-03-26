@@ -32,7 +32,7 @@ var _local_vars_set:=false
 
 
 func is_static():
-	return member_data.get(Keys.MEMBER_TYPE).begins_with("static")
+	return member_data.get(Keys.MEMBER_TYPE, "").begins_with("static")
 
 func queue_refresh():
 	_cache_dirty = true
@@ -174,13 +174,15 @@ func get_return_type(inferred:=true): # this could be used to parse
 	if _return_type_raw == "":
 		_return_type_raw = _infer_return_type()
 	if not inferred:
-		print("PARSER FUNC::RETURN::", _return_type_raw)
+		print("PARSER FUNC::RETURN RAW::", _return_type_raw)
 		return _return_type_raw
-	print("PARSER FUNC::RETURN::", _return_type)
+	print("PARSER FUNC::RETURN RAW TO INFER::", _return_type_raw)
 	if _return_type == "" or not _return_type.begins_with("res://"):
 		var parser = Utils.ParserRef.get_parser(self)
 		_return_type = parser.resolve_expression(_return_type_raw, declaration_line)
-		print("RESOLVING ", _return_type)
+		print("RESOLVED FUNC RETURN::", _return_type)
+	if _return_type == "":
+		_return_type = "Variant"
 	return _return_type
 
 
@@ -207,7 +209,7 @@ func _infer_return_type() -> String:
 		else:
 			var valid = false
 			var nest_i = i
-			while nest_i < declaration_line:
+			while nest_i > declaration_line:
 				nest_i -= 1
 				var line = code_edit_parser.get_line(nest_i, true, true)
 				if line == "":
@@ -226,11 +228,15 @@ func _infer_return_type() -> String:
 			if valid:
 				break
 	
+	
 	var raw_result = potential_return.strip_edges().trim_prefix("return").strip_edges()
+	if raw_result == "":
+		return "void"
+	
 	if raw_result.find("(") > -1:
 		var func_call = raw_result.substr(0, raw_result.find("("))
 		if func_call == name: # if the func call is a recursive call, we can't do anything here, since we are here because there is not explicit return
-			return "void"
+			return "Variant"
 	
 	var parser = Utils.ParserRef.get_parser(self)
 	_return_type = parser.resolve_expression(raw_result, i)

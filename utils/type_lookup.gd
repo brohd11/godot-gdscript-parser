@@ -1064,6 +1064,7 @@ func get_parser_objects_and_local_vars(line:int) -> ClassData:
 	var class_data = ClassData.new(parser, line)
 	return class_data
 
+
 #endregion
 
 class ClassData:
@@ -1079,6 +1080,7 @@ class ClassData:
 			if is_instance_valid(func_obj):
 				func_obj.parse()
 				local_vars = func_obj.get_in_scope_local_vars(line)
+				
 
 
 #! arg_location section:T

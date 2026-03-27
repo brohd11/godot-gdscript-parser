@@ -355,10 +355,10 @@ func print_hierarchy():
 		var member_indent_str = "\t" + base_indent_str
 		
 		var _class = _class_access.get(key) as ParserClass
-		#print(base_indent_str + "Constants:")
-		#for c in _class.constants.keys():
-			#print(member_indent_str + c)
-		#print("")
+		print(base_indent_str + "Constants:")
+		for c in _class.constants.keys():
+			print(member_indent_str + c)
+		print("")
 		#
 		#print(base_indent_str + "Members:")
 		#for m in _class.members.keys():

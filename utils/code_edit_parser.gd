@@ -166,12 +166,33 @@ func parse_text(force:=false):
 		
 		var valid_constants:Dictionary = _pc.constant_map.get("", {}).duplicate()
 		var valid_classes:Dictionary = _pc.inner_class_map.get("", {}).duplicate()
+		#var valid_constants:Dictionary = {}
+		#var valid_classes:Dictionary = {}
 		if path != "":
-			var working_path = path
-			for x in range(path.count(".") + 1):
+			var working_path = ""
+			var parts = UString.split_member_access(path)
+			for x in range(parts.size()):
+				var part = parts[x]
+				working_path = UString.dot_join(working_path, part)
 				valid_constants.merge(_pc.constant_map.get(working_path, {}), true)
-				valid_classes.merge(_pc.inner_class_map.get(working_path, {}), true)
-				working_path = working_path.substr(0, working_path.rfind("."))
+				#valid_classes.merge(_pc.inner_class_map.get(working_path, {}), true)
+				var classes = _pc.inner_class_map.get(working_path, {})
+				for name in classes.keys():
+					# for proper scoping, act like merge with no overwrite
+					var class_data = classes[name]
+					if not valid_classes.has(name):
+						valid_classes[name] = class_data
+						continue
+					
+					# but if the class is self, then it ovewrites, inner classes at the same level will
+					# defer to the lower level if they are named the same ie. Nested.Nested and Nested.Another
+					# Nested.Another will access Nested when typing Nested, not the nested class. Whereas if it has a unique name
+					# it can be accessed directly. Nested.Nested will access itself when typing Nested,
+					if class_data.get(Keys.ACCESS_PATH) == path: # so it overides here.
+						valid_classes[name] = class_data
+				
+				#valid_classes.merge(_pc.inner_class_map.get(working_path, {}), false) # old method
+		
 		
 		
 		_class_obj.main_script_path = _pc.main_script_path
@@ -180,7 +201,9 @@ func parse_text(force:=false):
 			_class_obj.class_name_data = _pc.class_name_data
 		else:
 			#_class_obj.set_script_resource(UClassDetail.get_member_info_by_path(main_script, _pc.access_path))
-			_class_obj.set_script_resource(UClassDetail.get_member_info_by_path(main_script, path))
+			var inner_script = UClassDetail.get_member_info_by_path(main_script, path)
+			prints("INNERSCRIPT::", inner_script, "::PATH::", path)
+			_class_obj.set_script_resource(inner_script)
 		
 		var class_lines = class_access_map[path]
 		_class_obj.set_lines(class_lines)

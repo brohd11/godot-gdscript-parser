@@ -57,8 +57,10 @@ func set_script_resource(script:GDScript):
 	script_resource = script
 	if is_instance_valid(script):
 		script_base_type = script_resource.get_instance_base_type()
+		print("INNERSCRIPT BASE SET RES::", script_base_type)
 	else:
 		script_base_type = "RefCounted"
+	print("INNERSCRIPT BASE::", script_base_type)
 
 
 func get_script_resource():
@@ -251,13 +253,13 @@ func has_preload(path:String): # doesnt handle inherited, should cache this some
 
 ## Get and cache the preloads of current scripts ancestors.
 func get_inherited_members(include_class:=true) -> Dictionary:
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET INH")
+	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET INH::" + get_name())
 	if not inherited_members.is_empty():
 		return inherited_members
 	
 	_get_inherited_members()
-	if include_class:
-		base_type_members = UClassDetail.class_get_all_members(script_resource) # i think this can be removed now, it is handled in resolve separately
+	#if include_class:
+		#base_type_members = UClassDetail.class_get_all_members(script_resource) # i think this can be removed now, it is handled in resolve separately
 		#inherited_members.merge(UClassDetail.class_get_all_members(script_resource))
 	
 	t.stop()
@@ -444,6 +446,6 @@ func _check_inherited_valid():
 			
 		valid_scripts[script_path] = mod_time
 	
-	inherited_members.clear()
+	#inherited_members.clear()
 	
 	_inherited_script_mod_cache = valid_scripts

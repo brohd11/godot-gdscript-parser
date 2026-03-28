@@ -192,7 +192,8 @@ func resolve_expression_at_line(expression:String, line:int):
 	var class_data = get_parser_objects_and_local_vars(line)
 	var class_obj = class_data.class_obj
 	var local_vars = class_data.local_vars
-	return resolve_expression(expression, class_obj, local_vars)
+	var result = resolve_expression(expression, class_obj, local_vars)
+	return result 
 
 
 func resolve_expression(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary, recursions:int=0) -> String:
@@ -205,7 +206,8 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 	
 	if expression.begins_with("res://"):
 		print_deb(T.RESOLVE, "EARLY EXIT", "BEGIN WITH RES", expression)
-		return expression
+		return Utils.file_path_to_type(expression)
+		#return expression
 	
 	if expression == "self": # if self, we can just return the path to the class
 		return UString.dot_join(main_script_path, initial_class_obj.access_path)
@@ -348,6 +350,8 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 		current_type_path = resolved_type # last thing
 	
 	print_deb(T.RESOLVE, "RETURN", str(recursions), " ==== ", current_type_path)
+	if current_type_path.begins_with("res://"):
+		current_type_path = Utils.file_path_to_type(current_type_path)
 	return current_type_path
 
 

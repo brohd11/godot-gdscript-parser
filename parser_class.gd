@@ -48,10 +48,12 @@ func queue_refresh(): # need to figure out a cache for this
 	_check_inherited_valid() # if any of inherited have changed, clear inh members dict
 	for f in functions.values():
 		f.queue_refresh()
-	
-	
-	
-	
+
+func set_extends(new_extends:String):
+	if new_extends != extended:
+		inherited_members.clear()
+		inherited_scripts.clear()
+	extended = new_extends
 
 func set_script_resource(script:GDScript):
 	script_resource = script

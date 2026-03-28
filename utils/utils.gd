@@ -22,6 +22,24 @@ static var _func_regex:RegEx
 static var _arg_regex:RegEx
 static var _signal_regex:RegEx
 
+static func is_gdscript_path(file_path:String):
+	return file_path.ends_with(".gd") or file_path.contains(".gd.")
+
+static func file_path_to_type(file_path:String):
+	if is_gdscript_path(file_path):
+		return file_path
+	var ext = file_path.get_extension()
+	var type = ""
+	var resource = load(file_path) as Resource
+	return resource.get_class()
+	match ext:
+		"tscn": type = &"PackedScene"
+		"svg": type = &"Texture2D"
+		"png": type = &"Texture2D"
+		_: type = file_path
+	
+	return type
+
 static func member_is_const_class_enum(member_type:String):
 	return member_type == Keys.MEMBER_TYPE_CLASS or member_type == Keys.MEMBER_TYPE_CONST or member_type == Keys.MEMBER_TYPE_ENUM
 

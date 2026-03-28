@@ -250,6 +250,9 @@ func resolve_to_access_object_in_script(expression:String, script_path:String, c
 func get_parser_for_path(full_script_path:String) -> GDScriptParser:
 	var script_data = UString.get_script_path_and_suffix(full_script_path)
 	var script_path = script_data[0]
+	if not Utils.is_gdscript_path(full_script_path):
+		print("NOT A GDSCRIPT FILE::", full_script_path)
+		return
 	
 	if script_path == _script_path:
 		return self
@@ -290,6 +293,8 @@ func get_parser_for_path(full_script_path:String) -> GDScriptParser:
 	return parser
 
 func get_parser_and_class_obj_for_script(script_path:String):
+	if not Utils.is_gdscript_path(script_path):
+		return {}
 	var script_data = UString.get_script_path_and_suffix(script_path)
 	var script_main_path = script_data[0]
 	var class_path = script_data[1]
@@ -321,6 +326,8 @@ func _create_buffer_code_edit():
 		set_code_edit(code)
 
 func script_inherits(to_check:String, inherit_script:String):
+	if not Utils.is_gdscript_path(to_check):
+		return false
 	var parser = get_parser_and_class_obj_for_script(to_check)
 	var class_obj = parser.class_obj as ParserClass
 	return class_obj.inherits_script(inherit_script)

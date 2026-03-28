@@ -154,14 +154,11 @@ func parse_text(force:=false):
 			_class_obj = ParserClass.new()
 			Utils.ParserRef.set_refs(_class_obj, parser)
 			_class_obj.access_path = path
-			#_class_obj.indent_level = get_indent_access_path(_pc.access_path)
 			_class_obj.indent_level = get_indent_access_path(path)
-			
-			#print("COMPARE::", path, "::NEW::", get_indent_access_path(path), "::OLD::", get_indent_access_path(_pc.access_path))
 		
 		var members = _pc.member_map.get(path, {})
 		print(path,"::EXTENDS::", members.get("extends", "RefCounted"))
-		_class_obj.extended = members.get("extends", "RefCounted")
+		_class_obj.set_extends(members.get("extends", "RefCounted"))
 		members.erase("extends")
 		
 		var valid_constants:Dictionary = _pc.constant_map.get("", {}).duplicate()

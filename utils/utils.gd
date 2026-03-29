@@ -21,6 +21,7 @@ static var _enum_regex:RegEx
 static var _func_regex:RegEx
 static var _arg_regex:RegEx
 static var _signal_regex:RegEx
+static var _string_path_regex:RegEx
 
 static func is_gdscript_path(file_path:String):
 	return file_path.ends_with(".gd") or file_path.contains(".gd.")
@@ -63,13 +64,15 @@ static func get_class_name_in_line(stripped_line_text:String) -> String:
 static func get_class_info(stripped_line: String):
 	if not is_instance_valid(_class_regex):
 		_class_regex = RegEx.new()
-		_class_regex.compile("^class\\s+([a-zA-Z_]\\w*)(?:\\s+extends\\s+([a-zA-Z0-9_.]+))?")
+		#_class_regex.compile("^class\\s+([a-zA-Z_]\\w*)(?:\\s+extends\\s+([a-zA-Z0-9_.\'\":/]+))?")
+		_class_regex.compile("^class\\s+([a-zA-Z_]\\w*)(?:\\s+extends\\s+((?:\"[^\"]+\"|'[^']+'|[a-zA-Z_]\\w*)(?:\\.[a-zA-Z_]\\w*)*))?")
 	var _match = _class_regex.search(stripped_line)
 	if not _match:
 		return null
 		
 	var _class_name = _match.get_string(1)
 	var extends_name = _match.get_string(2) # Will be empty if no 'extends'
+	print("IN CLASS INFO EXTENDS NAME::", extends_name)
 	return [_class_name, extends_name]
 
 
@@ -297,7 +300,33 @@ static func _initialize_arg_regex():
 		_arg_regex = RegEx.new()
 		_arg_regex.compile("^([a-zA-Z_]\\w*)(?:\\s*:\\s*(?!=)([^=]+?))?(?:\\s*(?::?=)\\s*(.*))?$")
 
+static func token_is_string(text:String):
+	if text.begins_with('"') or text.begins_with("'"):
+		return true
+	return false
 
+static func get_full_path_from_string(text:String):
+	if not is_instance_valid(_string_path_regex):
+		_string_path_regex = RegEx.new()
+		_string_path_regex.compile("\\s*[\"\']([^\"\']+)[\"\']\\s*(.*)")
+	
+	if token_is_string(text):
+		var p_match = _string_path_regex.search(text)
+		if p_match:
+			var path = p_match.get_string(1)
+			var tail = p_match.get_string(2).strip_edges()
+			# This turns "my_path".SomeClass -> "my_path.SomeClass"
+			return path + tail
+	return ""
+
+static func ensure_absolute_path(path:String, main_script_path:String):
+	if path.is_absolute_path():
+		return path
+	var new_path = main_script_path.get_base_dir().path_join(path).simplify_path()
+	var script_data = UString.get_script_path_and_suffix(new_path)
+	if FileAccess.file_exists(script_data[0]): # script path only
+		return new_path
+	return path
 
 class Keywords:
 	const DECLARATIONS = [VAR, STATIC_VAR, FUNC, STATIC_FUNC, CONST, SIGNAL, ENUM, CLASS]

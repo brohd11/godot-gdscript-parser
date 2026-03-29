@@ -748,8 +748,6 @@ func _validate_const_chain(chain_text:String, class_obj:ParserClass):
 #endregion
 
 
-
-
 #region Utils
 ## Get member type in class obj. Returns declaration or converted to type if it is a simple check [method _simple_type_check].
 ## Allow rebuild param will determine if the script will reparse if not found at it's line index.
@@ -920,8 +918,11 @@ func _simple_type_check(type_hint:String):
 		return UFile.uid_to_path(type_hint)
 	
 	#TEST
+	var parser = Utils.ParserRef.get_parser(self)
+	var string_map = parser.get_string_map(type_hint)
 	for bool_op in Utils.Keywords.BOOL_OPERATORS:
-		if type_hint.contains(bool_op):
+		var bool_op_idx = type_hint.find(bool_op)
+		if bool_op_idx > -1 and not string_map.index_in_string_or_comment(bool_op_idx):
 			print("TYPE HINT::BOOL::", type_hint, "::OP::", bool_op)
 			return "bool"
 	#TEST
@@ -949,7 +950,8 @@ func _simple_type_check(type_hint:String):
 	
 	#TEST
 	for non_bool_op in Utils.Keywords.NON_BOOL_OPERATORS:
-		if type_hint.contains(non_bool_op):
+		var non_bool_op_idx = type_hint.find(non_bool_op)
+		if non_bool_op_idx > -1 and not string_map.index_in_string_or_comment(non_bool_op_idx):
 			var identifier = ""
 			var i = 0
 			while i < type_hint.length():

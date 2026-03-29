@@ -82,9 +82,7 @@ func parse_text(force:=false):
 	if not is_instance_valid(_map_regex):
 		_map_regex = RegEx.new()
 		_map_regex.compile("^(?:(static)\\s+)?(var|func|enum|const|signal|class_name|class|extends)\\s+([a-zA-Z_]\\w*)")
-	if not is_instance_valid(_annotation_regex):
-		_annotation_regex = RegEx.new()
-		_annotation_regex.compile("^@[A-Za-z0-9_]+(?:\\([^)]*\\))?\\s*")
+	_initialize_regex_annotation()
 	
 	
 	
@@ -157,7 +155,7 @@ func parse_text(force:=false):
 			_class_obj.indent_level = get_indent_access_path(path)
 		
 		var members = _pc.member_map.get(path, {})
-		print(path,"::EXTENDS::", members.get("extends", "RefCounted"))
+		#print(path,"::EXTENDS::", members.get("extends", "RefCounted"))
 		_class_obj.set_extends(members.get("extends", "RefCounted"))
 		members.erase("extends")
 		
@@ -199,7 +197,7 @@ func parse_text(force:=false):
 		else:
 			#_class_obj.set_script_resource(UClassDetail.get_member_info_by_path(main_script, _pc.access_path))
 			var inner_script = UClassDetail.get_member_info_by_path(main_script, path)
-			prints("INNERSCRIPT::", inner_script, "::PATH::", path)
+			#prints("INNERSCRIPT::", inner_script, "::PATH::", path)
 			_class_obj.set_script_resource(inner_script)
 		
 		var class_lines = class_access_map[path]
@@ -263,7 +261,7 @@ func _parse_line(stripped:String, line:int, column:int=0):
 		var keyword = result.get_string(2)
 		if result.get_string(1) != "":
 			if result.get_string(1) != "static":
-				print("REGEX MISTAKE SHOULD BE STATIC ", result.get_string(1))
+				printerr("REGEX MISTAKE SHOULD BE STATIC ", result.get_string(1))
 			keyword = "static " + keyword
 		var member_name = result.get_string(3)
 		
@@ -277,7 +275,7 @@ func _parse_line(stripped:String, line:int, column:int=0):
 		if not _pc.pending_annotations.is_empty():
 			data[Keys.ANNOTATIONS] = _pc.pending_annotations.duplicate()
 			_pc.pending_annotations.clear()
-		
+		print("REG KEYWORD::", keyword, "::", stripped)
 		_pc.in_function = false
 		if keyword == "class":
 			var new_access_path = UString.dot_join(_pc.access_path, member_name)
@@ -289,12 +287,9 @@ func _parse_line(stripped:String, line:int, column:int=0):
 			var line_context = stripped
 			if stripped.ends_with("\\"):
 				line_context = get_line_context(line, 0, false, {Keys.CONTEXT_START:line}).get(Keys.CONTEXT_TEXT, stripped).strip_edges()
-			if line_context.contains("extends "):
-				var class_info = Utils.get_class_info(line_context)
-				var extended = class_info[1]
-				if extended == "":
-					extended = "RefCounted"
-				print(new_access_path, "YES EXTEDNS::", extended)
+			if line_context.contains(" extends "):
+				var extended = _get_extends_out_line(line_context)
+				print(new_access_path, "SAME LINE EXT::", extended)
 				_pc.member_map.get_or_add(new_access_path, {})["extends"] = extended
 			
 			
@@ -309,21 +304,46 @@ func _parse_line(stripped:String, line:int, column:int=0):
 				data[Keys.FUNC_LINES] = PackedInt32Array()
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
 			elif keyword == "class_name":
-				
+				if stripped.contains(" extends "):
+					var extended = _get_extends_out_line(stripped)
+					print("CLASS NAME EXT::", extended)
+					_pc.member_map.get_or_add(_pc.access_path, {})["extends"] = extended
 				_pc.class_name_data = data
 			elif keyword.begins_with("c") or keyword == "enum":
 				_pc.constant_map.get_or_add(_pc.access_path, {})[member_name] = data
-			elif keyword.begins_with("ext"):
-				var class_info = Utils.get_class_info("class dummy " + stripped)
-				var extended = class_info[1]
-				if extended == "":
-					extended = "RefCounted"
-				_pc.member_map.get_or_add(_pc.access_path, {})["extends"] = extended
-				pass
 			else:
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
-			
+	elif stripped.begins_with("extends "):
+		#var class_info = Utils.get_class_info("class dummy " + stripped)
+		#var extended = class_info[1]
+		var extended = _get_extends_out_line(stripped)
+		print(_pc.access_path, "OWN LINE EXT RAW::", extended)
+		#if extended == "":
+			#extended = "RefCounted"
+		#elif extended.begins_with("res://"):
+			#extended = Utils.ensure_absolute_path(extended, _pc.main_script_path)
+		print(_pc.access_path, "OWN LINE EXT::", extended)
+		_pc.member_map.get_or_add(_pc.access_path, {})["extends"] = extended
+		pass
 
+
+func _get_extends_out_line(line_text:String):
+	var extends_string:String
+	if line_text.begins_with("extends"):
+		extends_string = line_text
+	else:
+		extends_string = line_text.substr(line_text.find(" extends ")).strip_edges()
+	
+	print(line_text,"::EXT_STRING::", extends_string)
+	var class_info = Utils.get_class_info("class dummy " + extends_string + ":")
+	var extended = class_info[1]
+	print("RAW::", extended)
+	if extended == "":
+		extended = "RefCounted"
+	elif Utils.token_is_string(extended):
+		extended = Utils.get_full_path_from_string(extended)
+		extended = Utils.ensure_absolute_path(extended, _pc.main_script_path)
+	return extended
 
 
 
@@ -339,6 +359,7 @@ static func _parse_source2(source:String):
 		last_new_line_idx = new_line_idx + 1
 		new_line_idx = source.find("\n", last_new_line_idx)
 	t.stop()
+
 
 
 
@@ -739,12 +760,24 @@ func get_line_no_comment(line:int):
 			break
 	return line_text.substr(0, com_idx).strip_edges(false)
 
+func strip_annotations(stripped_text:String):
+	_initialize_regex_annotation()
+	while stripped_text.begins_with("@"):
+		var _match = _annotation_regex.search(stripped_text)
+		if _match:
+			var matched_text = _match.get_string()
+			stripped_text = stripped_text.substr(matched_text.length()) # Slice the annotation off the front of the line
+		else:
+			break # Failsafe
+	return stripped_text
 
 func check_member_line(member_type:String, member_name:String, line:int, column:int=0, rebuild:=true):
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("CHECK MEMBER" + str([member_type, " ", member_name]))
 	var line_text = get_line(line).strip_edges(true, false)
 	if column != 0:
 		line_text = get_line(line).substr(column).strip_edges(true, false)
+	if line_text.begins_with("@"):
+		line_text = strip_annotations(line_text)
 	if line_text.begins_with(member_type):
 		var stripped = line_text.trim_prefix(member_type).strip_edges(true, false)
 		#t.stop()
@@ -761,7 +794,7 @@ func find_member_line(member_type:String, member_name:String, class_obj:ParserCl
 	print(class_indent)
 	for i in range(code_edit.get_line_count()):
 		var line = get_line(i).strip_edges(true, false)
-		if line.contains(";"):
+		if line.contains(";"): # need to deal with this somehow?
 			pass
 		if not line.begins_with(member_type):
 			continue
@@ -782,6 +815,8 @@ func get_type_from_line(line:int, column:int=0):
 ## returns an array with [member_name, member_type], except functions, which return a dict {func_args, func_return}, keys are in Keys class
 func get_type_from_line_text(stripped_line_text:String):
 	var data = {}
+	if stripped_line_text.begins_with("@"):
+		stripped_line_text = strip_annotations(stripped_line_text)
 	if stripped_line_text.begins_with(Keywords.FOR):
 		stripped_line_text = "var " + stripped_line_text.get_slice("for ", 1).get_slice(" in ", 0).strip_edges()
 		data["result"] = Utils.get_var_or_const_info(stripped_line_text)
@@ -798,6 +833,7 @@ func get_type_from_line_text(stripped_line_text:String):
 			elif dec == &"func " or dec == &"static func ":
 				data["result"] = Utils.get_func_info(stripped_line_text)
 			elif dec == &"class ":
+				printerr("GET TYPE FROM LINE CLASS - IF THIS CALLS NEED TO MANAGE EXTENDING PATHS")
 				data["result"] = Utils.get_class_info(stripped_line_text)
 			elif dec == &"signal ":
 				data["result"] = Utils.get_signal_info(stripped_line_text)
@@ -903,3 +939,9 @@ func get_func_branch_start(line:int, target_indent_level:int, add_class_indent:=
 
 
 #endregion
+
+
+func _initialize_regex_annotation():
+	if not is_instance_valid(_annotation_regex):
+		_annotation_regex = RegEx.new()
+		_annotation_regex.compile("^@[A-Za-z0-9_]+(?:\\([^)]*\\))?\\s*")

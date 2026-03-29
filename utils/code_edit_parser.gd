@@ -81,14 +81,15 @@ func ensure_first_parse():
 func parse_text(force:=false):
 	if not is_instance_valid(_map_regex):
 		_map_regex = RegEx.new()
-		_map_regex.compile("^(?:(static)\\s+)?(var|func|enum|const|signal|class_name|class|extends)\\s+([a-zA-Z_]\\w*)")
+		_map_regex.compile("^(?:(static)\\s+)?(var|func|enum|const|signal|class_name|class)\\s+([a-zA-Z_]\\w*)")
 	_initialize_regex_annotation()
 	
 	
 	
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("S")
+	
 	
 	var parser = _get_parser()
+	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("S::" + parser.get_script_path())
 	_set_code_edit(parser.code_edit)
 	indent_size = code_edit.get_tab_size()
 	
@@ -275,7 +276,7 @@ func _parse_line(stripped:String, line:int, column:int=0):
 		if not _pc.pending_annotations.is_empty():
 			data[Keys.ANNOTATIONS] = _pc.pending_annotations.duplicate()
 			_pc.pending_annotations.clear()
-		print("REG KEYWORD::", keyword, "::", stripped)
+		
 		_pc.in_function = false
 		if keyword == "class":
 			var new_access_path = UString.dot_join(_pc.access_path, member_name)
@@ -314,17 +315,10 @@ func _parse_line(stripped:String, line:int, column:int=0):
 			else:
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
 	elif stripped.begins_with("extends "):
-		#var class_info = Utils.get_class_info("class dummy " + stripped)
-		#var extended = class_info[1]
 		var extended = _get_extends_out_line(stripped)
 		print(_pc.access_path, "OWN LINE EXT RAW::", extended)
-		#if extended == "":
-			#extended = "RefCounted"
-		#elif extended.begins_with("res://"):
-			#extended = Utils.ensure_absolute_path(extended, _pc.main_script_path)
 		print(_pc.access_path, "OWN LINE EXT::", extended)
 		_pc.member_map.get_or_add(_pc.access_path, {})["extends"] = extended
-		pass
 
 
 func _get_extends_out_line(line_text:String):

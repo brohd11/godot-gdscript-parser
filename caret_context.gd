@@ -515,7 +515,8 @@ func get_symbol_data(chain_text:String, class_obj:GDScriptParser.ParserClass, li
 			#_active_function_call.access_object = func_obj
 	
 	symbol_data.symbol_script_path = resolved_symbol_script
-	if resolved_symbol_script.begins_with("res://"):
+	#if resolved_symbol_script.begins_with("res://"):
+	if Utils.is_absolute_path(resolved_symbol_script):
 		var script_data = UString.get_script_path_and_suffix(resolved_symbol_script)
 		symbol_data.symbol_script_access_object = parser.resolve_to_access_object_in_script(symbol_data.name, script_data[0], script_data[1])
 	return symbol_data
@@ -700,7 +701,8 @@ class OperationData:
 	func get_type_access_path(to_find:String=""):
 		if to_find == "":
 			to_find = left_symbol_data.type
-		if not to_find.begins_with("res://"):
+		#if not to_find.begins_with("res://"):
+		if not Utils.is_absolute_path(to_find):
 			return to_find
 		
 		var parser = Utils.ParserRef.get_parser(self)
@@ -733,7 +735,8 @@ class MatchBlockData:
 	func get_type_access_path(to_find:String=""):
 		if to_find == "":
 			to_find = symbol_data.type
-		if not to_find.begins_with("res://"):
+		#if not to_find.begins_with("res://"):
+		if not Utils.is_absolute_path(to_find):
 			return to_find
 		
 		var parser = Utils.ParserRef.get_parser(self)
@@ -793,7 +796,8 @@ class FunctionCallData:
 		
 		var function_object = get_function_script()
 		
-		if function_object.begins_with("res://"):
+		#if function_object.begins_with("res://"):
+		if Utils.is_absolute_path(function_object):
 			var parser = Utils.ParserRef.get_parser(self)
 			
 			var script_data = UString.get_script_path_and_suffix(function_object)
@@ -832,10 +836,12 @@ class FunctionCallData:
 		if arg_type_resolved != null:
 			return arg_type_resolved
 		var arg_type = current_arg_data.get(Keys.TYPE)
-		if arg_type.begins_with("res://"):
+		#if arg_type.begins_with("res://"):
+		if Utils.is_absolute_path(arg_type):
 			return arg_type
 		var resolved:String
-		if function_object.begins_with("res://"):
+		#if function_object.begins_with("res://"):
+		if Utils.is_absolute_path(function_object):
 			var parser = Utils.ParserRef.get_parser(self)
 			var script_data = UString.get_script_path_and_suffix(function_object)
 			resolved = parser.resolve_expression_in_script(arg_type, script_data[0], script_data[1])
@@ -870,7 +876,8 @@ class FunctionCallData:
 		#if type_path != "":
 			#argument_object = 
 		
-		if not type_path.begins_with("res://"):
+		#if not type_path.begins_with("res://"):
+		if not Utils.is_absolute_path(type_path):
 			return type_path
 		
 		var parser = Utils.ParserRef.get_parser(self)

@@ -89,7 +89,8 @@ func get_function_data(identifier, class_obj:ParserClass, line:int=-1):
 			else:
 				var resolved_script = resolve_expression_at_line(resolved_symbol, line)
 				print("FUNC DATA::RESOLVED::", resolved_script)
-				if not resolved_script.begins_with("res://"):
+				if not Utils.is_absolute_path(resolved_script):
+				#if not resolved_script.begins_with("res://"):
 					calling_script_access = resolved_script
 				else:
 					var script_data = UString.get_script_path_and_suffix(resolved_script)
@@ -204,7 +205,8 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 	var main_script = parser.get_current_script()
 	var main_script_path = main_script.resource_path
 	
-	if expression.begins_with("res://"):
+	#if expression.begins_with("res://"):
+	if Utils.is_absolute_path(expression):# and FileAccess.file_exists(expression):
 		print_deb(T.RESOLVE, "EARLY EXIT", "BEGIN WITH RES", expression)
 		return Utils.file_path_to_type(expression)
 		#return expression
@@ -219,9 +221,10 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 		if initial_class_obj.class_has_member(expression):
 			return _class_member_type(initial_class_obj.script_base_type, expression)
 		return expression
-	if _simple_type_check(expression) != "":
+	var simple_check = _simple_type_check(expression)
+	if simple_check != "":
 		print_deb(T.RESOLVE, "EARLY EXIT", "IS SIMPLE", expression)
-		return _simple_type_check(expression)
+		return simple_check
 	
 	var string_map = parser.get_string_map(expression)
 	var parts: Array = UString.split_member_access(expression, string_map)
@@ -282,12 +285,14 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 					resolved_type = _get_inherited_member_type(current_part, current_class_obj)
 				
 			else: #^ --- OUTSIDE SCRIPT ---
-				if current_type_path.begins_with("res://"):
+				#if current_type_path.begins_with("res://"):
+				if Utils.is_absolute_path(current_type_path):
 					resolved_type = _process_external_identifier(identifier, external_script_path, external_script_class_access)
 					print_deb(T.RESOLVE, "EXTERNAL", "%s -> %s" % [identifier, resolved_type])
 		
 		
-		if resolved_type == "" and not current_type_path.begins_with("res://"):# pass through current part so that you can get full context
+		#if resolved_type == "" and not current_type_path.begins_with("res://"):# pass through current part so that you can get full context
+		if resolved_type == "" and not Utils.is_absolute_path(current_type_path):# pass through current part so that you can get full context
 			print_deb(T.RESOLVE, "OUTSIDE BUILT IN", identifier)
 			resolved_type = _resolve_builtin_class_member(current_part, current_type_path, current_class_obj, local_vars) # ie. Dictionary.get(), can infer default
 		
@@ -321,7 +326,8 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 		if resolved_type.ends_with(Keys.ENUM_PATH_SUFFIX):
 			return resolved_type
 		
-		if not resolved_type.begins_with("res://"):
+		#if not resolved_type.begins_with("res://"):
+		if not Utils.is_absolute_path(resolved_type):
 			current_part_in_script = false
 		else:
 			var script_data = UString.get_script_path_and_suffix(resolved_type)
@@ -350,13 +356,15 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 		current_type_path = resolved_type # last thing
 	
 	print_deb(T.RESOLVE, "RETURN", str(recursions), " ==== ", current_type_path)
-	if current_type_path.begins_with("res://"):
+	#if current_type_path.begins_with("res://"):
+	if Utils.is_absolute_path(current_type_path):
 		current_type_path = Utils.file_path_to_type(current_type_path)
 	return current_type_path
 
 
 func _is_unresolved_expression(identifier:String):
-	if identifier.begins_with("res://"):
+	#if identifier.begins_with("res://"):
+	if Utils.is_absolute_path(identifier):
 		return false
 	elif _valid_identifier(identifier):
 		return false
@@ -495,7 +503,8 @@ func resolve_expression_to_access_object(expression: String, initial_class_obj: 
 	var main_script = parser.get_current_script()
 	var main_script_path = main_script.resource_path
 	
-	if expression.begins_with("res://"):
+	#if expression.begins_with("res://"):
+	if Utils.is_absolute_path(expression):
 		print_deb(T.VAR_TO_CONST, "EARLY EXIT", "BEGIN WITH RES", expression)
 		return expression
 	
@@ -517,7 +526,8 @@ func resolve_expression_to_access_object(expression: String, initial_class_obj: 
 		#dec_symbol = _validate_const_chain(expression, initial_class_obj) # this is for type hints var:SomeClass.Type, returns the whole string
 	# ALERT
 	print_deb(T.VAR_TO_CONST, "DECLARATION RAW", dec_symbol)
-	if dec_symbol.begins_with("res://"):
+	#if dec_symbol.begins_with("res://"):
+	if Utils.is_absolute_path(dec_symbol):
 		var script_data = UString.get_script_path_and_suffix(dec_symbol)
 		if script_data[0] == main_script_path:
 			var access = script_data[1]
@@ -533,7 +543,8 @@ func resolve_expression_to_access_object(expression: String, initial_class_obj: 
 	
 	var access_symbol = _resolve_access_object([front], initial_class_obj, local_vars)
 	print_deb(T.VAR_TO_CONST, "ACCESS RAW", access_symbol)
-	if access_symbol.begins_with("res://"):
+	#if access_symbol.begins_with("res://"):
+	if Utils.is_absolute_path(access_symbol):
 		var script_data = UString.get_script_path_and_suffix(access_symbol)
 		if script_data[0] == main_script_path:
 			var access = script_data[1]
@@ -547,7 +558,8 @@ func resolve_expression_to_access_object(expression: String, initial_class_obj: 
 	access_object.access_symbol = access_symbol
 	
 	access_object.declaration_type = resolve_expression(dec_symbol, initial_class_obj, local_vars)
-	if access_object.declaration_type.begins_with("res://"):
+	#if access_object.declaration_type.begins_with("res://"):
+	if Utils.is_absolute_path(access_object.declaration_type):
 		var member_data = parser.get_member_info_from_script(access_object.declaration_type)
 		if member_data != null:
 			access_object.declaration_access_path = member_data.get(Keys.ACCESS_PATH)
@@ -660,7 +672,8 @@ func _var_to_const(member_name:String, class_obj:ParserClass, local_vars:Diction
 			next_result = _check_class_obj_member_data(result, class_obj, local_vars)
 		if next_result == null:
 			break
-		if result == next_result or next_result.begins_with("res://"):
+		#if result == next_result or next_result.begins_with("res://"):
+		if result == next_result or Utils.is_absolute_path(next_result):
 			break
 		result = next_result
 	
@@ -690,7 +703,8 @@ func _resolve_const_path(member_name:String, class_obj:ParserClass):
 			print_deb(T.VAR_TO_CONST, "COUNTED OUT")
 			break
 		var next_result = _check_class_obj_member_data(result, class_obj, {})
-		var not_valid = next_result == null or result == next_result or next_result.begins_with("res://")
+		#var not_valid = next_result == null or result == next_result or next_result.begins_with("res://")
+		var not_valid = next_result == null or result == next_result or Utils.is_absolute_path(next_result)
 		if not_valid:
 			break
 		var parts = next_result.split(".", false)
@@ -710,7 +724,8 @@ const CONST_TYPES = [Keys.MEMBER_TYPE_CLASS, Keys.MEMBER_TYPE_CONST]
 func _validate_const_chain(chain_text:String, class_obj:ParserClass):
 	var parser = _get_parser()
 	
-	if chain_text.begins_with("res://"):
+	#if chain_text.begins_with("res://"):
+	if Utils.is_absolute_path(chain_text):
 		print_deb(T.VAR_TO_CONST, "EARLY EXIT", "BEGIN WITH RES", chain_text)
 		return chain_text
 	
@@ -735,7 +750,8 @@ func _validate_const_chain(chain_text:String, class_obj:ParserClass):
 				break
 			
 			type = class_obj.get_member_type(part)
-			if not type.begins_with("res://"):
+			#if not type.begins_with("res://"):
+			if not Utils.is_absolute_path(type):
 				break
 		working_path = UString.dot_join(working_path, part)
 		var next_parser_data = parser.get_parser_and_class_obj_for_script(type)
@@ -883,7 +899,8 @@ func _property_info_to_type_no_class(property_info) -> String:
 				var type = property_info.get("type")
 				return type_string(type)
 			
-			if not _class_name.begins_with("res://"):
+			#if not _class_name.begins_with("res://"):
+			if not Utils.is_absolute_path(_class_name):
 				return _class_name
 			return _class_name # return class name as path or class to process elsewhere
 		
@@ -912,10 +929,12 @@ func _simple_type_check(type_hint:String):
 		return type_hint
 	if type_hint in OTHER_TYPES:
 		return type_hint
-	if type_hint.begins_with("res://"):
-		return type_hint
 	if type_hint.begins_with("uid:"):
 		return UFile.uid_to_path(type_hint)
+	#if type_hint.begins_with("res://"):
+	if Utils.is_absolute_path(type_hint):
+		return Utils.file_path_to_type(type_hint) # do this here?
+		#return type_hint
 	
 	#TEST
 	var parser = Utils.ParserRef.get_parser(self)
@@ -926,6 +945,11 @@ func _simple_type_check(type_hint:String):
 			print("TYPE HINT::BOOL::", type_hint, "::OP::", bool_op)
 			return "bool"
 	#TEST
+	
+	
+	
+	
+	
 	
 	if type_hint == "true" or type_hint == "false":
 		return "bool"
@@ -963,6 +987,9 @@ func _simple_type_check(type_hint:String):
 			print("TYPE HINT::NON-BOOL::", type_hint, "::OP::", non_bool_op, "::ID::", identifier)
 			return identifier.strip_edges()
 	#TEST
+	
+	
+	
 	
 	if _is_class_name_valid(type_hint):
 		return type_hint

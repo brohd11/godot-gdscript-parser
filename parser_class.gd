@@ -184,6 +184,13 @@ func get_enum_members(enum_name:String):
 	return result[1] # this is the members as dict
 
 func get_members(include_inherited:=false):
+	if main_script_path == "user://test_inher.gd":
+		print("INH MEMBERS::TEST INHER")
+		print("INH MEMBERS::TEST INHER::MEMBER::", members)
+		print("INH MEMBERS::TEST INHER::CONST::", constants)
+		print("INH MEMBERS::TEST INHER::IC::", inner_classes)
+		print("INH MEMBERS::TEST INHER::METHOD::", functions)
+	
 	var dict = {}
 	if include_inherited:
 		dict.merge(get_inherited_members())
@@ -256,6 +263,8 @@ func has_preload(path:String): # doesnt handle inherited, should cache this some
 ## Get and cache the preloads of current scripts ancestors.
 func get_inherited_members(include_class:=true) -> Dictionary:
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET INH::" + get_name())
+	if main_script_path == "user://test_inher.gd":
+		print("INH MEMBERS::MEMBERS::",inherited_members)
 	if not inherited_members.is_empty():
 		return inherited_members
 	
@@ -295,6 +304,7 @@ func _get_inherited_members():
 	for script_path in inherited_script_paths:
 		var script_parser_data = parser.get_parser_and_class_obj_for_script(script_path)
 		var class_obj = script_parser_data.get(Keys.GET_CLASS_OBJ)
+		
 		#var inh_members = class_obj.get_members()
 		
 		inherited_members.merge(class_obj.get_members())
@@ -339,7 +349,8 @@ func get_gdscript_constants():
 		if get_member_declaration(c) != Keys.MEMBER_TYPE_CONST:
 			continue
 		var type = get_member_type(c)
-		if type.begins_with("res://") and not type.ends_with(Keys.ENUM_PATH_SUFFIX):
+		#if type.begins_with("res://") and not type.ends_with(Keys.ENUM_PATH_SUFFIX):
+		if Utils.is_absolute_path(type) and not type.ends_with(Keys.ENUM_PATH_SUFFIX):
 			valid.append(c)
 	for ic in inner_classes.keys():
 		valid.append(ic)
@@ -395,7 +406,8 @@ func _set_inherited_scripts():
 			if not ClassDB.class_exists(last_path):
 				var extended_resolved = _get_extended_type_of_class(last_path)
 				print("GET INH EXTENDED ", extended_resolved, "::LOOKING FOR::", last_path)
-				if extended_resolved.begins_with("res://"):
+				#if extended_resolved.begins_with("res://"):
+				if Utils.is_absolute_path(extended_resolved):
 					valid.append(extended_resolved)
 					last_path = extended_resolved
 		else:
@@ -433,20 +445,27 @@ func _check_inherited_valid():
 		#return
 		#inherited_scripts = get_inherited_scripts()
 	
-	print(inherited_scripts)
+	print("INH MEMBERS::SCRIPTS::",inherited_scripts)
+	#if main_script_path == "user://test_inher.gd":
+	print("INH MEMBERS::MEMBERS::",inherited_members.keys())
 	
 	var valid_scripts = {}
 	for path in inherited_scripts:
 		var script_data = UString.get_script_path_and_suffix(path)
 		var script_path = script_data[0]
+		
 		var mod_time = FileAccess.get_modified_time(script_path)
 		var cached = _inherited_script_mod_cache.get(script_path, -1)
+		print("INH MEMBERS::CHECK PATH::", script_path, "::IS VALID::", mod_time == cached)
 		if mod_time != cached:
 			inherited_members.clear()
 		#else:
 			#print("VALID")
 			
 		valid_scripts[script_path] = mod_time
+	
+	#if main_script_path == "user://test_inher.gd":
+	print("INH MEMBERS::MEMBERS::",inherited_members.keys())
 	
 	#inherited_members.clear()
 	

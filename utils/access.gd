@@ -70,16 +70,25 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 	
 	var parser = Utils.ParserRef.get_parser(self)
 	
+	# TEST #^ this seems to better check for  inheritance, but it does negatively affect some of the name finding.
+	#^ Secondary access may not be used in certain situations ie. e:MyEnum in the test_comp.gd inner classes portion
+	#^ that being said, that example is not resolving fully anyway, so it is a side grade maybe. it should give MyEnum but gives: IC.MyEnum
+	#var to_find_has_suffix = to_find.ends_with(ENUM_SUFFIX)
+	#var inherit_check_path = to_find
+	#if to_find_has_suffix:
+		#inherit_check_path = UString.trim_member_access_back(inherit_check_path)
+	#var inherits = parser.script_inherits(class_obj.get_script_class_path(), inherit_check_path)
+	#print_deb(T.ACCESS_PATH, class_obj.get_script_class_path() ,"INHERITS", inherit_check_path, inherits)
+	#if not inherits:
+		#inherits = parser.script_inherits(class_obj.get_script_class_path(), to_find_script_path)
+	#print_deb(T.ACCESS_PATH, class_obj.get_script_class_path() ,"INHERITS CHECK 2", to_find_script_path, inherits)
+	
+	#^r ORIGINAL METHOD
+	var inherits = parser.script_inherits(current_script_path, to_find_script_path)
 	
 	
 	# if current script is relevant, can simplify process. if to find is in current or external is current
-	if current_script_path == to_find_script_path or current_script_path == secondary_script_path or parser.script_inherits(current_script_path, to_find_script_path):
-		
-		#var preload_path = class_obj.has_preload(to_find)
-		#if preload_path != null:
-			#print_deb(T.ACCESS_PATH, "HAS PRELOAD", preload_path)
-			#access_options.standard = preload_path
-			#return access_options
+	if current_script_path == to_find_script_path or current_script_path == secondary_script_path or inherits:
 		
 		# if current script has the declaration symbol, we are good. This function automatically splits member access parts
 		if class_has_const(secondary_access.declaration_symbol, class_obj) and secondary_access.declaration_type == to_find:
@@ -155,7 +164,15 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 	var access_to_find_path = get_member_by_value(access_script_path, to_find)
 	if access_to_find_path != null:
 		print_deb(T.ACCESS_PATH, "FINAL GET BY VAL", access_to_find_path)
-		access_options.standard = UString.dot_joinv([current_access.declaration_symbol, access_to_find_path])
+		if access_to_find_path.begins_with(current_access.declaration_symbol):
+			print_deb(T.ACCESS_PATH, "FINAL GET BY VAL::BEGINS WITH DEC", access_to_find_path)
+			# this is a naive trim. No guarentee that it is the correct path.
+			access_to_find_path = access_to_find_path.trim_prefix(current_access.declaration_symbol).trim_prefix(".")
+		
+		access_options.standard = UString.dot_joinv([current_access.declaration_symbol, access_to_find_path]) # ORIGINAL
+		#TEST # is this the correct way?
+		#access_options.standard = access_to_find_path
+		#TEST
 		return access_options
 	
 	# nothing found, return no standard
@@ -186,8 +203,22 @@ func find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject,
 	print_deb(T.ACCESS_PATH, "DEC",  access_object.declaration_symbol, access_object.declaration_type)
 	print_deb(T.ACCESS_PATH, "ACCESS", access_object.access_symbol, access_object.access_type)
 	
+	# TEST #^ note: see above func
+	#var to_find_has_suffix = to_find.ends_with(ENUM_SUFFIX)
+	#var inherit_check_path = to_find
+	#if to_find_has_suffix:
+		#inherit_check_path = UString.trim_member_access_back(inherit_check_path)
+	#var inherits = parser.script_inherits(class_obj.get_script_class_path(), inherit_check_path)
+	#print_deb(T.ACCESS_PATH, class_obj.get_script_class_path() ,"INHERITS", inherit_check_path, inherits)
+	#if not inherits:
+		#inherits = parser.script_inherits(class_obj.get_script_class_path(), to_find_script_path)
+	#print_deb(T.ACCESS_PATH, class_obj.get_script_class_path() ,"INHERITS CHECK 2", to_find_script_path, inherits)
+	
+	#^r ORIGINAL METHOD
+	var inherits = parser.script_inherits(current_script_path, to_find_script_path)
+	
 	# if current script is to find or inherits, should be simple to get access
-	if current_script_path == to_find_script_path or parser.script_inherits(current_script_path, to_find_script_path):# or current_script_path == access_script_path:
+	if current_script_path == to_find_script_path or inherits:# or current_script_path == access_script_path:
 		# if it has the declaration symbol, use it. This would be if it has been redefined in another const
 		if class_has_const(access_object.declaration_symbol, class_obj) and access_object.declaration_type == to_find:
 			access_options.standard = access_object.declaration_symbol
@@ -329,7 +360,8 @@ func parser_has_path(path:String, parser:GDScriptParser):
 			class_obj = parser.get_class_object(part)
 		elif member_type == Keys.MEMBER_TYPE_CONST:
 			var type = class_obj.get_member_type(part)
-			if type.begins_with("res://"):
+			if Utils.is_absolute_path(type):
+			#if type.begins_with("res://"):
 				var remaining_parts = ""
 				for ni in range(i + 1, path_parts.size()):
 					remaining_parts = UString.dot_join(remaining_parts, path_parts[ni])

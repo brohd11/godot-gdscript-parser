@@ -41,6 +41,11 @@ static func file_path_to_type(file_path:String):
 	
 	return type
 
+static func is_absolute_path(string:String):
+	if string.begins_with("'") or string.begins_with('"'):
+		return false
+	return string.is_absolute_path()
+
 static func member_is_const_class_enum(member_type:String):
 	return member_type == Keys.MEMBER_TYPE_CLASS or member_type == Keys.MEMBER_TYPE_CONST or member_type == Keys.MEMBER_TYPE_ENUM
 

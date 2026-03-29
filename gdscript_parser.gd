@@ -284,7 +284,12 @@ func get_parser_for_path(full_script_path:String) -> GDScriptParser:
 	
 	if need_script_update:
 		print("NEED UPDATE::", script_path)
-		var script = load(script_path)
+		
+		var script:GDScript
+		if script_path.begins_with("res://"):
+			script = load(script_path)
+		else: # some type of caching issue with out of fs scripts. Full reload to ensure changes are reflected
+			script = ResourceLoader.load(script_path, "", ResourceLoader.CACHE_MODE_IGNORE_DEEP)
 		parser.set_current_script(script)
 		parser.set_source_code(script.source_code)
 	

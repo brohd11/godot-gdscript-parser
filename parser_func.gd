@@ -174,14 +174,14 @@ func get_return_type(inferred:=true): # this could be used to parse
 	if _return_type_raw == "":
 		_return_type_raw = _infer_return_type()
 	if not inferred:
-		print("PARSER FUNC::RETURN RAW::", _return_type_raw)
+		#print("PARSER FUNC::RETURN RAW::", _return_type_raw)
 		return _return_type_raw
-	print("PARSER FUNC::RETURN RAW TO INFER::", _return_type_raw)
+	#print("PARSER FUNC::RETURN RAW TO INFER::", _return_type_raw)
 	#if _return_type == "" or not _return_type.begins_with("res://"):
 	if _return_type == "" or not Utils.is_absolute_path(_return_type):
 		var parser = Utils.ParserRef.get_parser(self)
 		_return_type = parser.resolve_expression(_return_type_raw, declaration_line)
-		print("RESOLVED FUNC RETURN::", _return_type)
+		#print("RESOLVED FUNC RETURN::", _return_type)
 	if _return_type == "":
 		_return_type = "Variant"
 	return _return_type
@@ -194,6 +194,7 @@ func _infer_return_type() -> String:
 	var func_indent = class_indent + code_edit_parser.indent_size
 	var potential_return = ""
 	end_line = func_lines[func_lines.size() - 1]
+	#var i = min(end_line + 1, code_edit_parser.code_edit.get_line_count() - 1)
 	var i = end_line + 1
 	while i > declaration_line + 1:
 		i -= 1

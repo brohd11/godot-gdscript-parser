@@ -43,7 +43,7 @@ var _inherited_script_mod_cache := {}
 var base_type_members := {}
 
 func queue_refresh(): # need to figure out a cache for this
-	print("REFRESH")
+	#print("REFRESH")
 	_set_inherited_scripts()
 	_check_inherited_valid() # if any of inherited have changed, clear inh members dict
 	for f in functions.values():
@@ -59,10 +59,9 @@ func set_script_resource(script:GDScript):
 	script_resource = script
 	if is_instance_valid(script):
 		script_base_type = script_resource.get_instance_base_type()
-		print("INNERSCRIPT BASE SET RES::", script_base_type)
 	else:
 		script_base_type = "RefCounted"
-	print("INNERSCRIPT BASE::", script_base_type)
+	#print("INNERSCRIPT BASE::", script_base_type)
 
 
 func get_script_resource():
@@ -225,7 +224,6 @@ func get_member_type(identifier:String):
 		var type:String
 		if declaration != cached.get(Keys.CLASS_CACHE_DEC, ""):
 			if member_data.get(Keys.MEMBER_TYPE) == Keys.MEMBER_TYPE_CLASS:
-				print("DOING CLASS")
 				type = parser.get_type_lookup().resolve_inner_class_at_line(identifier, declaration_line)
 			else:
 				type = parser.resolve_expression(identifier, declaration_line)
@@ -273,7 +271,7 @@ func get_inherited_members(include_class:=true) -> Dictionary:
 		#base_type_members = UClassDetail.class_get_all_members(script_resource) # i think this can be removed now, it is handled in resolve separately
 		#inherited_members.merge(UClassDetail.class_get_all_members(script_resource))
 	
-	t.stop()
+	#t.stop()
 	var base_script = get_class_base_script()
 	if base_script != null:
 		pass
@@ -405,7 +403,7 @@ func _set_inherited_scripts():
 		if script.resource_path == "":
 			if not ClassDB.class_exists(last_path):
 				var extended_resolved = _get_extended_type_of_class(last_path)
-				print("GET INH EXTENDED ", extended_resolved, "::LOOKING FOR::", last_path)
+				#print("GET INH EXTENDED ", extended_resolved, "::LOOKING FOR::", last_path)
 				#if extended_resolved.begins_with("res://"):
 				if Utils.is_absolute_path(extended_resolved):
 					valid.append(extended_resolved)
@@ -422,7 +420,7 @@ func _set_inherited_scripts():
 func _get_extended_type_of_class(script_path:String): # maybe this should be in the parser for ease
 	var parser = Utils.ParserRef.get_parser(self)
 	var script_parser_data = parser.get_parser_and_class_obj_for_script(script_path)
-	print("PARSER EQ::", parser == script_parser_data.parser, " extends ", extended, " ", script_path)
+	#print("PARSER EQ::", parser == script_parser_data.parser, " extends ", extended, " ", script_path)
 	
 	var class_obj = script_parser_data.get("class_obj")
 	return class_obj.get_extended_type()
@@ -445,9 +443,9 @@ func _check_inherited_valid():
 		#return
 		#inherited_scripts = get_inherited_scripts()
 	
-	print("INH MEMBERS::SCRIPTS::",inherited_scripts)
+	#print("INH MEMBERS::SCRIPTS::",inherited_scripts)
 	#if main_script_path == "user://test_inher.gd":
-	print("INH MEMBERS::MEMBERS::",inherited_members.keys())
+	#print("INH MEMBERS::MEMBERS::",inherited_members.keys())
 	
 	var valid_scripts = {}
 	for path in inherited_scripts:
@@ -456,7 +454,7 @@ func _check_inherited_valid():
 		
 		var mod_time = FileAccess.get_modified_time(script_path)
 		var cached = _inherited_script_mod_cache.get(script_path, -1)
-		print("INH MEMBERS::CHECK PATH::", script_path, "::IS VALID::", mod_time == cached)
+		#print("INH MEMBERS::CHECK PATH::", script_path, "::IS VALID::", mod_time == cached)
 		if mod_time != cached:
 			inherited_members.clear()
 		#else:
@@ -465,7 +463,7 @@ func _check_inherited_valid():
 		valid_scripts[script_path] = mod_time
 	
 	#if main_script_path == "user://test_inher.gd":
-	print("INH MEMBERS::MEMBERS::",inherited_members.keys())
+	#print("INH MEMBERS::MEMBERS::",inherited_members.keys())
 	
 	#inherited_members.clear()
 	

@@ -6,6 +6,7 @@ const CodeEditParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/
 const BuiltInChecker = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/builtin/builtin_checker.gd")
 const AccessObject = GDScriptParser.TypeLookup.AccessObject
 
+const UFile = GDScriptParser.UFile
 const UClassDetail = GDScriptParser.UClassDetail
 
 
@@ -31,6 +32,8 @@ static func file_path_to_type(file_path:String):
 		return file_path
 	var ext = file_path.get_extension()
 	var type = ""
+	if not FileAccess.file_exists(file_path):
+		return ""
 	var resource = load(file_path) as Resource
 	return resource.get_class()
 	match ext:
@@ -102,6 +105,8 @@ static func get_var_or_const_info(stripped_line:String):# -> Array:
 		var p_match = _preload_regex.search(assignment)
 		if p_match:
 			var path = p_match.get_string(1)
+			if path.begins_with("uid:"):
+				path = UFile.uid_to_path(path)
 			var tail = p_match.get_string(2).strip_edges()
 			# This turns preload("my_path").SomeClass -> "my_path.SomeClass"
 			assignment = path + tail 

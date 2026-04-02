@@ -54,7 +54,7 @@ func get_function_data_at_line(identifier:String, line:int):
 
 
 func get_function_data(identifier, class_obj:ParserClass, line:int=-1):
-	print("GET FUNC DATA::", identifier , "::IN::", class_obj.get_script_class_path())
+	#print("GET FUNC DATA::", identifier , "::IN::", class_obj.get_script_class_path())
 	var inherited_func:=false
 	var complex_identifier = identifier.find(".") != -1
 	var stripped_identifier = identifier
@@ -68,7 +68,7 @@ func get_function_data(identifier, class_obj:ParserClass, line:int=-1):
 		else:
 			var func_obj = class_obj.get_function(identifier) as ParserFunc
 			if is_instance_valid(func_obj):
-				print("SIMPLE GET::", func_obj.get_function_data())
+				#print("SIMPLE GET::", func_obj.get_function_data())
 				return func_obj.get_function_data()
 			return {}
 	
@@ -81,20 +81,20 @@ func get_function_data(identifier, class_obj:ParserClass, line:int=-1):
 		identifier = UString.get_member_access_back(identifier, string_map)
 		#var resolved_symbol = resolve_identifier_to_symbol(access, _line)
 		var resolved_symbol = resolve_expression_at_line(access, line)
-		print("FUNC DATA::SYMBOL::", resolved_symbol)
+		#print("FUNC DATA::SYMBOL::", resolved_symbol)
 		if resolved_symbol != "":
 			if BuiltInChecker.is_builtin_class(resolved_symbol):
-				print("HAS SYMB::", resolved_symbol, "::ID::", identifier)
+				#print("HAS SYMB::", resolved_symbol, "::ID::", identifier)
 				calling_script_access = resolved_symbol
 			else:
 				var resolved_script = resolve_expression_at_line(resolved_symbol, line)
-				print("FUNC DATA::RESOLVED::", resolved_script)
+				#print("FUNC DATA::RESOLVED::", resolved_script)
 				if not Utils.is_absolute_path(resolved_script):
 				#if not resolved_script.begins_with("res://"):
 					calling_script_access = resolved_script
 				else:
 					var script_data = UString.get_script_path_and_suffix(resolved_script)
-					print("FUNC DATA::SCRIPT::",script_data)
+					#print("FUNC DATA::SCRIPT::",script_data)
 					calling_script_path = script_data[0]
 					calling_script_access = script_data[1]
 					
@@ -120,7 +120,7 @@ func get_function_data(identifier, class_obj:ParserClass, line:int=-1):
 
 
 func _outside_script_get_function_data(script_path:String, access_path:String, identifier:String) -> Dictionary:
-	print("OUTSIDE::PATH::", script_path, "::ACCESS::", access_path, "::ID::", identifier)
+	#print("OUTSIDE::PATH::", script_path, "::ACCESS::", access_path, "::ID::", identifier)
 	if script_path == "":
 		return BuiltInChecker.get_func_data(access_path, identifier)
 	#Color.html()
@@ -131,14 +131,14 @@ func _outside_script_get_function_data(script_path:String, access_path:String, i
 		var class_obj = parser.get_class_object(access_path) as ParserClass
 		var function = class_obj.get_function(identifier) as ParserFunc
 		if is_instance_valid(function):
-			print("SIMPLE GET::", function.get_function_data())
+			#print("SIMPLE GET::", function.get_function_data())
 			return function.get_function_data()
 	
 	var data = UClassDetail.get_member_info_by_path(script, UString.dot_join(access_path, identifier))
 	if data != null:
-		print("MEMBER DATA::", data)
+		#print("MEMBER DATA::", data)
 		var result = _property_info_to_function_data(data)
-		print("MEMBER DATA::RESULT::", result)
+		#print("MEMBER DATA::RESULT::", result)
 		return result
 	
 	return {}
@@ -208,7 +208,8 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 	#if expression.begins_with("res://"):
 	if Utils.is_absolute_path(expression):# and FileAccess.file_exists(expression):
 		print_deb(T.RESOLVE, "EARLY EXIT", "BEGIN WITH RES", expression)
-		return Utils.file_path_to_type(expression)
+		var path = _ensure_valid_type_path(expression)
+		return Utils.file_path_to_type(path)
 		#return expression
 	
 	if expression == "self": # if self, we can just return the path to the class
@@ -265,10 +266,10 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 		elif _class_has_member(current_type_path, identifier):
 			#return _class_member_type(current_type_path, identifier) # this is how it was
 			# TEST
-			print("EXIT")
+			#print("EXIT")
 			resolved_type = _class_member_type(current_type_path, identifier)
 		if current_class_obj.class_has_member(identifier):
-			print("EXIT CLASS HAS MEMBER")
+			#print("EXIT CLASS HAS MEMBER")
 			if identifier != "get":
 				return _class_member_type(current_class_obj.script_base_type, identifier)
 			else: # get can be tricky, the built in returns Nil, but we can attempt to infer more. Maybe limit to Dictionary?
@@ -358,6 +359,7 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 	print_deb(T.RESOLVE, "RETURN", str(recursions), " ==== ", current_type_path)
 	#if current_type_path.begins_with("res://"):
 	if Utils.is_absolute_path(current_type_path):
+		current_type_path = _ensure_valid_type_path(current_type_path)
 		current_type_path = Utils.file_path_to_type(current_type_path)
 	return current_type_path
 
@@ -386,7 +388,7 @@ func _resolve_process_in_script_data(member_name:String, class_obj:ParserClass, 
 	while member_in_class_or_local_vars(result, class_obj, local_vars):
 		count += 1
 		if count > 50:
-			print("COUNTED OUT")
+			#print("COUNTED OUT")
 			break
 		var next_result = _check_class_obj_member_data(result, class_obj, local_vars)
 		if next_result == null:
@@ -410,7 +412,7 @@ func _resolve_builtin_class_member(identifier:String, current_type_path:String, 
 	if current_type_path == &"Dictionary":
 		if identifier.begins_with("get"):
 			var args = identifier.get_slice("(", 1)
-			print(identifier, args)
+			#print(identifier, args)
 			args = args.substr(0, args.rfind(")"))
 			if args.find(",") == -1:
 				return "Variant"
@@ -439,7 +441,8 @@ func _process_external_identifier(identifier:String, script_path:String, class_a
 		if class_access_path != "":
 			script = get_script_member_info_by_path(script, class_access_path)
 		if script == null:
-			print("EXTERNAL NO SCRIPT::", script_path, "::ACCESS::" ,class_access_path)
+			#print("EXTERNAL NO SCRIPT::", script_path, "::ACCESS::" ,class_access_path)
+			pass
 		var member_info = get_script_member_info_by_path(script, identifier)
 		if member_info != null:
 			return _property_info_to_type_no_class(member_info)
@@ -449,7 +452,7 @@ func _process_external_identifier(identifier:String, script_path:String, class_a
 		var external_parser = _get_parser_for_script(script_path)
 		var class_obj = external_parser.get_class_object(class_access_path) as ParserClass
 		var type = external_parser.resolve_expression(identifier, class_obj.line_indexes[0])
-		t.stop()
+		#t.stop()
 		
 		return type
 
@@ -489,6 +492,31 @@ func _get_inherited_member_type(identifier:String, class_obj:ParserClass):
 			print_deb(T.INHERITED, "EXTERNAL SCRIPT", inheriting_script)
 			return _process_external_identifier(identifier, script_data[0], script_data[1]) # may need access path for class?
 	return ""
+
+func _ensure_valid_type_path(full_script_path:String):
+	var script_data = UString.get_script_path_and_suffix(full_script_path)
+	var script_path = script_data[0]
+	var class_access = script_data[1]
+	if class_access == "":
+		return full_script_path
+	var parser = _get_parser_for_script(script_path)
+	if class_access.ends_with(ENUM_SUFFIX):
+		var inner_class_check = ""
+		var enum_name = class_access.trim_suffix(ENUM_SUFFIX)
+		if enum_name.contains("."):
+			inner_class_check = UString.trim_member_access_back(enum_name)
+			enum_name = UString.get_member_access_back(enum_name)
+		var class_obj = parser.get_class_object(inner_class_check) as ParserClass
+		if is_instance_valid(class_obj):
+			if class_obj.has_enum(enum_name):
+				return full_script_path
+	else:
+		var class_obj = parser.get_class_object(class_access)
+		if is_instance_valid(class_obj):
+			return full_script_path
+	
+	return parser.resolve_expression(class_access, 0)
+
 
 #endregion
 
@@ -942,7 +970,7 @@ func _simple_type_check(type_hint:String):
 	for bool_op in Utils.Keywords.BOOL_OPERATORS:
 		var bool_op_idx = type_hint.find(bool_op)
 		if bool_op_idx > -1 and not string_map.index_in_string_or_comment(bool_op_idx):
-			print("TYPE HINT::BOOL::", type_hint, "::OP::", bool_op)
+			#print("TYPE HINT::BOOL::", type_hint, "::OP::", bool_op)
 			return "bool"
 	#TEST
 	
@@ -984,7 +1012,7 @@ func _simple_type_check(type_hint:String):
 					break
 				identifier += _char
 				i += 1
-			print("TYPE HINT::NON-BOOL::", type_hint, "::OP::", non_bool_op, "::ID::", identifier)
+			#print("TYPE HINT::NON-BOOL::", type_hint, "::OP::", non_bool_op, "::ID::", identifier)
 			return identifier.strip_edges()
 	#TEST
 	

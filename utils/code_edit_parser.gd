@@ -94,7 +94,7 @@ func parse_text(force:=false):
 	indent_size = code_edit.get_tab_size()
 	
 	if not cache_dirty and not force: # cache_dirty means text is changed. If it hasn't then everything should be valid
-		t.stop()
+		#t.stop()
 		return
 	
 	var existing_class_access = parser._class_access
@@ -111,11 +111,14 @@ func parse_text(force:=false):
 	var i = 0
 	var code_edit_line_count = code_edit.get_line_count() - 1
 	for _i in range(code_edit_line_count):
+		if i > code_edit_line_count: # some how get line can return a blank line when calling out of range?
+			break
 		var stripped:String = get_line(i, true, true)
 		if stripped == "":
 			class_access_map[_pc.access_path].append(i)
 			if _pc.in_function:
 				_pc.current_func_dict[Keys.FUNC_LINES].append(i)
+			#print("CURRENT TOP::", i, "::EXTENDED LINES::", extended_lines, _pc.current_func_dict.get(Keys.FUNC_LINES))
 			i += 1
 			continue
 		
@@ -131,14 +134,15 @@ func parse_text(force:=false):
 		class_access_map[_pc.access_path].append(i)
 		if _pc.in_function:
 			_pc.current_func_dict[Keys.FUNC_LINES].append(i)
+			
 		if not extended_lines.is_empty():
 			for index in extended_lines:
 				class_access_map[_pc.access_path].append(index)
 				if _pc.in_function:
-					_pc.current_func_dict[Keys.FUNC_LINES].append(i)
+					_pc.current_func_dict[Keys.FUNC_LINES].append(index)
 				i += 1
 			extended_lines.clear()
-		
+		#print("CURRENT::", i, "::EXTENDED LINES::", extended_lines, _pc.current_func_dict.get(Keys.FUNC_LINES))
 		i += 1
 	
 	
@@ -212,7 +216,7 @@ func parse_text(force:=false):
 	
 	parser._class_access = temp_class_access
 	
-	t.stop()
+	#t.stop()
 	#print("CLASSES ",temp_class_access.keys())
 	cache_dirty = false
 	_first_parse_complete = true
@@ -223,7 +227,7 @@ func parse_text(force:=false):
 func _parse_line(stripped:String, line:int, column:int=0):
 	var has_extension = stripped.ends_with("\\")
 	if has_extension or stripped.begins_with("@"):
-		if has_extension or stripped.count("(") != stripped.count(")"): # complex case, get full context
+		if has_extension or _line_has_open_bracket(stripped): # complex case, get full context # old version just checked stripped.count('(') != stripped.count(')')
 			var context_data = get_line_context(line, 0, false, {Keys.CONTEXT_START: line})
 			var end_index = context_data.get(Keys.CONTEXT_END)
 			for e_i in range(line + 1, end_index):
@@ -339,6 +343,15 @@ func _get_extends_out_line(line_text:String):
 		extended = Utils.ensure_absolute_path(extended, _pc.main_script_path)
 	return extended
 
+
+func _line_has_open_bracket(stripped:String):
+	if stripped.count("(") != stripped.count(")"):
+		return true
+	if stripped.count("{") != stripped.count("}"):
+		return true
+	if stripped.count("[") != stripped.count("]"):
+		return true
+	return false
 
 
 static func _parse_source2(source:String):
@@ -475,7 +488,7 @@ func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=fal
 	var bracket_depth = 0
 	var in_string = code_edit.is_in_string(context_start_line, 0) != -1
 	var is_prev_continued = false
-	for i in range(context_start_line, code_edit.get_line_count()):
+	for i in range(context_start_line, code_edit.get_line_count() - 1):
 		var line = code_edit.get_line(i)
 		if bracket_depth == 0 and not in_string and not is_prev_continued: # if not in string
 			context_start_line = i

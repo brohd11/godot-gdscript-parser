@@ -48,6 +48,8 @@ func queue_refresh(): # need to figure out a cache for this
 	_check_inherited_valid() # if any of inherited have changed, clear inh members dict
 	for f in functions.values():
 		f.queue_refresh()
+	
+	_clean_resolve_cache()
 
 func set_extends(new_extends:String):
 	if new_extends != extended:
@@ -86,8 +88,7 @@ func set_members(members_dict:Dictionary):
 	
 	for m in members.keys():
 		_create_function(m, members[m])
-	
-	#_set_inherited_scripts()
+
 
 func _create_function(_name, data:Dictionary):
 	var member_type = data.get(Keys.MEMBER_TYPE)
@@ -182,17 +183,8 @@ func get_enum_members(enum_name:String):
 		return
 	return result[1] # this is the members as dict
 
-func get_members(include_inherited:=false):
-	if main_script_path == "user://test_inher.gd":
-		print("INH MEMBERS::TEST INHER")
-		print("INH MEMBERS::TEST INHER::MEMBER::", members)
-		print("INH MEMBERS::TEST INHER::CONST::", constants)
-		print("INH MEMBERS::TEST INHER::IC::", inner_classes)
-		print("INH MEMBERS::TEST INHER::METHOD::", functions)
-	
+func get_members():
 	var dict = {}
-	if include_inherited:
-		dict.merge(get_inherited_members())
 	dict.merge(members.duplicate())
 	dict.merge(constants.duplicate())
 	dict.merge(inner_classes.duplicate())
@@ -215,26 +207,37 @@ func get_member_type(identifier:String):
 	if member_data == null:
 		return ""
 	elif member_data is ParserFunc:
-		return member_data.get_return_type(true)
+		var raw = member_data.get_return_type(false)
+		var type:StringName
+		var cached = _resolve_cache.get_or_add(identifier, {})
+		if raw != cached.get(Keys.CLASS_CACHE_DEC, ""):
+			type = member_data.get_return_type(true)
+			cached[Keys.CLASS_CACHE_TYPE] = StringName(type)
+		else:
+			type = cached.get(Keys.CLASS_CACHE_TYPE, "")
+		
+		cached[Keys.CLASS_CACHE_DEC] = raw
+		_resolve_cache[identifier] = cached
+		return type
 	else:
 		var parser = Utils.ParserRef.get_parser(self)
 		var type_lookup = parser.get_type_lookup()
 		var declaration = type_lookup.get_class_obj_member_type(identifier, self, {})
 		var cached = _resolve_cache.get_or_add(identifier, {})
-		var type:String
-		if declaration != cached.get(Keys.CLASS_CACHE_DEC, ""):
+		var type:StringName
+		if declaration != cached.get(Keys.CLASS_CACHE_DEC, "") or true: # ALERT REMOVE THIS
 			if member_data.get(Keys.MEMBER_TYPE) == Keys.MEMBER_TYPE_CLASS:
 				type = parser.get_type_lookup().resolve_inner_class_at_line(identifier, declaration_line)
 			else:
 				type = parser.resolve_expression(identifier, declaration_line)
-			cached[Keys.CLASS_CACHE_TYPE] = type
+			cached[Keys.CLASS_CACHE_TYPE] = StringName(type)
 		else:
 			type = cached.get(Keys.CLASS_CACHE_TYPE, "")
 		
 		cached[Keys.CLASS_CACHE_DEC] = declaration
 		_resolve_cache[identifier] = cached
 		return type
-	return ""
+
 
 func has_preload(path:String): # doesnt handle inherited, should cache this somehow
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET PRELOAD")
@@ -259,17 +262,14 @@ func has_preload(path:String): # doesnt handle inherited, should cache this some
 
 
 ## Get and cache the preloads of current scripts ancestors.
-func get_inherited_members(include_class:=true) -> Dictionary:
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET INH::" + get_name())
+func get_inherited_members() -> Dictionary:
+	#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET INH::" + get_name())
 	if main_script_path == "user://test_inher.gd":
 		print("INH MEMBERS::MEMBERS::",inherited_members)
 	if not inherited_members.is_empty():
 		return inherited_members
 	
 	_get_inherited_members()
-	#if include_class:
-		#base_type_members = UClassDetail.class_get_all_members(script_resource) # i think this can be removed now, it is handled in resolve separately
-		#inherited_members.merge(UClassDetail.class_get_all_members(script_resource))
 	
 	#t.stop()
 	var base_script = get_class_base_script()
@@ -377,6 +377,10 @@ func class_has_member(identifier:String):
 			#return true
 	return false
 
+func get_class_member_type(identifier:String, resolve_const:=false):
+	return GDScriptParser.TypeLookup.get_class_member_type(script_base_type, identifier, resolve_const)
+
+
 func get_class_base_script():
 	if is_instance_valid(script_resource):
 		return script_resource.get_base_script()
@@ -437,16 +441,6 @@ func _check_inherited_valid():
 		if script_base_type != script_resource.get_instance_base_type():
 			inherited_members.clear()
 	
-	#inherited_scripts.clear()
-	
-	#if inherited_scripts.is_empty():
-		#return
-		#inherited_scripts = get_inherited_scripts()
-	
-	#print("INH MEMBERS::SCRIPTS::",inherited_scripts)
-	#if main_script_path == "user://test_inher.gd":
-	#print("INH MEMBERS::MEMBERS::",inherited_members.keys())
-	
 	var valid_scripts = {}
 	for path in inherited_scripts:
 		var script_data = UString.get_script_path_and_suffix(path)
@@ -454,17 +448,15 @@ func _check_inherited_valid():
 		
 		var mod_time = FileAccess.get_modified_time(script_path)
 		var cached = _inherited_script_mod_cache.get(script_path, -1)
-		#print("INH MEMBERS::CHECK PATH::", script_path, "::IS VALID::", mod_time == cached)
 		if mod_time != cached:
 			inherited_members.clear()
-		#else:
-			#print("VALID")
-			
+		
 		valid_scripts[script_path] = mod_time
 	
-	#if main_script_path == "user://test_inher.gd":
-	#print("INH MEMBERS::MEMBERS::",inherited_members.keys())
-	
-	#inherited_members.clear()
-	
 	_inherited_script_mod_cache = valid_scripts
+
+
+func _clean_resolve_cache():
+	for member_name in _resolve_cache.keys():
+		if not has_script_member(member_name):
+			_resolve_cache.erase(member_name)

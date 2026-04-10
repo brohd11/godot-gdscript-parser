@@ -9,6 +9,7 @@ const UString = GDScriptParser.UString
 const UFile = GDScriptParser.UFile
 const UClassDetail = GDScriptParser.UClassDetail
 const AccessObject = GDScriptParser.Access.AccessObject
+const InferenceContext = GDScriptParser.InferenceContext
 
 const BuiltInChecker = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/builtin/builtin_checker.gd")
 
@@ -33,6 +34,17 @@ var class_resolution:=false
 var class_resolution_obj:ParserClass
 
 #var _resolve_to_script:=false
+
+var inference_context:InferenceContext
+var _inf_weakref:WeakRef
+
+func get_inference_context() -> InferenceContext:
+	if _inf_weakref != null:
+		return _inf_weakref.get_ref()
+	return
+
+func set_inference_context(inf:InferenceContext):
+	_inf_weakref = weakref(inf)
 
 
 
@@ -137,14 +149,14 @@ func _outside_script_get_function_data(script_path:String, access_path:String, i
 	var data = UClassDetail.get_member_info_by_path(script, UString.dot_join(access_path, identifier))
 	if data != null:
 		#print("MEMBER DATA::", data)
-		var result = _property_info_to_function_data(data)
+		var result = property_info_to_function_data(data)
 		#print("MEMBER DATA::RESULT::", result)
 		return result
 	
 	return {}
 
 
-func _property_info_to_function_data(property_info:Dictionary):
+static func property_info_to_function_data(property_info:Dictionary):
 	var data = {
 		Keys.FUNC_ARGS:{},
 		Keys.FUNC_RETURN:""
@@ -190,22 +202,43 @@ func resolve_expression_at_line(expression:String, line:int):
 	if class_resolution == true:
 		print("CLASS RES TRUE")
 	class_resolution = false
+	
+	var parser = _get_parser()
+	var main_script = parser.get_current_script()
+	var main_script_path = main_script.resource_path
 	var class_data = get_parser_objects_and_local_vars(line)
 	var class_obj = class_data.class_obj
+	
+	
+	
+	var inf_context = _get_or_instance_inf_context()
+	var inf_expression = _get_inf_expression(class_obj, expression)
+	var inf_check = _check_inf_expression(inf_context, inf_expression)
+	if inf_check != null:
+		_check_inf_on_exit()
+		return inf_check
+	
 	var local_vars = class_data.local_vars
 	var result = resolve_expression(expression, class_obj, local_vars)
-	return result 
+	
+	#print(inf_context._active_expressions)
+	#print(inf_expression, ":: -> ::", result)
+	
+	inf_context.finish_expression(inf_expression, result)
+	_check_inf_on_exit()
+	return result
+
+
 
 
 func resolve_expression(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary, recursions:int=0) -> String:
 	if recursions >= 10:
-		return expression
+		return "Variant"
 	
 	var parser = _get_parser()
 	var main_script = parser.get_current_script()
 	var main_script_path = main_script.resource_path
 	
-	#if expression.begins_with("res://"):
 	if Utils.is_absolute_path(expression):# and FileAccess.file_exists(expression):
 		print_deb(T.RESOLVE, "EARLY EXIT", "BEGIN WITH RES", expression)
 		var path = _ensure_valid_type_path(expression)
@@ -220,7 +253,7 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 	if _valid_identifier(expression):
 		print_deb(T.RESOLVE, "EARLY EXIT", "IS VALID", expression)
 		if initial_class_obj.class_has_member(expression):
-			return _class_member_type(initial_class_obj.script_base_type, expression)
+			return get_class_member_type(initial_class_obj.script_base_type, expression)
 		return expression
 	var simple_check = _simple_type_check(expression)
 	if simple_check != "":
@@ -267,11 +300,11 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 			#return _class_member_type(current_type_path, identifier) # this is how it was
 			# TEST
 			#print("EXIT")
-			resolved_type = _class_member_type(current_type_path, identifier)
+			resolved_type = get_class_member_type(current_type_path, identifier)
 		if current_class_obj.class_has_member(identifier):
 			#print("EXIT CLASS HAS MEMBER")
 			if identifier != "get":
-				return _class_member_type(current_class_obj.script_base_type, identifier)
+				return get_class_member_type(current_class_obj.script_base_type, identifier)
 			else: # get can be tricky, the built in returns Nil, but we can attempt to infer more. Maybe limit to Dictionary?
 				resolved_type = _resolve_builtin_class_member(current_part, current_type_path, current_class_obj, local_vars)
 		
@@ -309,6 +342,9 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 		if resolved_type == "": # If we hit a dead end (untyped var, unknown function)
 			return ""
 		
+		if resolved_type == expression:
+			return ""
+		
 		# RECURSION CHECK: Did the variable return a literal expression instead of a parsed type?
 		# e.g., local_vars["my_var"] resulted in the string "SomeClass.get_instance()"
 		# We must resolve that expression into a true path before continuing!
@@ -323,6 +359,9 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 				return ""
 		else:
 			print_deb(T.RESOLVE, "RESOLVED_EXPRESSION", resolved_type)
+		
+		if resolved_type == expression:
+			return ""
 		
 		if resolved_type.ends_with(Keys.ENUM_PATH_SUFFIX):
 			return resolved_type
@@ -450,6 +489,7 @@ func _process_external_identifier(identifier:String, script_path:String, class_a
 	else:
 		var t = ALibRuntime.Utils.UProfile.TimeFunction.new("OUTSIDE PARSER: " + identifier + " -> " + str(script_path.get_file()))
 		var external_parser = _get_parser_for_script(script_path)
+		
 		var class_obj = external_parser.get_class_object(class_access_path) as ParserClass
 		var type = external_parser.resolve_expression(identifier, class_obj.line_indexes[0])
 		#t.stop()
@@ -817,7 +857,7 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 		return member_data.get(Keys.TYPE)
 	elif member_data is ParserFunc:
 		#type_declaration = _get_func_return_type(member_name, class_obj)
-		type_declaration = member_data.get_return_type()
+		type_declaration = member_data.get_return_type(true)
 		print_deb(T.RESOLVE, "GET FUNC: ", type_declaration)
 	elif member_type == Keys.MEMBER_TYPE_FUNC_ARG:
 		type_declaration = member_data.get(Keys.TYPE)
@@ -894,10 +934,14 @@ func _class_has_member(base_type:String, identifier:String):
 			#return true
 	return false
 
-func _class_member_type(base_type:String, identifier:String):
+static func get_class_member_type(base_type:String, identifier:String, resolve_const:=false):
 	if ClassDB.class_has_enum(base_type, identifier):
+		if resolve_const:
+			return "Enum"
 		return UString.dot_join(base_type, identifier)
 	elif ClassDB.class_has_integer_constant(base_type, identifier):
+		if resolve_const:
+			return "int"
 		return UString.dot_join(base_type, identifier)
 	elif ClassDB.class_has_signal(base_type, identifier):
 		return "Signal"
@@ -906,7 +950,7 @@ func _class_member_type(base_type:String, identifier:String):
 		for d:Dictionary in func_data_array:
 			if d.name != identifier:
 				continue
-			var resolved_data = _property_info_to_function_data(d)
+			var resolved_data = property_info_to_function_data(d)
 			return resolved_data.get(Keys.FUNC_RETURN)
 	#var prop_list = ClassDB.class_get_property_list(base_type)
 	#for p:Dictionary in prop_list:
@@ -1127,6 +1171,39 @@ func get_parser_objects_and_local_vars(line:int) -> ClassData:
 
 
 #endregion
+
+
+#region InferenceContext
+
+func _get_or_instance_inf_context():
+	var inf_context = get_inference_context()
+	if not is_instance_valid(inf_context):
+		inf_context = InferenceContext.new()
+		inference_context = inf_context
+		set_inference_context(inf_context)
+	return inf_context
+
+func _get_inf_expression(class_obj:ParserClass, expression:String):
+	return class_obj.get_script_class_path() + "::" + expression
+
+func _check_inf_expression(inf_context:InferenceContext, inf_expression:String):
+	if inf_context.has_expression(inf_expression):
+		inf_context.finish_expression(inf_expression, "Variant")
+		return "Variant"
+	else:
+		inf_context.start_expression(inf_expression)
+	
+
+func _check_inf_on_exit():
+	if is_instance_valid(inference_context):
+		inference_context = null
+
+
+#endregion
+
+
+
+
 
 class ClassData:
 	var class_obj:ParserClass

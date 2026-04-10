@@ -7,8 +7,12 @@ const GET_PARSER = &"parser"
 const GET_CLASS_OBJ = &"class_obj"
 
 # gdscript parser cache
+const CACHE_ACTIVE_PARSERS = &"cache_active_parsers"
+const CACHE_INACTIVE_PARSERS = &"cache_inactive_parsers"
+
 const CACHE_MODIFIED = &"modified"
 const CACHE_PARSER = &"parser"
+const CACHE_CLASSES = &"cache_classes"
 
 # class resolve cache
 const CLASS_CACHE_DEC = &"class_cache_dec"

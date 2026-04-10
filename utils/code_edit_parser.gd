@@ -145,7 +145,6 @@ func parse_text(force:=false):
 		#print("CURRENT::", i, "::EXTENDED LINES::", extended_lines, _pc.current_func_dict.get(Keys.FUNC_LINES))
 		i += 1
 	
-	
 	var temp_class_access = {}
 	var _class_paths = class_access_map.keys()
 	for path:String in _class_paths:
@@ -214,7 +213,15 @@ func parse_text(force:=false):
 		
 		temp_class_access[path] = _class_obj
 	
-	parser._class_access = temp_class_access
+	# remove classes that may have been removed
+	for access_path in parser._class_access.keys():
+		if not temp_class_access.has(access_path):
+			parser._class_access.erase(access_path)
+	
+	# reassign the classes and new classes
+	parser.set_class_objs(temp_class_access)
+	
+	#parser._class_access = temp_class_access
 	
 	#t.stop()
 	#print("CLASSES ",temp_class_access.keys())

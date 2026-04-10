@@ -54,6 +54,8 @@ func parse():
 
 
 func _set_function_data():
+	#var class_obj = Utils.ParserRef.get_class_obj(self)
+	#print("SET FUNC DATA::", class_obj.get_script_class_path() +"." + name, "::DIRTY::", _cache_dirty)
 	if not _cache_dirty:
 		return arguments
 	#var parser = Utils.ParserRef.get_parser(self)
@@ -173,6 +175,7 @@ func get_return_type(inferred:=true): # this could be used to parse
 	_set_function_data()
 	if _return_type_raw == "":
 		_return_type_raw = _infer_return_type()
+	
 	if not inferred:
 		#print("PARSER FUNC::RETURN RAW::", _return_type_raw)
 		return _return_type_raw
@@ -182,6 +185,7 @@ func get_return_type(inferred:=true): # this could be used to parse
 		var parser = Utils.ParserRef.get_parser(self)
 		_return_type = parser.resolve_expression(_return_type_raw, declaration_line)
 		#print("RESOLVED FUNC RETURN::", _return_type)
+	
 	if _return_type == "":
 		_return_type = "Variant"
 	return _return_type
@@ -235,11 +239,7 @@ func _infer_return_type() -> String:
 	if raw_result == "":
 		return "void"
 	
-	if raw_result.find("(") > -1:
-		var func_call = raw_result.substr(0, raw_result.find("("))
-		if func_call == name: # if the func call is a recursive call, we can't do anything here, since we are here because there is not explicit return
-			return "Variant"
-	
 	var parser = Utils.ParserRef.get_parser(self)
 	_return_type = parser.resolve_expression(raw_result, i)
+	#print("FUNC INFER::", _return_type)
 	return raw_result

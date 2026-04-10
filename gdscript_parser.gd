@@ -13,6 +13,8 @@ const CodeEditParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/
 const TypeLookup = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/type_lookup.gd")
 const Access = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/access.gd")
 
+const InferenceContext = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/type_lookup/inference_context.gd")
+
 const Utils = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/utils.gd")
 const Keys = Utils.Keys
 
@@ -34,6 +36,8 @@ var _script_path:String
 var _script_resource:GDScript
 
 var _class_access:Dictionary = {}
+
+var active_parser:GDScriptParser
 
 
 func _init() -> void:
@@ -58,18 +62,45 @@ func set_get_parser_callable(callable:Callable):
 	_get_cached_parser_callable = callable
 
 func clean_parser_cache():
-	if _max_cache_size == -1 or _parser_cache.size() <= _max_cache_size:
+	var active_parser_cache = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
+	if _max_cache_size == -1 or active_parser_cache.size() <= _max_cache_size:
 		return
-	print("ERASE::", _parser_cache.size())
-	var paths = _parser_cache.keys()
+	var inactive = _parser_cache.get_or_add(Keys.CACHE_INACTIVE_PARSERS, {})
+	var paths = active_parser_cache.keys()
 	var current_size = paths.size()
 	var erased = 0
 	for path in paths:
-		_parser_cache.erase(path)
+		var parser = active_parser_cache[path].get(Keys.CACHE_PARSER)
+		if is_instance_valid(parser):
+			clean_resolve_cache(parser._class_access)
+		_deactivate_parser(active_parser_cache, inactive, path)
 		erased += 1
 		if current_size - erased <= _max_cache_size:
 			break
-	print("CACHE SIZE::", current_size, " -> ", _parser_cache.size())
+	
+	#print("CACHE SIZE::", current_size, " -> ", active_parser_cache.size())
+
+
+func clean_resolve_cache(class_dict:Dictionary):
+	for access_name:String in class_dict.keys():
+		var class_obj = class_dict[access_name]
+		for key in class_obj._resolve_cache.keys():
+			if not class_obj.has_script_member(key):
+				class_obj._resolve_cache.erase(key)
+
+
+func deactivate_parser(path:String):
+	var active_parser_cache = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
+	var inactive = _parser_cache.get_or_add(Keys.CACHE_INACTIVE_PARSERS, {})
+	if active_parser_cache.has(path):
+		_deactivate_parser(active_parser_cache, inactive, path)
+
+func _deactivate_parser(active_cache:Dictionary, inactive_cache:Dictionary, path:String):
+	var data = active_cache[path]
+	data.erase(Keys.CACHE_PARSER) # this should free the parser
+	inactive_cache[path] = data
+	active_cache.erase(path) # move from active to inactive, should they be removed from inactive below?
+
 
 func clear_parser_cache():
 	_parser_cache.clear()
@@ -162,7 +193,7 @@ func get_class_at_line(line:int):
 		var _class = _class_access[access_path] as ParserClass
 		if line in _class.line_indexes:
 			return access_path
-	print("LINE NOT FOUND ", line)
+	print("get_class_at_line - LINE NOT FOUND ", line)
 	return ""
 
 func get_function_at_line(line:int):
@@ -172,6 +203,8 @@ func get_function_at_line(line:int):
 		return class_obj.get_function_at_line(line)
 	return ""
 
+func set_inference_context(inf:InferenceContext):
+	get_type_lookup().set_inference_context(inf)
 
 func get_function_data(identifier_name:String, line:int=-1) -> Dictionary:
 	if line == -1:
@@ -217,6 +250,16 @@ func get_member_info(identifier:String, line:int=-1):
 	var member = class_obj.get_member(identifier)
 	return member
 
+func set_class_objs(classes_dict:Dictionary):
+	for access_name in classes_dict.keys():
+		_set_class_obj(access_name, classes_dict[access_name])
+
+func _set_class_obj(access_name:String, class_obj:ParserClass):
+	Utils.ParserRef.set_refs(class_obj, self)
+	for f in class_obj.functions.values():
+		Utils.ParserRef.set_refs(f, self, class_obj)
+	_class_access[access_name] = class_obj
+
 func get_member_info_from_script(full_script_path:String):
 	var script_data = UString.get_script_path_and_suffix(full_script_path)
 	var script_path = script_data[0]
@@ -247,44 +290,51 @@ func resolve_to_access_object_in_script(expression:String, script_path:String, c
 	var target_parser = get_parser_and_class_obj(script_path, class_path)
 	return target_parser.parser.resolve_to_access_object(expression, target_parser.class_obj.line_indexes[0])
 
-func get_parser_for_path(full_script_path:String) -> GDScriptParser:
+func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScriptParser:
 	var script_data = UString.get_script_path_and_suffix(full_script_path)
+	if script_data.is_empty():
+		return
 	var script_path = script_data[0]
 	if not Utils.is_gdscript_path(full_script_path):
-		print("NOT A GDSCRIPT FILE::", full_script_path)
+		#print("NOT A GDSCRIPT FILE::", full_script_path)
 		return
 	
-	if script_path == _script_path:
+	if is_instance_valid(active_parser) and not force_cache:
+		if script_path == active_parser.get_script_path():
+			return active_parser
+		
+	if script_path == _script_path and not force_cache:
 		return self
 	if _get_cached_parser_callable.is_valid():
 		return _get_cached_parser_callable.call()
 	if _parser_cache == null:
 		print("PARSER CACHE NULL::", _script_path)
+		pass
 	
-	
-	
-	var parser_data = _parser_cache.get(script_path, {})
+	var active_parsers_cache = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
+	var parser_data = get_cached_parser_data(script_path)
 	
 	var cached_modified_time = parser_data.get(Keys.CACHE_MODIFIED, -1)
 	var modified_time = FileAccess.get_modified_time(script_path)
-	var need_script_update = cached_modified_time != modified_time
-	if cached_modified_time == -1:
-		need_script_update = true
+	var file_changed = cached_modified_time != modified_time or cached_modified_time == -1
 	parser_data[Keys.CACHE_MODIFIED] = modified_time
 	
-	var parser = parser_data.get(Keys.CACHE_PARSER)
+	var parser_valid = false
+	var parser = parser_data.get(Keys.CACHE_PARSER) as GDScriptParser
 	if is_instance_valid(parser):
+		parser_valid = true
 		#print("EXISTING PARSER::", script_path)
-		_parser_cache.erase(script_path)
+		active_parsers_cache.erase(script_path)
 	else:
-		need_script_update = true
 		parser = new()
 		parser.set_parser_cache(_parser_cache)
 		parser_data[Keys.CACHE_PARSER] = parser
+		if is_instance_valid(active_parser):
+			parser.active_parser = active_parser
 	
-	if need_script_update:
-		print("NEED UPDATE::", script_path)
-		
+	
+	if not parser_valid or file_changed:
+		#print("NEED UPDATE::", script_path)
 		var script:GDScript
 		if script_path.begins_with("res://"):
 			script = load(script_path)
@@ -292,10 +342,47 @@ func get_parser_for_path(full_script_path:String) -> GDScriptParser:
 			script = ResourceLoader.load(script_path, "", ResourceLoader.CACHE_MODE_IGNORE_DEEP)
 		parser.set_current_script(script)
 		parser.set_source_code(script.source_code)
+		
+		var classes = parser_data.get(Keys.CACHE_CLASSES, {})
+		if not classes.is_empty():
+			for access_name in classes.keys():
+				parser._set_class_obj(access_name, classes[access_name])
 	
-	parser.parse(need_script_update)
-	_parser_cache[script_path] = parser_data
+	var need_parse = not parser_valid or file_changed or force_cache
+	parser.parse(need_parse) # i think this should be last so that classes can be updated
+	
+	var tl = get_type_lookup()
+	var inf = tl.get_inference_context()
+	if is_instance_valid(inf):
+		parser.set_inference_context(inf)
+	
+	parser_data[Keys.CACHE_CLASSES] = parser._class_access
+	active_parsers_cache[script_path] = parser_data
+	_parser_cache[Keys.CACHE_ACTIVE_PARSERS] = active_parsers_cache
 	return parser
+
+func activate_parser(path:String, parser:GDScriptParser):
+	var _cached_parser = get_parser_for_path(path, true)
+	_parser_cache[Keys.CACHE_ACTIVE_PARSERS][path][Keys.CACHE_PARSER] = parser
+
+func get_cached_parser_data(script_path:String):
+	var active_parsers_cache = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
+	var parser_data = active_parsers_cache.get(script_path)
+	if parser_data == null:
+		var inactive_parsers = _parser_cache.get_or_add(Keys.CACHE_INACTIVE_PARSERS, {})
+		parser_data = inactive_parsers.get(script_path, {})
+	return parser_data
+
+func cached_data_valid(script_path:String, data:Dictionary):
+	var cached_modified_time = data.get(Keys.CACHE_MODIFIED, -1)
+	var modified_time = FileAccess.get_modified_time(script_path)
+	var file_changed = cached_modified_time != modified_time or cached_modified_time == -1
+	var classes = data.get(Keys.CACHE_CLASSES, {})
+	if classes.is_empty() or file_changed:
+		return false
+	return true
+
+
 
 func get_parser_and_class_obj_for_script(script_path:String):
 	if not Utils.is_gdscript_path(script_path):

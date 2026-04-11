@@ -255,6 +255,7 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 		if initial_class_obj.class_has_member(expression):
 			return get_class_member_type(initial_class_obj.script_base_type, expression)
 		return expression
+	
 	var simple_check = _simple_type_check(expression)
 	if simple_check != "":
 		print_deb(T.RESOLVE, "EARLY EXIT", "IS SIMPLE", expression)
@@ -487,13 +488,16 @@ func _process_external_identifier(identifier:String, script_path:String, class_a
 			return _property_info_to_type_no_class(member_info)
 		return ""
 	else:
+		var type = ""
 		var t = ALibRuntime.Utils.UProfile.TimeFunction.new("OUTSIDE PARSER: " + identifier + " -> " + str(script_path.get_file()))
 		var external_parser = _get_parser_for_script(script_path)
-		
+		#print(script_path, "::", class_access_path, "::", identifier)
 		var class_obj = external_parser.get_class_object(class_access_path) as ParserClass
-		var type = external_parser.resolve_expression(identifier, class_obj.line_indexes[0])
-		#t.stop()
 		
+		if is_instance_valid(class_obj):
+			type = external_parser.resolve_expression(identifier, class_obj.line_indexes[0])
+		
+		#t.stop()
 		return type
 
 ## Get property info of inherited var, return type as string.
@@ -534,6 +538,10 @@ func _get_inherited_member_type(identifier:String, class_obj:ParserClass):
 	return ""
 
 func _ensure_valid_type_path(full_script_path:String):
+	if full_script_path.begins_with("preload"):
+		var const_data = Utils.get_var_or_const_info("const dummy = " + full_script_path)
+		full_script_path = const_data[1]
+		## TEST
 	var script_data = UString.get_script_path_and_suffix(full_script_path)
 	var script_path = script_data[0]
 	var class_access = script_data[1]
@@ -571,10 +579,10 @@ func resolve_expression_to_access_object(expression: String, initial_class_obj: 
 	var main_script = parser.get_current_script()
 	var main_script_path = main_script.resource_path
 	
-	#if expression.begins_with("res://"):
-	if Utils.is_absolute_path(expression):
-		print_deb(T.VAR_TO_CONST, "EARLY EXIT", "BEGIN WITH RES", expression)
-		return expression
+	#^ should this ever really be called? returns string instead of access_object, doesn't make sense to me..
+	#if Utils.is_absolute_path(expression) and not expression.begins_with("preload"):
+		#print_deb(T.VAR_TO_CONST, "EARLY EXIT", "BEGIN WITH RES", expression)
+		#return expression
 	
 	var string_map = parser.get_string_map(expression)
 	var front = UString.get_member_access_front(expression, string_map)
@@ -990,6 +998,7 @@ func _simple_type_check(type_hint:String):
 		if type_hint.find("#") > -1:
 			type_hint = type_hint.get_slice("#", 0)
 		type_hint = type_hint.strip_edges()
+		return type_hint # return here, since this must a valid type of identifier?
 	
 	
 	if type_hint.find(".new(") > -1:

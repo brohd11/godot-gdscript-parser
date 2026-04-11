@@ -17,7 +17,6 @@ func _get_parser() -> GDScriptParser:
 	return _parser.get_ref()
 
 
-
 var string_map_cache:={}
 static var assignment_regex:RegEx
 static var type_assignment_regex:RegEx
@@ -26,16 +25,8 @@ static var context_regex: RegEx
 var _map_regex:RegEx
 var _annotation_regex:RegEx
 
-#@export var f = ("")
-#@export_file(
-	#"*gd"
-#)var ff = ""; var fg= ""
-
 var _first_parse_complete:=false
 var cache_dirty:=true
-
-
-var g="";var t = ";not this";func my_func(arg:Vector2) -> int: return 1;var fh;
 
 func _set_code_edit(new_code_edit:CodeEdit):
 	if is_instance_valid(code_edit):
@@ -85,19 +76,20 @@ func parse_text(force:=false):
 	_initialize_regex_annotation()
 	
 	
-	
-	
-	
 	var parser = _get_parser()
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("S::" + parser.get_script_path())
 	_set_code_edit(parser.code_edit)
 	indent_size = code_edit.get_tab_size()
 	
+	var existing_class_access = parser._class_access # if existing class is empty, then it hasn't been parsed
+	if existing_class_access.is_empty():
+		cache_dirty = true
+	
 	if not cache_dirty and not force: # cache_dirty means text is changed. If it hasn't then everything should be valid
 		#t.stop()
+		#print("CODE EDIT PARSE EARLY EXIT::", parser.get_script_path().get_file())
 		return
 	
-	var existing_class_access = parser._class_access
 	var main_script = parser._script_resource
 	var main_script_path = main_script.resource_path
 	
@@ -134,7 +126,7 @@ func parse_text(force:=false):
 		class_access_map[_pc.access_path].append(i)
 		if _pc.in_function:
 			_pc.current_func_dict[Keys.FUNC_LINES].append(i)
-			
+		
 		if not extended_lines.is_empty():
 			for index in extended_lines:
 				class_access_map[_pc.access_path].append(index)
@@ -142,7 +134,7 @@ func parse_text(force:=false):
 					_pc.current_func_dict[Keys.FUNC_LINES].append(index)
 				i += 1
 			extended_lines.clear()
-		#print("CURRENT::", i, "::EXTENDED LINES::", extended_lines, _pc.current_func_dict.get(Keys.FUNC_LINES))
+		
 		i += 1
 	
 	var temp_class_access = {}
@@ -159,14 +151,11 @@ func parse_text(force:=false):
 			_class_obj.indent_level = get_indent_access_path(path)
 		
 		var members = _pc.member_map.get(path, {})
-		#print(path,"::EXTENDS::", members.get("extends", "RefCounted"))
 		_class_obj.set_extends(members.get("extends", "RefCounted"))
 		members.erase("extends")
 		
 		var valid_constants:Dictionary = _pc.constant_map.get("", {}).duplicate()
 		var valid_classes:Dictionary = _pc.inner_class_map.get("", {}).duplicate()
-		#var valid_constants:Dictionary = {}
-		#var valid_classes:Dictionary = {}
 		if path != "":
 			var working_path = ""
 			var parts = UString.split_member_access(path)
@@ -189,9 +178,6 @@ func parse_text(force:=false):
 					# it can be accessed directly. Nested.Nested will access itself when typing Nested,
 					if class_data.get(Keys.ACCESS_PATH) == path: # so it overides here.
 						valid_classes[name] = class_data
-				
-				#valid_classes.merge(_pc.inner_class_map.get(working_path, {}), false) # old method
-		
 		
 		
 		_class_obj.main_script_path = _pc.main_script_path
@@ -220,8 +206,6 @@ func parse_text(force:=false):
 	
 	# reassign the classes and new classes
 	parser.set_class_objs(temp_class_access)
-	
-	#parser._class_access = temp_class_access
 	
 	#t.stop()
 	#print("CLASSES ",temp_class_access.keys())
@@ -301,7 +285,6 @@ func _parse_line(stripped:String, line:int, column:int=0):
 				line_context = get_line_context(line, 0, false, {Keys.CONTEXT_START:line}).get(Keys.CONTEXT_TEXT, stripped).strip_edges()
 			if line_context.contains(" extends "):
 				var extended = _get_extends_out_line(line_context)
-				print(new_access_path, "SAME LINE EXT::", extended)
 				_pc.member_map.get_or_add(new_access_path, {})["extends"] = extended
 			
 			
@@ -318,7 +301,6 @@ func _parse_line(stripped:String, line:int, column:int=0):
 			elif keyword == "class_name":
 				if stripped.contains(" extends "):
 					var extended = _get_extends_out_line(stripped)
-					print("CLASS NAME EXT::", extended)
 					_pc.member_map.get_or_add(_pc.access_path, {})["extends"] = extended
 				_pc.class_name_data = data
 			elif keyword.begins_with("c") or keyword == "enum":
@@ -327,8 +309,6 @@ func _parse_line(stripped:String, line:int, column:int=0):
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
 	elif stripped.begins_with("extends "):
 		var extended = _get_extends_out_line(stripped)
-		print(_pc.access_path, "OWN LINE EXT RAW::", extended)
-		print(_pc.access_path, "OWN LINE EXT::", extended)
 		_pc.member_map.get_or_add(_pc.access_path, {})["extends"] = extended
 
 
@@ -339,10 +319,8 @@ func _get_extends_out_line(line_text:String):
 	else:
 		extends_string = line_text.substr(line_text.find(" extends ")).strip_edges()
 	
-	print(line_text,"::EXT_STRING::", extends_string)
 	var class_info = Utils.get_class_info("class dummy " + extends_string + ":")
 	var extended = class_info[1]
-	print("RAW::", extended)
 	if extended == "":
 		extended = "RefCounted"
 	elif Utils.token_is_string(extended):

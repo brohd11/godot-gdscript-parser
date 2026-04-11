@@ -80,7 +80,6 @@ static func get_class_info(stripped_line: String):
 		
 	var _class_name = _match.get_string(1)
 	var extends_name = _match.get_string(2) # Will be empty if no 'extends'
-	print("IN CLASS INFO EXTENDS NAME::", extends_name)
 	return [_class_name, extends_name]
 
 

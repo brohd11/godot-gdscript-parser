@@ -1,6 +1,6 @@
 #! import-p Keys,
 
-const GDScriptParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/gdscript_parser.gd")
+const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 const ParserClass = GDScriptParser.ParserClass
 const Utils = GDScriptParser.Utils
 const Keys = Utils.Keys
@@ -710,7 +710,7 @@ func get_string_map(text:String):
 
 func get_line(line:int, strip_comment:=false, strip_left:=false):
 	var line_text = code_edit.get_line(line)
-	if not strip_comment:
+	if not strip_comment: #^r this should also account for strip left?
 		return line_text
 	else:
 		var com_idx = line_text.find("#")

@@ -1,3 +1,5 @@
+const _UString = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_string.gd")
+const _GDScriptParse = _UString.GDScriptParse
 
 const _BLANK = &""
 const CARET_UNI_CHAR = &"\uFFFF"
@@ -59,13 +61,13 @@ const TYPE_RESOLVED = &"type_resolved"
 const CLASS_BODY = &"#body" # this is not for data
 
 
-# member info
-const FUNC_NAME = &"func_name"
-const FUNC_ARGS = &"func_args"
-const FUNC_RETURN = &"func_return"
+# member info - load these so they can be used elsewhere
+const FUNC_NAME = _GDScriptParse.Keys.FUNC_NAME
+const FUNC_ARGS = _GDScriptParse.Keys.FUNC_ARGS
+const FUNC_RETURN = _GDScriptParse.Keys.FUNC_RETURN
 
-const SIGNAL_NAME = &"signal_name"
-const SIGNAL_ARGS = &"signal_args"
+const SIGNAL_NAME = _GDScriptParse.Keys.SIGNAL_NAME
+const SIGNAL_ARGS = _GDScriptParse.Keys.SIGNAL_ARGS
 
 
 

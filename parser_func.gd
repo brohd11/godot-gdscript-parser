@@ -1,5 +1,5 @@
 
-const GDScriptParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/gdscript_parser.gd")
+const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 const Utils = GDScriptParser.Utils
 const UString = GDScriptParser.UString
 const Keys = Utils.Keys

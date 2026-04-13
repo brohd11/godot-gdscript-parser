@@ -1,21 +1,24 @@
+
 #! import-p Keys,
 
 const UString = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_string.gd")
 const UClassDetail = preload("res://addons/addon_lib/brohd/alib_editor/utils/src/u_class_detail.gd")
 const UFile = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_file.gd")
+
 const CacheHelper = preload("res://addons/addon_lib/brohd/alib_runtime/cache_helper/cache_helper.gd")
 
-const GDScriptParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/gdscript_parser.gd")
-const ParserClass = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/parser_class.gd")
-const ParserFunc = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/parser_func.gd")
-const CaretContext = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/caret_context.gd")
-const CodeEditParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/code_edit_parser.gd")
-const TypeLookup = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/type_lookup.gd")
-const Access = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/access.gd")
+const GDScriptParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/gdscript_parser.gd")
+const ParserClass = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/parser_class.gd")
+const ParserFunc = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/parser_func.gd")
+const CaretContext = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/caret_context.gd")
+const CodeEditParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/code_edit_parser.gd")
+const TypeLookup = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/type_lookup.gd")
+const Access = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/access.gd")
+const BuiltInChecker = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/builtin/builtin_checker.gd")
 
-const InferenceContext = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/type_lookup/inference_context.gd")
+const InferenceContext = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/type_lookup/inference_context.gd")
 
-const Utils = preload("res://addons/addon_lib/brohd/alib_runtime/utils/resource/gdscript/parser/utils/utils.gd")
+const Utils = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/utils.gd")
 const Keys = Utils.Keys
 
 

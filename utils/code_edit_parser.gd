@@ -39,8 +39,7 @@ func _set_code_edit(new_code_edit:CodeEdit):
 	code_edit = new_code_edit
 	if not code_edit.text_changed.is_connected(_on_text_changed):
 		code_edit.text_changed.connect(_on_text_changed)
-	
-	pass
+
 
 func _on_text_changed():
 	cache_dirty = true

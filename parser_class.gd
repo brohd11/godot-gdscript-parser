@@ -40,8 +40,6 @@ var inherited_members := {}
 var inherited_scripts := []
 var _inherited_script_mod_cache := {}
 
-var base_type_members := {}
-
 func queue_refresh(): # need to figure out a cache for this
 	#print("REFRESH")
 	_set_inherited_scripts()

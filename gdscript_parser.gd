@@ -19,7 +19,7 @@ const BuiltInChecker = preload("res://addons/addon_lib/brohd/alib_runtime/utils/
 const InferenceContext = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/type_lookup/inference_context.gd")
 
 const Utils = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/utils.gd")
-const Keys = Utils.Keys
+const Keys = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/keys.gd")
 
 
 static var _static_parser_cache:= {}

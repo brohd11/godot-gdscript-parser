@@ -4,6 +4,9 @@ const PRINT_DEBUG = true # not PLUGIN_EXPORTED
 
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 
+const Test = preload(PATH) #s
+const PATH = "res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/gdscript_parser.gd"
+
 const UString = GDScriptParser.UString
 const UFile = GDScriptParser.UFile
 const UClassDetail = GDScriptParser.UClassDetail
@@ -194,6 +197,9 @@ func resolve_inner_class_at_line(expression:String, line:int):
 	var local_vars = class_data.local_vars
 	var result = resolve_expression(expression, class_obj, local_vars)
 	class_resolution = false
+	var type_check = _simple_type_check(result)
+	if type_check != "":
+		return type_check
 	return result
 
 
@@ -225,8 +231,40 @@ func resolve_expression_at_line(expression:String, line:int):
 	
 	inf_context.finish_expression(inf_expression, result)
 	_check_inf_on_exit()
+	var type_check = _simple_type_check(result)
+	if type_check != "":
+		return type_check
 	return result
 
+func resolve_expression_to_value_at_line(expression:String, line:int):
+	if class_resolution == true:
+		print("CLASS RES TRUE")
+	class_resolution = false
+	
+	var parser = _get_parser()
+	var main_script = parser.get_current_script()
+	var main_script_path = main_script.resource_path
+	var class_data = get_parser_objects_and_local_vars(line)
+	var class_obj = class_data.class_obj
+	
+	
+	
+	var inf_context = _get_or_instance_inf_context()
+	var inf_expression = _get_inf_expression(class_obj, expression)
+	var inf_check = _check_inf_expression(inf_context, inf_expression)
+	if inf_check != null:
+		_check_inf_on_exit()
+		return inf_check
+	
+	var local_vars = class_data.local_vars
+	var result = resolve_expression(expression, class_obj, local_vars)
+	
+	#print(inf_context._active_expressions)
+	#print(inf_expression, ":: -> ::", result)
+	
+	inf_context.finish_expression(inf_expression, result)
+	_check_inf_on_exit()
+	return result
 
 
 
@@ -258,7 +296,7 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 	var simple_check = _simple_type_check(expression)
 	if simple_check != "":
 		print_deb(T.RESOLVE, "EARLY EXIT", "IS SIMPLE", expression)
-		return simple_check
+		return expression
 	
 	var string_map = parser.get_string_map(expression)
 	var parts: Array = UString.split_member_access(expression, string_map)
@@ -292,6 +330,8 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 		print_deb(T.RESOLVE, "CHECK", identifier, "CURRENT TYPE", current_type_path)
 		
 		var resolved_type = ""
+		if identifier == "preload" and is_func:
+			resolved_type = resolve_preload(current_part, current_class_obj)
 		if BuiltInChecker.is_builtin_class(identifier):
 			resolved_type = identifier
 		elif UClassDetail.get_global_class_path(identifier) != "":
@@ -405,6 +445,8 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 
 func _is_unresolved_expression(identifier:String):
 	#if identifier.begins_with("res://"):
+	if _simple_type_check(identifier) != "":
+		return false
 	if Utils.is_absolute_path(identifier):
 		return false
 	elif _valid_identifier(identifier):
@@ -465,9 +507,9 @@ func _resolve_builtin_class_member(identifier:String, current_type_path:String, 
 	
 	if type_to_check == "":
 		return ""
-	var check = _simple_type_check(type_to_check)
-	if check != "":
-		return check
+	#var check = _simple_type_check(type_to_check)
+	#if check != "":
+		#return check
 	
 	return type_to_check
 
@@ -540,6 +582,7 @@ func _ensure_valid_type_path(full_script_path:String):
 	if full_script_path.begins_with("preload"):
 		var const_data = Utils.get_var_or_const_info("const dummy = " + full_script_path)
 		full_script_path = const_data[1]
+		print("TYPE_PRELOAD::", full_script_path)
 		## TEST
 	var script_data = UString.get_script_path_and_suffix(full_script_path)
 	var script_path = script_data[0]
@@ -882,10 +925,10 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 		
 		type_declaration = _get_script_member_type(line_index, column)
 	
-	var type_check = _simple_type_check(type_declaration)
-	if type_check != "":
-		print_deb(T.RESOLVE, "TYPE CHECK SUCCESS: ", type_declaration, " -> ", type_check)
-		return type_check
+	#var type_check = _simple_type_check(type_declaration)
+	#if type_check != "":
+		#print_deb(T.RESOLVE, "TYPE CHECK SUCCESS: ", type_declaration, " -> ", type_check)
+		#return type_check
 	
 	print_deb(T.RESOLVE, "FUNC OR VAR: ", type_declaration)
 	
@@ -1105,6 +1148,16 @@ func _get_script_member_type(line:int, column:int=0): # thjs could be a bit more
 	
 	return ""
 
+func resolve_preload(preload_call:String, class_obj:ParserClass):
+	# at this point, this should not be a path, that would have been handled already
+	var preload_string = preload_call.get_slice("preload", 1).strip_edges().trim_prefix("(").trim_suffix(")").strip_edges()
+	
+	var value = resolve_expression(preload_string, class_obj, {})
+	var path = Utils.get_full_path_from_string(value)
+	if path == "":
+		return ""
+	print("REOLVED PRELOAD::", preload_string, "::", value, "::", path)
+	return path
 
 
 func member_in_class_or_local_vars(identifier:String, class_obj:ParserClass, local_vars:Dictionary):

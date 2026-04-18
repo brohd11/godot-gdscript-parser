@@ -1,5 +1,5 @@
 
-#! import-p Keys,
+#! import_p Keys,
 
 const UString = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_string.gd")
 const UClassDetail = preload("res://addons/addon_lib/brohd/alib_editor/utils/src/u_class_detail.gd")
@@ -181,6 +181,12 @@ func get_caret_context(parse_context:=true) -> CaretContext:
 func reset_caret_context():
 	_caret_context = null
 
+func get_members_hash():
+	var hashes = []
+	for access in _class_access.keys():
+		var obj = _class_access.get(access)
+		hashes.append(obj.get_members_hash())
+	return hashes.hash()
 
 func has_class(identifier:String):
 	return _class_access.has(identifier)
@@ -436,9 +442,10 @@ func _code_edit_dispose():
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:
 		#_code_edit_dispose()
-		var meta = code_edit.get_meta(Keys.PARSER_CODE_EDIT, false)
-		if meta:
-			code_edit.queue_free()
+		if is_instance_valid(code_edit):
+			var meta = code_edit.get_meta(Keys.PARSER_CODE_EDIT, false)
+			if meta:
+				code_edit.queue_free()
 
 
 func print_hierarchy():

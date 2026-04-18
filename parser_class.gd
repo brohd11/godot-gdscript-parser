@@ -1,4 +1,4 @@
-#! import-p Keys,
+#! import_p Keys,
 
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 const ParserFunc = GDScriptParser.ParserFunc
@@ -18,7 +18,8 @@ var _resolve_cache:={}
 
 var main_script_path:String
 var class_name_data:= {}
-var name
+var name:String
+var _members_hash:int=-1
 
 var access_path:String
 var script_resource:GDScript
@@ -42,6 +43,7 @@ var _inherited_script_mod_cache := {}
 
 func queue_refresh(): # need to figure out a cache for this
 	#print("REFRESH")
+	_members_hash = -1
 	_set_inherited_scripts()
 	_check_inherited_valid() # if any of inherited have changed, clear inh members dict
 	for f in functions.values():
@@ -72,6 +74,20 @@ func get_script_class_path():
 
 func get_name():
 	return UString.get_member_access_back(access_path)
+
+func get_members_hash():
+	if _members_hash is int and _members_hash != -1:
+		return _members_hash
+	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET MEMBERS HASH")
+	var all_members := []
+	for dict in [members, constants, inner_classes]:
+		var names = dict.keys()
+		names.sort()
+		all_members.append_array(names)
+	
+	_members_hash = all_members.hash()
+	t.stop()
+	return _members_hash
 
 func set_lines(new_lines:PackedInt32Array):
 	line_indexes = new_lines

@@ -1,4 +1,4 @@
-#! import-p Keys,
+#! import_p Keys,
 
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 const ParserClass = GDScriptParser.ParserClass

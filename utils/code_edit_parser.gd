@@ -338,28 +338,7 @@ func _line_has_open_bracket(stripped:String):
 	return false
 
 
-static func _parse_source2(source:String):
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("STRING")
-	var count = 0
-	var last_new_line_idx = 0
-	var new_line_idx = source.find("\n")
-	while new_line_idx != -1 and count < 2:
-		count += 1
-		var line = source.substr(last_new_line_idx, new_line_idx)
-		print(line)
-		last_new_line_idx = new_line_idx + 1
-		new_line_idx = source.find("\n", last_new_line_idx)
-	t.stop()
-
-
-
-
-
-
-	
-
 #region CaretContext
-
 
 func get_line_context_start_data(target_line_index:int, params:Dictionary={}) -> Dictionary:
 	var all_blocks_array = Keywords.CONTROL_FLOW_KEYWORDS
@@ -558,6 +537,11 @@ func _line_has_semi_colon(line:int):
 			return true
 	return false
 
+func get_line_context_text(line:int, column:int=0, strip_edges:=true):
+	var context = get_line_context(line, column).get(Keys.CONTEXT_TEXT, "")
+	if strip_edges:
+		context = context.strip_edges()
+	return context
 
 func parse_identifier_at_position(text_to_process:String, start_pos:int):
 	var string_map = get_string_map(text_to_process)
@@ -778,30 +762,10 @@ func check_member_line(member_type:String, member_name:String, line:int, column:
 		parse_text()
 	return false
 
-func find_member_line(member_type:String, member_name:String, class_obj:ParserClass, class_indent:=-1):
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("FIND MEMBER")
-	if class_indent == -1:
-		class_indent = class_obj.indent_level + get_indent_size()
-	print(class_indent)
-	for i in range(code_edit.get_line_count()):
-		var line = get_line(i).strip_edges(true, false)
-		if line.contains(";"): # need to deal with this somehow?
-			pass
-		if not line.begins_with(member_type):
-			continue
-		var stripped = line.trim_prefix(member_type).strip_edges(true, false)
-		if not stripped.begins_with(member_name):
-			continue
-		if code_edit.get_indent_level(i) == class_indent:
-			#t.stop()
-			return i
-	#t.stop()
-	return -1
 
 func get_type_from_line(line:int, column:int=0):
-	var context = get_line_context(line, column).get(Keys.CONTEXT_TEXT, "")
-	#print("RAW CONTEXT ", context)
-	return get_type_from_line_text(context.strip_edges())
+	var context = get_line_context_text(line, column)
+	return get_type_from_line_text(context)
 
 ## returns an array with [member_name, member_type], except functions, which return a dict {func_args, func_return}, keys are in Keys class
 func get_type_from_line_text(stripped_line_text:String):

@@ -223,21 +223,22 @@ func get_function_data(identifier_name:String, line:int=-1) -> Dictionary:
 	#print("GET FUNCTION DATA::", result)
 	return result
 
-func resolve_expression(identifier_name:String, line:int=-1) -> String:
+func resolve_expression_to_type(identifier_name:String, line:int=-1) -> String:
 	if line == -1:
 		line = code_edit.get_caret_line()
 	
-	var result = _type_lookup.resolve_expression_at_line(identifier_name, line)
+	var result = _type_lookup.resolve_expression_to_type_at_line(identifier_name, line)
 	#print("GET IDENTIFIER::", result)
 	return result
 
-func get_identifier_type(identifier_name:String, line:int=-1) -> String:
+func resolve_expression_to_value(identifier_name:String, line:int=-1) -> String:
 	if line == -1:
 		line = code_edit.get_caret_line()
 	
-	var result = _type_lookup.resolve_expression_at_line(identifier_name, line)
+	var result = _type_lookup.resolve_expression_to_value_at_line(identifier_name, line)
 	#print("GET IDENTIFIER::", result)
 	return result
+
 
 func resolve_to_access_object(identifier:String, line:int=-1):
 	if line == -1:
@@ -293,7 +294,7 @@ func get_line_context(line:int, column:int=0, insert_caret:=false):
 
 func resolve_expression_in_script(expression:String, script_path:String, class_path:String):
 	var target_parser = get_parser_and_class_obj(script_path, class_path)
-	return target_parser.parser.resolve_expression(expression, target_parser.class_obj.line_indexes[0])
+	return target_parser.parser.resolve_expression_to_type(expression, target_parser.class_obj.line_indexes[0])
 
 func resolve_to_access_object_in_script(expression:String, script_path:String, class_path:String):
 	var target_parser = get_parser_and_class_obj(script_path, class_path)

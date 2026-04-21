@@ -78,7 +78,7 @@ func get_name():
 func get_members_hash():
 	if _members_hash is int and _members_hash != -1:
 		return _members_hash
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET MEMBERS HASH")
+	
 	var all_members := []
 	for dict in [members, constants, inner_classes]:
 		var names = dict.keys()
@@ -86,7 +86,6 @@ func get_members_hash():
 		all_members.append_array(names)
 	
 	_members_hash = all_members.hash()
-	t.stop()
 	return _members_hash
 
 func set_lines(new_lines:PackedInt32Array):
@@ -237,13 +236,21 @@ func get_member_type(identifier:String):
 		var parser = Utils.ParserRef.get_parser(self)
 		var type_lookup = parser.get_type_lookup()
 		var declaration = type_lookup.get_class_obj_member_type(identifier, self, {})
+		
 		var cached = _resolve_cache.get_or_add(identifier, {})
 		var type:StringName
-		if declaration != cached.get(Keys.CLASS_CACHE_DEC, "") or true: # ALERT REMOVE THIS
+		var cached_dec = cached.get(Keys.CLASS_CACHE_DEC, "")
+		var cache_valid = declaration == cached_dec
+		# ALERT This should check if the cache is valid somehow, simple checks would be valid
+		if cache_valid: # but vars may be changed, hard to say. Honestly, doesn't make a huge difference
+			cache_valid = false # ALERT REMOVE THIS
+			pass
+		
+		if not cache_valid:
 			if member_data.get(Keys.MEMBER_TYPE) == Keys.MEMBER_TYPE_CLASS:
 				type = parser.get_type_lookup().resolve_inner_class_at_line(identifier, declaration_line)
 			else:
-				type = parser.resolve_expression(identifier, declaration_line)
+				type = parser.resolve_expression_to_type(identifier, declaration_line)
 			cached[Keys.CLASS_CACHE_TYPE] = StringName(type)
 		else:
 			type = cached.get(Keys.CLASS_CACHE_TYPE, "")
@@ -278,8 +285,6 @@ func has_preload(path:String): # doesnt handle inherited, should cache this some
 ## Get and cache the preloads of current scripts ancestors.
 func get_inherited_members() -> Dictionary:
 	#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET INH::" + get_name())
-	if main_script_path == "user://test_inher.gd":
-		print("INH MEMBERS::MEMBERS::",inherited_members)
 	if not inherited_members.is_empty():
 		return inherited_members
 	
@@ -408,8 +413,6 @@ func get_inherited_scripts() -> Array:
 	return _set_inherited_scripts()
 
 func _set_inherited_scripts():
-	#print("RESOLVE CLASS ", get_name())
-	#return []
 	var base_script = get_class_base_script()
 	if base_script == null:
 		return []
@@ -421,8 +424,6 @@ func _set_inherited_scripts():
 		if script.resource_path == "":
 			if not ClassDB.class_exists(last_path):
 				var extended_resolved = _get_extended_type_of_class(last_path)
-				#print("GET INH EXTENDED ", extended_resolved, "::LOOKING FOR::", last_path)
-				#if extended_resolved.begins_with("res://"):
 				if Utils.is_absolute_path(extended_resolved):
 					valid.append(extended_resolved)
 					last_path = extended_resolved
@@ -430,7 +431,6 @@ func _set_inherited_scripts():
 			last_path = script.resource_path
 			valid.append(script.resource_path)
 	
-	#print("INH SCRIPTS ", valid)
 	inherited_scripts = valid
 	return valid
 	

@@ -486,7 +486,7 @@ func get_symbol_data(chain_text:String, class_obj:GDScriptParser.ParserClass, li
 	var type_lookup = parser.get_type_lookup()
 	
 	# infer type of entire chain
-	symbol_data.type = parser.resolve_expression(chain_text, line)
+	symbol_data.type = parser.resolve_expression_to_type(chain_text, line)
 	
 	var string_map = parser.get_string_map(chain_text)
 	var front = UString.get_member_access_front(chain_text, string_map)
@@ -504,7 +504,7 @@ func get_symbol_data(chain_text:String, class_obj:GDScriptParser.ParserClass, li
 			resolved_symbol_script = UString.dot_join(parser.get_script_path(), current_class)
 	else:
 		var access = UString.trim_member_access_back(chain_text, string_map)
-		var resolved = parser.resolve_expression(access)
+		var resolved = parser.resolve_expression_to_type(access)
 		resolved_symbol_script = resolved
 		if access != front:
 			
@@ -544,7 +544,7 @@ func _get_last_chain_type(chain_text:String):
 	else:
 		
 		var access = UString.trim_member_access_back(chain_text, string_map)
-		var func_obj = parser.resolve_expression(access)
+		var func_obj = parser.resolve_expression_to_type(access)
 		last_type = func_obj
 		if access != front:
 			
@@ -565,9 +565,9 @@ func _notification(what: int) -> void:
 
 # API
 
-func resolve_expression(expression:String):
+func resolve_expression_to_type(expression:String):
 	var parser = Utils.ParserRef.get_parser(self)
-	return parser.get_type_lookup().resolve_expression(expression, get_current_class_object(), local_vars)
+	return parser.resolve_expression_to_type(expression, caret_line)
 
 
 func get_current_class_object() -> GDScriptParser.ParserClass:

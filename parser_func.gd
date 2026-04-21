@@ -183,7 +183,7 @@ func get_return_type(inferred:=true): # this could be used to parse
 	#if _return_type == "" or not _return_type.begins_with("res://"):
 	if _return_type == "" or not Utils.is_absolute_path(_return_type):
 		var parser = Utils.ParserRef.get_parser(self)
-		_return_type = parser.resolve_expression(_return_type_raw, declaration_line)
+		_return_type = parser.resolve_expression_to_type(_return_type_raw, declaration_line)
 		#print("RESOLVED FUNC RETURN::", _return_type)
 	
 	if _return_type == "":
@@ -240,6 +240,6 @@ func _infer_return_type() -> String:
 		return "void"
 	
 	var parser = Utils.ParserRef.get_parser(self)
-	_return_type = parser.resolve_expression(raw_result, i)
+	_return_type = parser.resolve_expression_to_type(raw_result, i)
 	#print("FUNC INFER::", _return_type)
 	return raw_result

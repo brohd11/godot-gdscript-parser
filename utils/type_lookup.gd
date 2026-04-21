@@ -4,7 +4,7 @@ const PRINT_DEBUG = true # not PLUGIN_EXPORTED
 
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 
-const Test = preload(PATH) #s
+const Test = preload(PATH).Access #s
 const PATH = "res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/gdscript_parser.gd"
 
 const UString = GDScriptParser.UString
@@ -94,14 +94,14 @@ func get_function_data(identifier, class_obj:ParserClass, line:int=-1):
 		var access = UString.trim_member_access_back(identifier, string_map)
 		identifier = UString.get_member_access_back(identifier, string_map)
 		#var resolved_symbol = resolve_identifier_to_symbol(access, _line)
-		var resolved_symbol = resolve_expression_at_line(access, line)
+		var resolved_symbol = resolve_expression_to_type_at_line(access, line)
 		#print("FUNC DATA::SYMBOL::", resolved_symbol)
 		if resolved_symbol != "":
 			if BuiltInChecker.is_builtin_class(resolved_symbol):
 				#print("HAS SYMB::", resolved_symbol, "::ID::", identifier)
 				calling_script_access = resolved_symbol
 			else:
-				var resolved_script = resolve_expression_at_line(resolved_symbol, line)
+				var resolved_script = resolve_expression_to_type_at_line(resolved_symbol, line)
 				#print("FUNC DATA::RESOLVED::", resolved_script)
 				if not Utils.is_absolute_path(resolved_script):
 				#if not resolved_script.begins_with("res://"):
@@ -195,7 +195,7 @@ func resolve_inner_class_at_line(expression:String, line:int):
 	var class_obj = class_data.class_obj
 	class_resolution_obj = class_obj
 	var local_vars = class_data.local_vars
-	var result = resolve_expression(expression, class_obj, local_vars)
+	var result = _resolve_expression_to_val(expression, class_obj, local_vars)
 	class_resolution = false
 	var type_check = _simple_type_check(result)
 	if type_check != "":
@@ -203,33 +203,13 @@ func resolve_inner_class_at_line(expression:String, line:int):
 	return result
 
 
-func resolve_expression_at_line(expression:String, line:int):
+func resolve_expression_to_type_at_line(expression:String, line:int):
 	if class_resolution == true:
-		print("CLASS RES TRUE")
+		printerr("CLASS RES TRUE")
 	class_resolution = false
 	
-	var parser = _get_parser()
-	var main_script = parser.get_current_script()
-	var main_script_path = main_script.resource_path
-	var class_data = get_parser_objects_and_local_vars(line)
-	var class_obj = class_data.class_obj
+	var result = resolve_expression_to_value_at_line(expression, line)
 	
-	
-	
-	var inf_context = _get_or_instance_inf_context()
-	var inf_expression = _get_inf_expression(class_obj, expression)
-	var inf_check = _check_inf_expression(inf_context, inf_expression)
-	if inf_check != null:
-		_check_inf_on_exit()
-		return inf_check
-	
-	var local_vars = class_data.local_vars
-	var result = resolve_expression(expression, class_obj, local_vars)
-	
-	#print(inf_context._active_expressions)
-	#print(inf_expression, ":: -> ::", result)
-	
-	inf_context.finish_expression(inf_expression, result)
 	_check_inf_on_exit()
 	var type_check = _simple_type_check(result)
 	if type_check != "":
@@ -238,16 +218,11 @@ func resolve_expression_at_line(expression:String, line:int):
 
 func resolve_expression_to_value_at_line(expression:String, line:int):
 	if class_resolution == true:
-		print("CLASS RES TRUE")
+		printerr("CLASS RES TRUE")
 	class_resolution = false
 	
-	var parser = _get_parser()
-	var main_script = parser.get_current_script()
-	var main_script_path = main_script.resource_path
 	var class_data = get_parser_objects_and_local_vars(line)
 	var class_obj = class_data.class_obj
-	
-	
 	
 	var inf_context = _get_or_instance_inf_context()
 	var inf_expression = _get_inf_expression(class_obj, expression)
@@ -257,18 +232,25 @@ func resolve_expression_to_value_at_line(expression:String, line:int):
 		return inf_check
 	
 	var local_vars = class_data.local_vars
-	var result = resolve_expression(expression, class_obj, local_vars)
-	
-	#print(inf_context._active_expressions)
-	#print(inf_expression, ":: -> ::", result)
+	var result = _resolve_expression_to_val(expression, class_obj, local_vars)
 	
 	inf_context.finish_expression(inf_expression, result)
 	_check_inf_on_exit()
 	return result
 
 
+func resolve_expression_to_type(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary) -> String:
+	var result = _resolve_expression_to_val(expression, initial_class_obj, local_vars)
+	var type_check = _simple_type_check(result)
+	if type_check != "":
+		return type_check
+	return result
 
-func resolve_expression(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary, recursions:int=0) -> String:
+func resolve_expression_to_value(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary) -> String:
+	return _resolve_expression_to_val(expression, initial_class_obj, local_vars)
+
+# resolves expression to value
+func _resolve_expression_to_val(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary, recursions:int=0) -> String:
 	if recursions >= 10:
 		return "Variant"
 	
@@ -276,7 +258,7 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 	var main_script = parser.get_current_script()
 	var main_script_path = main_script.resource_path
 	
-	if Utils.is_absolute_path(expression):# and FileAccess.file_exists(expression):
+	if Utils.is_absolute_path(expression):
 		print_deb(T.RESOLVE, "EARLY EXIT", "BEGIN WITH RES", expression)
 		var path = _ensure_valid_type_path(expression)
 		return Utils.file_path_to_type(path)
@@ -390,7 +372,7 @@ func resolve_expression(expression: String, initial_class_obj: ParserClass, loca
 		# We must resolve that expression into a true path before continuing!
 		if _is_unresolved_expression(resolved_type): 
 			# Pass the initial context because expressions are evaluated where they were declared!
-			var recursive = resolve_expression(resolved_type, initial_class_obj, local_vars, recursions + 1)
+			var recursive = _resolve_expression_to_val(resolved_type, initial_class_obj, local_vars, recursions + 1)
 			if recursive != resolved_type:
 				print_deb(T.RESOLVE, "RECURSE RESOLVED TYPE %s -> %s" %[resolved_type, recursive])
 				resolved_type = recursive
@@ -536,7 +518,7 @@ func _process_external_identifier(identifier:String, script_path:String, class_a
 		var class_obj = external_parser.get_class_object(class_access_path) as ParserClass
 		
 		if is_instance_valid(class_obj):
-			type = external_parser.resolve_expression(identifier, class_obj.line_indexes[0])
+			type = external_parser.resolve_expression_to_value(identifier, class_obj.line_indexes[0])
 		
 		#t.stop()
 		return type
@@ -605,7 +587,7 @@ func _ensure_valid_type_path(full_script_path:String):
 		if is_instance_valid(class_obj):
 			return full_script_path
 	
-	return parser.resolve_expression(class_access, 0)
+	return parser.resolve_expression_to_type(class_access, 0)
 
 
 #endregion
@@ -613,8 +595,86 @@ func _ensure_valid_type_path(full_script_path:String):
 #region Resolve Access Object
 
 func resolve_expression_to_access_object_at_line(expression:String, line:int):
+	if true:
+		return _resolve_expression_to_access_object_at_line(expression, line)
+	# the above will trigger the inference context object, bottom won't but is slightly more efficient
 	var parser_data = get_parser_objects_and_local_vars(line)
 	return resolve_expression_to_access_object(expression, parser_data.class_obj, parser_data.local_vars)
+
+func _resolve_expression_to_access_object_at_line(expression: String, line):
+	var parser = _get_parser()
+	var main_script = parser.get_current_script()
+	var main_script_path = main_script.resource_path
+	
+	var parser_data = get_parser_objects_and_local_vars(line)
+	var initial_class_obj = parser_data.class_obj
+	var local_vars = parser_data.local_vars
+	
+	#^ should this ever really be called? returns string instead of access_object, doesn't make sense to me..
+	#if Utils.is_absolute_path(expression) and not expression.begins_with("preload"):
+		#print_deb(T.VAR_TO_CONST, "EARLY EXIT", "BEGIN WITH RES", expression)
+		#return expression
+	
+	var string_map = parser.get_string_map(expression)
+	var front = UString.get_member_access_front(expression, string_map)
+	var back = UString.get_member_access_back(expression, string_map)
+	
+	print_deb(T.VAR_TO_CONST, "ACCESS OBJECT START", expression)
+	
+	var access_object = AccessObject.new()
+	
+	# ALERT testing with back, was front before
+	var dec_symbol = _resolve_access_object([front], initial_class_obj, local_vars, true)
+	if dec_symbol == front:
+		var new = expression
+		#new = _validate_const_chain(expression, initial_class_obj)
+		print_deb(T.VAR_TO_CONST, "DECLARATION RAW SWITCH", dec_symbol, " -> ", new)
+		dec_symbol = expression
+		#dec_symbol = _validate_const_chain(expression, initial_class_obj) # this is for type hints var:SomeClass.Type, returns the whole string
+	# ALERT
+	print_deb(T.VAR_TO_CONST, "DECLARATION RAW", dec_symbol)
+	#if dec_symbol.begins_with("res://"):
+	if Utils.is_absolute_path(dec_symbol):
+		var script_data = UString.get_script_path_and_suffix(dec_symbol)
+		if script_data[0] == main_script_path:
+			var access = script_data[1]
+			if access == "":
+				access = "self"
+			dec_symbol = access
+	elif dec_symbol == "":
+		dec_symbol = "self"
+	#else: # TEST NEW #^r causes issues, but this makes sense, cannot declare as self..., can access from self
+		#dec_symbol = "self"
+	
+	access_object.declaration_symbol = dec_symbol
+	
+	var access_symbol = _resolve_access_object([front], initial_class_obj, local_vars)
+	print_deb(T.VAR_TO_CONST, "ACCESS RAW", access_symbol)
+	#if access_symbol.begins_with("res://"):
+	if Utils.is_absolute_path(access_symbol):
+		var script_data = UString.get_script_path_and_suffix(access_symbol)
+		if script_data[0] == main_script_path:
+			var access = script_data[1]
+			if access == "":
+				access = "self" #^r what purpose does this even serve? don't seem to use it anywhere?
+			access_symbol = access
+	elif access_symbol == "":
+		access_symbol = "self"
+	#else: # TEST NEW #^r this is causing some to not work right, NewScript with the renamed time funcs
+		#access_symbol = "self" #^r this was for when base types were here? EditorInterface, String etc.. where was it an issue though?
+	access_object.access_symbol = access_symbol
+	
+	access_object.declaration_type = resolve_expression_to_type_at_line(dec_symbol, line)
+	#if access_object.declaration_type.begins_with("res://"):
+	if Utils.is_absolute_path(access_object.declaration_type):
+		var member_data = parser.get_member_info_from_script(access_object.declaration_type)
+		if member_data != null:
+			access_object.declaration_access_path = member_data.get(Keys.ACCESS_PATH)
+	
+	access_object.access_type = resolve_expression_to_type_at_line(access_symbol, line)
+	
+	print_deb(T.VAR_TO_CONST, "TYPE", access_object.declaration_type, "DEC",access_object.declaration_symbol, "ACCESS" ,access_object.access_symbol)
+	return access_object
 
 func resolve_expression_to_access_object(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary):
 	var parser = _get_parser()
@@ -675,14 +735,14 @@ func resolve_expression_to_access_object(expression: String, initial_class_obj: 
 		#access_symbol = "self" #^r this was for when base types were here? EditorInterface, String etc.. where was it an issue though?
 	access_object.access_symbol = access_symbol
 	
-	access_object.declaration_type = resolve_expression(dec_symbol, initial_class_obj, local_vars)
+	access_object.declaration_type = _resolve_expression_to_val(dec_symbol, initial_class_obj, local_vars)
 	#if access_object.declaration_type.begins_with("res://"):
 	if Utils.is_absolute_path(access_object.declaration_type):
 		var member_data = parser.get_member_info_from_script(access_object.declaration_type)
 		if member_data != null:
 			access_object.declaration_access_path = member_data.get(Keys.ACCESS_PATH)
 	
-	access_object.access_type = resolve_expression(access_symbol, initial_class_obj, local_vars)
+	access_object.access_type = _resolve_expression_to_val(access_symbol, initial_class_obj, local_vars)
 	
 	print_deb(T.VAR_TO_CONST, "TYPE", access_object.declaration_type, "DEC",access_object.declaration_symbol, "ACCESS" ,access_object.access_symbol)
 	return access_object
@@ -1148,15 +1208,20 @@ func _get_script_member_type(line:int, column:int=0): # thjs could be a bit more
 	
 	return ""
 
+
 func resolve_preload(preload_call:String, class_obj:ParserClass):
 	# at this point, this should not be a path, that would have been handled already
 	var preload_string = preload_call.get_slice("preload", 1).strip_edges().trim_prefix("(").trim_suffix(")").strip_edges()
 	
-	var value = resolve_expression(preload_string, class_obj, {})
+	var value = resolve_expression_to_value_at_line(preload_string, class_obj.line_indexes[0])
 	var path = Utils.get_full_path_from_string(value)
 	if path == "":
 		return ""
-	print("REOLVED PRELOAD::", preload_string, "::", value, "::", path)
+	if not Utils.is_absolute_path(path):
+		path = Utils.ensure_absolute_path(path, class_obj.main_script_path)
+	else:
+		path = UFile.uid_to_path(path)
+	
 	return path
 
 

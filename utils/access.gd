@@ -95,6 +95,12 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 			access_options.standard = secondary_access.declaration_symbol
 			return access_options
 		elif class_has_const(current_access.access_symbol, class_obj):
+			# check direct for to find in access script, this doesn't seem to be affecting any thing negatively
+			# how does this affect the below search?
+			var to_find_search = get_member_by_value(access_script_path, to_find)
+			if to_find_search != null:
+				access_options.standard = to_find_search
+				return access_options
 			# if it has the access symbol, can check for a path to declaration symbol
 			var search = get_member_by_value(access_script_path, secondary_access.declaration_type)
 			print_deb(T.ACCESS_PATH, "HAS ACCESS", "SEARCH", search)

@@ -12,6 +12,9 @@ const UClassDetail = GDScriptParser.UClassDetail
 
 const ENUM_SUFFIX = Keys.ENUM_PATH_SUFFIX
 
+const _PACKED_SCENE_EXTS = ["tscn", "glb", "fbx", "gltf"]
+const _TEXTURE_EXTS = ["svg", "png", "jpg", "jpeg", "exr", "dds"]
+
 static var _string_path_regex:RegEx
 
 static func is_gdscript_path(file_path:String):
@@ -22,19 +25,15 @@ static func is_gdscript_path(file_path:String):
 static func file_path_to_type(file_path:String):
 	if is_gdscript_path(file_path):
 		return file_path
-	var ext = file_path.get_extension()
-	var type = ""
+	var ext = file_path.get_extension().to_lower()
 	if not FileAccess.file_exists(file_path):
 		return ""
+	if ext in _PACKED_SCENE_EXTS:
+		return &"PackedScene"
+	elif ext in _TEXTURE_EXTS:
+		return &"Texture2D"
 	var resource = load(file_path) as Resource
 	return resource.get_class()
-	match ext:
-		"tscn": type = &"PackedScene"
-		"svg": type = &"Texture2D"
-		"png": type = &"Texture2D"
-		_: type = file_path
-	
-	return type
 
 
 

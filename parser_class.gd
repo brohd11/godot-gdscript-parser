@@ -196,7 +196,7 @@ func get_enum_members(enum_name:String):
 		return
 	return result[1] # this is the members as dict
 
-func get_members():
+func get_members() -> Dictionary:
 	var dict = {}
 	dict.merge(members.duplicate())
 	dict.merge(constants.duplicate())
@@ -215,49 +215,41 @@ func get_constant_or_class(identifier:String):
 	elif inner_classes.has(identifier):
 		return inner_classes[identifier]
 
-func get_member_type(identifier:String):
+func get_member_type(identifier:String) -> StringName:
 	var member_data = get_member(identifier)
 	if member_data == null:
-		return ""
-	elif member_data is ParserFunc:
-		var raw = member_data.get_return_type(false)
-		var type:StringName
-		var cached = _resolve_cache.get_or_add(identifier, {})
-		if raw != cached.get(Keys.CLASS_CACHE_DEC, ""):
-			type = member_data.get_return_type(true)
-			cached[Keys.CLASS_CACHE_TYPE] = StringName(type)
-		else:
-			type = cached.get(Keys.CLASS_CACHE_TYPE, "")
-		
-		cached[Keys.CLASS_CACHE_DEC] = raw
-		_resolve_cache[identifier] = cached
-		return type
+		return &""
+	
+	var parser = Utils.ParserRef.get_parser(self)
+	var declaration:String
+	if member_data is ParserFunc:
+		declaration = member_data.get_return_type(false)
 	else:
-		var parser = Utils.ParserRef.get_parser(self)
-		var type_lookup = parser.get_type_lookup()
-		var declaration = type_lookup.get_class_obj_member_type(identifier, self, {})
-		
-		var cached = _resolve_cache.get_or_add(identifier, {})
-		var type:StringName
-		var cached_dec = cached.get(Keys.CLASS_CACHE_DEC, "")
-		var cache_valid = declaration == cached_dec
-		# ALERT This should check if the cache is valid somehow, simple checks would be valid
-		if cache_valid: # but vars may be changed, hard to say. Honestly, doesn't make a huge difference
-			cache_valid = false # ALERT REMOVE THIS
-			pass
-		
-		if not cache_valid:
-			if member_data.get(Keys.MEMBER_TYPE) == Keys.MEMBER_TYPE_CLASS:
-				type = parser.get_type_lookup().resolve_inner_class_at_line(identifier, declaration_line)
-			else:
-				type = parser.resolve_expression_to_type(identifier, declaration_line)
-			cached[Keys.CLASS_CACHE_TYPE] = StringName(type)
+		declaration = parser.get_type_lookup().get_class_obj_member_type(identifier, self, {})
+	
+	var cached = _resolve_cache.get_or_add(identifier, {})
+	var cached_dec = cached.get(Keys.CLASS_CACHE_DEC, "")
+	var cache_valid = declaration == cached_dec
+	# ALERT This should check if the cache is valid somehow, simple checks would be valid
+	if cache_valid: # but vars may be changed, hard to say. Honestly, doesn't make a huge difference
+		cache_valid = false # ALERT REMOVE THIS
+		pass
+	
+	var type:StringName
+	if not cache_valid:
+		if member_data is ParserFunc:
+			type = member_data.get_return_type(true)
+		elif member_data.get(Keys.MEMBER_TYPE) == Keys.MEMBER_TYPE_CLASS:
+			type = parser.get_type_lookup().resolve_inner_class_at_line(identifier, declaration_line)
 		else:
-			type = cached.get(Keys.CLASS_CACHE_TYPE, "")
+			type = parser.resolve_expression_to_type(identifier, declaration_line)
+		cached[Keys.CLASS_CACHE_TYPE] = StringName(type)
+	else:
+		type = cached.get(Keys.CLASS_CACHE_TYPE, &"")
 		
-		cached[Keys.CLASS_CACHE_DEC] = declaration
-		_resolve_cache[identifier] = cached
-		return type
+	cached[Keys.CLASS_CACHE_DEC] = declaration
+	_resolve_cache[identifier] = cached
+	return type
 
 
 func has_preload(path:String): # doesnt handle inherited, should cache this somehow
@@ -291,9 +283,10 @@ func get_inherited_members() -> Dictionary:
 	_get_inherited_members()
 	
 	#t.stop()
-	var base_script = get_class_base_script()
-	if base_script != null:
-		pass
+	
+	#^ debug print, compare UClassDetail to new parser
+	#var base_script = get_class_base_script()
+	#if base_script != null:
 		#print("COMPARE INHERITEDS")
 		#var test = UClassDetail.script_get_all_members(base_script, UClassDetail.IncludeInheritance.ALL)
 		#var smaller_str = "inh"
@@ -321,17 +314,12 @@ func _get_inherited_members():
 	for script_path in inherited_script_paths:
 		var script_parser_data = parser.get_parser_and_class_obj_for_script(script_path)
 		var class_obj = script_parser_data.get(Keys.GET_CLASS_OBJ)
-		
-		#var inh_members = class_obj.get_members()
-		
 		inherited_members.merge(class_obj.get_members())
 	
 	if access_path == "":
 		return
 	var outer = get_outer_script_constants()
-	#print("OUTER ", outer)
 	inherited_members.merge(outer)
-	#return
 
 func get_outer_script_constants():
 	var valid = {}
@@ -354,10 +342,8 @@ func get_outer_script_constants():
 			valid[member_name] = member_data.duplicate()
 	
 	var outer = parent_class_obj.get_outer_script_constants()
-	
 	valid.merge(outer)
 	return valid
-
 
 
 func get_gdscript_constants():
@@ -366,7 +352,6 @@ func get_gdscript_constants():
 		if get_member_declaration(c) != Keys.MEMBER_TYPE_CONST:
 			continue
 		var type = get_member_type(c)
-		#if type.begins_with("res://") and not type.ends_with(Keys.ENUM_PATH_SUFFIX):
 		if Utils.is_absolute_path(type) and not type.ends_with(Keys.ENUM_PATH_SUFFIX):
 			valid.append(c)
 	for ic in inner_classes.keys():

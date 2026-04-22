@@ -269,11 +269,11 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 	elif expression.begins_with("self."):
 		expression = expression.trim_prefix("self.")
 	
-	if _valid_identifier(expression):
-		print_deb(T.RESOLVE, "EARLY EXIT", "IS VALID", expression)
-		if initial_class_obj.class_has_member(expression):
-			return get_class_member_type(initial_class_obj.script_base_type, expression)
-		return expression
+	#if _valid_identifier(expression): #^ this causes issues with vars shadowing class member or globals
+		#print_deb(T.RESOLVE, "EARLY EXIT", "IS VALID", expression) #^ observe for issues, but seems OK so far
+		#if initial_class_obj.class_has_member(expression):
+			#return get_class_member_type(initial_class_obj.script_base_type, expression)
+		#return expression
 	
 	var simple_check = _simple_type_check(expression)
 	if simple_check != "":
@@ -316,13 +316,15 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 			resolved_type = resolve_preload(current_part, current_class_obj)
 		if BuiltInChecker.is_builtin_class(identifier):
 			resolved_type = identifier
-		elif UClassDetail.get_global_class_path(identifier) != "":
-			resolved_type = UClassDetail.get_global_class_path(identifier)
+		#elif UClassDetail.get_global_class_path(identifier) != "": # TEST removing this here so that shadowed vars are correctly identified
+			#resolved_type = UClassDetail.get_global_class_path(identifier) # TEST watch for issues caused by it's absence
 		elif _class_has_member(current_type_path, identifier):
 			#return _class_member_type(current_type_path, identifier) # this is how it was
 			# TEST
 			#print("EXIT")
+			# this would clash with below method?e
 			resolved_type = get_class_member_type(current_type_path, identifier)
+		
 		if current_class_obj.class_has_member(identifier):
 			#print("EXIT CLASS HAS MEMBER")
 			if identifier != "get":

@@ -26,12 +26,12 @@ enum TokenState {
 
 enum ExpressionState {
 	NONE,
-	ASSIGNMENT,  # var x = | (Suggest variables, globals, functions)
+	ASSIGNMENT,      # var x = | (Suggest variables, globals, functions)
 	COMPARISON,      # if x == | (Suggest variables)
 	TYPE_HINT,       # var x: |  (Suggest Classes, Enums, built-in types. Replaces TYPE_ASSIGNMENT)
 	FUNCTION_CALL,   # my_func(|) (Suggest variables, show parameter hints)
 	MEMBER_ACCESS,   # my_obj.| (Suggest properties/methods of my_obj)
-	INDEX_ACCESS, # my_obj[0] or my_dict["key"]
+	INDEX_ACCESS,    # my_obj[0] or my_dict["key"]
 	
 	DICT_DECL,       # var x = { | } (Suggest string keys or variables)
 	ARRAY_DECL,      # var x = [ | ] 
@@ -45,10 +45,11 @@ enum ScopeState {
 }
 
 
-
+@warning_ignore_start("unused_private_class_variable")
 var _parser:WeakRef #
 var _code_edit_parser:WeakRef
 var code_edit:CodeEdit #
+@warning_ignore_restore("unused_private_class_variable")
 
 var token_state:TokenState
 var expression_state:ExpressionState
@@ -100,7 +101,6 @@ var current_block:={}
 
 var _match_data:MatchBlockData
 
-static var _assignment_regex:RegEx
 static var _type_hint_regex:RegEx
 
 func _init(parser:GDScriptParser, parse_context:=true) -> void:
@@ -114,7 +114,8 @@ func _init(parser:GDScriptParser, parse_context:=true) -> void:
 
 
 func parse():
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("CARET CONTEXT")
+	#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("CARET CONTEXT")
+	
 	var parser = ParserRef.get_parser(self)
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)
 	code_edit_parser.ensure_first_parse() # ensure it has been done at least once
@@ -131,13 +132,13 @@ func parse():
 	code_context_end_line = context_data.get(Keys.CONTEXT_END)
 	code_context = context_data.get(Keys.CONTEXT_TEXT)
 	code_context_stripped = code_context.strip_edges()
-	#print(code_context)
+	
 	code_context_caret_pos = code_context.find(Keys.CARET_UNI_CHAR)
 	code_context_string_map = parser.get_string_map(code_context)
 	
 	current_class = parser.get_class_at_line(caret_line)
 	current_function = parser.get_function_at_line(caret_line)
-	if current_function != Keys.CLASS_BODY:
+	if current_function != Keys.CLASS_BODY and current_function != "":
 		var current_class_obj = parser._class_access.get(current_class) as GDScriptParser.ParserClass
 		if is_instance_valid(current_class_obj):
 			var current_func_obj = current_class_obj.functions.get(current_function) as GDScriptParser.ParserFunc
@@ -164,13 +165,7 @@ func parse():
 	_set_function_call_data()
 	_set_operation_at_caret()
 	
-	#print("&*&*")
-	#print(_operation_data.left_text)
-	
-	#print("%s" % )
-	
 	var in_class_body = current_function == Keys.CLASS_BODY
-	
 	token_state = TokenState.NONE
 	if code_edit.is_in_string(caret_line, caret_column) != -1:
 		match _get_string_type():
@@ -211,7 +206,6 @@ func parse():
 		if _index_access_identifier != "":
 			expression_state = ExpressionState.INDEX_ACCESS
 	
-	
 	if in_class_body:
 		scope_state = ScopeState.CLASS_BODY
 	elif current_block_type == &"match":
@@ -219,17 +213,7 @@ func parse():
 	else:
 		scope_state = ScopeState.FUNCTION_BODY
 	
-	#print("^&^&^&")
-	#print(word_before_caret)
-	#print(expression_before_caret)
-	#print(
-#"TOKEN STATE: %s
-#EXPRESSION STATE: %s
-#SCOPE STATE: %s" % [TokenState.keys()[token_state], ExpressionState.keys()[expression_state], ScopeState.keys()[scope_state]],
-#"\nIN ENUM: %s
-#IN DICT: %s" % [is_in_enum(), is_in_dictionary()]
-	#)
-	t.stop()
+	#t.stop()
 
 
 
@@ -278,10 +262,10 @@ func _check_brackets():
 		return
 	closest_bracket_type = code_context[closest_bracket_idx]
 
+
 #region OperationData
 
 func get_operation_data() -> OperationData:
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("WHOLE")
 	if not _operation_data.is_valid or _operation_data.inferred:
 		return _operation_data
 	var left = _operation_data.left_text
@@ -294,8 +278,6 @@ func get_operation_data() -> OperationData:
 			left = ""
 	
 	_operation_data.left_symbol_data = get_symbol_data(left, get_current_class_object(), caret_line, local_vars)
-	
-	t.stop()
 	
 	_operation_data.inferred = true
 	return _operation_data
@@ -372,17 +354,11 @@ func get_function_call_data() -> FunctionCallData:
 		return _active_function_call
 	
 	var parser = Utils.ParserRef.get_parser(self)
-	
 	var expression = _active_function_call.expression
-	#print("FULLCALL::", expression)
 	
 	_active_function_call.symbol_data = get_symbol_data(expression, get_current_class_object(), caret_line, local_vars)
 	_active_function_call.function_data = parser.get_function_data(expression, caret_line)
 	#_active_function_call.function_data = #^ this needs to operate on function object, it will be faster and ensure proper return
-	
-	
-	#print("FUNCTION DATA::", _active_function_call.function_data)
-	
 	
 	_active_function_call.inferred = true
 	return _active_function_call
@@ -413,7 +389,8 @@ func _set_function_call_data() -> void:
 	var func_full_call = code_edit_parser.parse_expression_at_position(code_context, closest_bracket_index_paren - 1, code_context_string_map)
 	if func_full_call == "":
 		return
-	print("FULL CALL::", func_full_call)
+	
+	#print("FULL CALL::", func_full_call)
 	func_full_call = func_full_call.trim_prefix("self.") #^ simple check
 	
 	var args = []
@@ -495,7 +472,6 @@ func get_symbol_data(chain_text:String, class_obj:GDScriptParser.ParserClass, li
 	
 	# get the access symbol of the front object
 	symbol_data.current_script_access_object = type_lookup.resolve_expression_to_access_object(front, class_obj, local_var_dict)
-	print(symbol_data.current_script_access_object.declaration_type)
 	var resolved_symbol_script:String
 	if front == chain_text:
 		if GDScriptParser.TypeLookup.BuiltInChecker.is_global_method(chain_text):
@@ -506,69 +482,25 @@ func get_symbol_data(chain_text:String, class_obj:GDScriptParser.ParserClass, li
 		var access = UString.trim_member_access_back(chain_text, string_map)
 		var resolved = parser.resolve_expression_to_type(access)
 		resolved_symbol_script = resolved
-		if access != front:
-			
-			pass
-			#_active_function_call.access_object = parser.get_identifier_type(front)
-		else:
-			pass
-			#_active_function_call.access_object = func_obj
 	
 	symbol_data.symbol_script_path = resolved_symbol_script
-	#if resolved_symbol_script.begins_with("res://"):
 	if Utils.is_absolute_path(resolved_symbol_script):
 		var script_data = UString.get_script_path_and_suffix(resolved_symbol_script)
 		symbol_data.symbol_script_access_object = parser.resolve_to_access_object_in_script(symbol_data.name, script_data[0], script_data[1])
 	return symbol_data
 
-func _get_last_chain_type(chain_text:String):
-	var parser = Utils.ParserRef.get_parser(self)
-	var string_map = parser.get_string_map(chain_text)
-	var front = UString.get_member_access_front(chain_text, string_map)
-	var back = UString.get_member_access_back(chain_text, string_map)
-	
-	#var access_obj = AccessObject.new()
-	print("FUNC OBJ ACCESS DATA SET::")
-	
-	var last_name = back.substr(0, back.find("("))
-	var last_type
-	
-	if front == chain_text:
-		
-		if GDScriptParser.TypeLookup.BuiltInChecker.is_global_method(chain_text):
-			last_type = &"global_method"
-		else:
-			last_type = UString.dot_join(parser.get_script_path(), current_class)
-		#_active_function_call.access_object = last_type
-		#access_obj.symbol = ""
-	else:
-		
-		var access = UString.trim_member_access_back(chain_text, string_map)
-		var func_obj = parser.resolve_expression_to_type(access)
-		last_type = func_obj
-		if access != front:
-			
-			pass
-			#_active_function_call.access_object = parser.get_identifier_type(front)
-		else:
-			pass
-			#_active_function_call.access_object = func_obj
-	
-	return {"type": last_type, "name":last_name}
 
-
-
-
+# was just being used to make sure this was being freed
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:
-		print("FREE CC")
+		#print("FREE CC")
+		pass
 
 # API
 
 func resolve_expression_to_type(expression:String):
 	var parser = Utils.ParserRef.get_parser(self)
 	return parser.resolve_expression_to_type(expression, caret_line)
-
 
 func get_current_class_object() -> GDScriptParser.ParserClass:
 	var parser = Utils.ParserRef.get_parser(self)
@@ -827,9 +759,9 @@ class FunctionCallData:
 	
 	func func_get_current_arg_type():
 		var current_arg_data = _func_get_current_arg_data()
-		print("ARG DATA::", current_arg_data)
 		var function_object = get_function_script()
-		print("FUNC OBJ::", function_object)
+		#print("ARG DATA::", current_arg_data)
+		#print("FUNC OBJ::", function_object)
 		if current_arg_data == null:
 			return ""
 		var arg_type_resolved = current_arg_data.get(Keys.TYPE_RESOLVED)
@@ -846,10 +778,10 @@ class FunctionCallData:
 			var script_data = UString.get_script_path_and_suffix(function_object)
 			resolved = parser.resolve_expression_in_script(arg_type, script_data[0], script_data[1])
 		else:
-			print("FUNC OBJ NOT SCRIPT::", function_object)
+			#print("FUNC OBJ NOT SCRIPT::", function_object)
 			resolved = arg_type
 		
-		print("ARG DATA RESOLVED::", resolved)
+		#print("ARG DATA RESOLVED::", resolved)
 		current_arg_data[Keys.TYPE_RESOLVED] = resolved
 		return resolved
 	

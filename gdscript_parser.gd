@@ -202,7 +202,7 @@ func get_class_at_line(line:int):
 		var _class = _class_access[access_path] as ParserClass
 		if line in _class.line_indexes:
 			return access_path
-	print("get_class_at_line - LINE NOT FOUND ", line)
+	#print("get_class_at_line - LINE NOT FOUND ", line)
 	return ""
 
 func get_function_at_line(line:int):

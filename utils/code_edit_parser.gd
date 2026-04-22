@@ -100,9 +100,10 @@ func parse_text(force:=false):
 	var extended_lines = _pc.extended_lines
 	
 	var i = 0
-	var code_edit_line_count = code_edit.get_line_count() - 1
+	# full line count so that range() includes last line
+	var code_edit_line_count = code_edit.get_line_count()
 	for _i in range(code_edit_line_count):
-		if i > code_edit_line_count: # some how get line can return a blank line when calling out of range?
+		if i >= code_edit_line_count: # some how get line can return a blank line when calling out of range?
 			break
 		var stripped:String = get_line(i, true, true)
 		if stripped == "":

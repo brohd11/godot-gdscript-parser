@@ -1,4 +1,4 @@
-
+const SELF = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/utils.gd")
 
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 const Keys = GDScriptParser.Keys
@@ -8,7 +8,6 @@ const AccessObject = GDScriptParser.TypeLookup.AccessObject
 const UFile = GDScriptParser.UFile
 const UString = GDScriptParser.UString
 const UClassDetail = GDScriptParser.UClassDetail
-
 
 const ENUM_SUFFIX = Keys.ENUM_PATH_SUFFIX
 
@@ -119,6 +118,23 @@ static func ensure_absolute_path(path:String, main_script_path:String):
 		return new_path
 	return path
 
+static func test():
+	var script = load("res://test_comp.gd")
+	print(run_expression("START_POS", script))
+	pass
+
+static func run_expression(expression:String, script:GDScript):
+	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("EXPR")
+	if not is_instance_valid(script):
+		return null
+	var expr = Expression.new()
+	var err = expr.parse(expression)
+	var result = null
+	if err == OK:
+		result = expr.execute([], script, true, true)
+	t.stop()
+	return result
+
 class Keywords:
 	const DECLARATIONS = [VAR, STATIC_VAR, FUNC, STATIC_FUNC, CONST, SIGNAL, ENUM, CLASS]
 	
@@ -140,6 +156,7 @@ class Keywords:
 	const ELSE = &"else:"
 	const WHILE = &"while "
 	
+	const BITWISE_OPERATORS = ["<<", ">>", "~", "^", "|", "&"]
 	const BOOL_OPERATORS = ["==", "!=", "<", "<=", ">", ">=", " and ", " not ", " or ", "&&", "!", "||"]
 	const NON_BOOL_OPERATORS = ["+", "-", "*", "/", "%"]
 

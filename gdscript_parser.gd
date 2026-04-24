@@ -170,7 +170,7 @@ func get_type_lookup():
 func get_access():
 	return _access
 
-func get_string_map(string:String):
+func get_string_map(string:String) -> UString.StringMap:
 	return code_edit_parser.get_string_map(string)
 
 func get_caret_context(parse_context:=true) -> CaretContext:

@@ -219,24 +219,34 @@ func get_member_type(identifier:String) -> StringName:
 	var member_data = get_member(identifier)
 	if member_data == null:
 		return &""
+	var is_func = member_data is ParserFunc
+	var member_type:StringName
 	
 	var parser = Utils.ParserRef.get_parser(self)
 	var declaration:String
-	if member_data is ParserFunc:
+	if is_func:
 		declaration = member_data.get_return_type(false)
+		member_type = Keys.MEMBER_TYPE_STATIC_FUNC if member_data.is_static() else Keys.MEMBER_TYPE_FUNC
 	else:
 		declaration = parser.get_type_lookup().get_class_obj_member_type(identifier, self, {})
+		member_type = member_data.get(Keys.MEMBER_TYPE)
 	
 	var cached = _resolve_cache.get_or_add(identifier, {})
-	var cached_dec = cached.get(Keys.CLASS_CACHE_DEC, "")
-	var cache_valid = declaration == cached_dec
+	var cached_value = cached.get(Keys.CLASS_CACHE_VALUE)
 	# ALERT This should check if the cache is valid somehow, simple checks would be valid
-	if cache_valid: # but vars may be changed, hard to say. Honestly, doesn't make a huge difference
-		cache_valid = false # ALERT REMOVE THIS
-		pass
+	#if cache_valid: # but vars may be changed, hard to say. Honestly, doesn't make a huge difference
+	var cache_valid = false # ALERT REMOVE THIS
+	
+	#if not is_func and Utils.member_is_const_class_enum(member_type):
+		#var value = Utils.run_expression(identifier, script_resource)
+		#if value != null and value == cached_value:
+			#cache_valid = true
+		#cached[Keys.CLASS_CACHE_VALUE] = value
+		#prints(identifier,"valid", cache_valid,  value, cached_value )
 	
 	var type:StringName
 	if not cache_valid:
+		#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET TYPE")
 		if member_data is ParserFunc:
 			type = member_data.get_return_type(true)
 		elif member_data.get(Keys.MEMBER_TYPE) == Keys.MEMBER_TYPE_CLASS:
@@ -244,10 +254,11 @@ func get_member_type(identifier:String) -> StringName:
 		else:
 			type = parser.resolve_expression_to_type(identifier, declaration_line)
 		cached[Keys.CLASS_CACHE_TYPE] = StringName(type)
+		#t.stop()
 	else:
 		type = cached.get(Keys.CLASS_CACHE_TYPE, &"")
-		
-	cached[Keys.CLASS_CACHE_DEC] = declaration
+	
+	
 	_resolve_cache[identifier] = cached
 	return type
 

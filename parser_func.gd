@@ -22,7 +22,8 @@ var name:String
 var member_data:={}
 
 var _return_type_raw:= ""
-var _return_type := "" # done
+var _return_type_raw_line:= -1
+var _return_type:= "" # done
 var arguments = {} # done
 
 var local_vars:= {}
@@ -177,13 +178,14 @@ func get_return_type(inferred:=true): # this could be used to parse
 		_return_type_raw = _infer_return_type()
 	
 	if not inferred:
-		#print("PARSER FUNC::RETURN RAW::", _return_type_raw)
 		return _return_type_raw
-	#print("PARSER FUNC::RETURN RAW TO INFER::", _return_type_raw)
-	#if _return_type == "" or not _return_type.begins_with("res://"):
+	
 	if _return_type == "" or not Utils.is_absolute_path(_return_type):
 		var parser = Utils.ParserRef.get_parser(self)
-		_return_type = parser.resolve_expression_to_type(_return_type_raw, declaration_line)
+		#if _return_type_raw_line == null: #^ should be able to remove this
+			#_return_type_raw_line = -1
+		var return_line = maxi(declaration_line, _return_type_raw_line)
+		_return_type = parser.resolve_expression_to_type(_return_type_raw, return_line)
 		#print("RESOLVED FUNC RETURN::", _return_type)
 	
 	if _return_type == "":
@@ -235,11 +237,14 @@ func _infer_return_type() -> String:
 				break
 	
 	
+	_return_type_raw_line = i
 	var raw_result = potential_return.strip_edges().trim_prefix("return").strip_edges()
 	if raw_result == "":
 		return "void"
 	
-	var parser = Utils.ParserRef.get_parser(self)
-	_return_type = parser.resolve_expression_to_type(raw_result, i)
+	#var parser = Utils.ParserRef.get_parser(self)
+	#
+	#_return_type = parser.resolve_expression_to_type(raw_result, i)
+	#print("FUNC INFERRING::", raw_result, " -> ", _return_type)
 	#print("FUNC INFER::", _return_type)
 	return raw_result

@@ -23,6 +23,14 @@ const InferenceContext = GDScriptParser.InferenceContext
 const ENUM_SUFFIX = Keys.ENUM_PATH_SUFFIX
 const OTHER_TYPES = ["void", "Variant"]
 
+static var _ternary_regex:RegEx
+static var _ternary_if_regex:RegEx
+static var _ternary_else_regex:RegEx
+static var _as_regex:RegEx
+static var _bitwise_op_regex:RegEx
+static var _bool_op_regex:RegEx
+static var _compar_op_regex:RegEx
+
 
 var _parser:WeakRef
 var code_edit:CodeEdit
@@ -258,6 +266,9 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 	var main_script = parser.get_current_script()
 	var main_script_path = main_script.resource_path
 	
+	if expression.begins_with("(") and expression.ends_with(")"):
+		expression = expression.trim_prefix("(").trim_suffix(")")
+	
 	if Utils.is_absolute_path(expression):
 		print_deb(T.RESOLVE, "EARLY EXIT", "BEGIN WITH RES", expression)
 		var path = _ensure_valid_type_path(expression)
@@ -274,6 +285,25 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 		#if initial_class_obj.class_has_member(expression):
 			#return get_class_member_type(initial_class_obj.script_base_type, expression)
 		#return expression
+	
+	#var simple_check = _simple_type_check(expression)
+	#if simple_check != "":
+		#print_deb(T.RESOLVE, "EARLY EXIT", "IS SIMPLE", expression)
+		#return expression
+	
+	
+	var tern_check = _check_for_ternary_operation(expression, initial_class_obj, local_vars)
+	if tern_check != "":
+		#print("TERN::", expression, " -> ", tern_check)
+		return tern_check
+	var bool_bit_check = _check_for_bool_or_bitwise_operation(expression)
+	if bool_bit_check != "":
+		#print("COMPCHECK::bool::", expression, " -> ", bool_bit_check)
+		return bool_bit_check
+	var comp_check = _check_for_math_operation(expression)
+	if comp_check != "":
+		#print("COMPCHECK::", expression, " -> ", comp_check)
+		expression = comp_check
 	
 	var simple_check = _simple_type_check(expression)
 	if simple_check != "":
@@ -302,6 +332,7 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 		var current_part: String = parts.pop_front()
 		var is_func = current_part.find("(") != -1
 		var identifier = current_part.split("(", false, 1)[0] if is_func else current_part
+		identifier = identifier.strip_edges()
 		
 		if is_func and identifier == "new":
 			if current_type_path == "":
@@ -314,6 +345,7 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 		var resolved_type = ""
 		if identifier == "preload" and is_func:
 			resolved_type = resolve_preload(current_part, current_class_obj)
+		
 		if BuiltInChecker.is_builtin_class(identifier):
 			resolved_type = identifier
 		#elif UClassDetail.get_global_class_path(identifier) != "": # TEST removing this here so that shadowed vars are correctly identified
@@ -324,6 +356,8 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 			#print("EXIT")
 			# this would clash with below method?e
 			resolved_type = get_class_member_type(current_type_path, identifier)
+		
+		
 		
 		if current_class_obj.class_has_member(identifier):
 			#print("EXIT CLASS HAS MEMBER")
@@ -360,14 +394,25 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 		
 		print_deb(T.RESOLVE, "BASE ID", resolved_type)
 		
+		
+		if resolved_type == "":
+			var part_simple_check = _simple_type_check(current_part)
+			if part_simple_check != "":
+				resolved_type = part_simple_check
+		
 		#^ --- HANDLE THE RESULT ---
+		
 		if resolved_type is not String and resolved_type is not StringName:
 			resolved_type = ""
 		if resolved_type == "": # If we hit a dead end (untyped var, unknown function)
 			return ""
-		
 		if resolved_type == expression:
 			return ""
+		
+		if parts.size() > 0:
+			var resolved_simple_check = _simple_type_check(resolved_type)
+			if resolved_simple_check != "":
+				resolved_type = resolved_simple_check
 		
 		# RECURSION CHECK: Did the variable return a literal expression instead of a parsed type?
 		# e.g., local_vars["my_var"] resulted in the string "SomeClass.get_instance()"
@@ -486,6 +531,11 @@ func _resolve_builtin_class_member(identifier:String, current_type_path:String, 
 	
 	if not method_handled and BuiltInChecker.is_builtin_class(current_type_path):
 		var return_type = BuiltInChecker.get_func_return(current_type_path, stripped_identifer)
+		print_deb(T.BUILTIN, "ID", stripped_identifer, "RETURN", return_type)
+		return return_type
+	
+	if not method_handled and BuiltInChecker.is_global_method(stripped_identifer):
+		var return_type = BuiltInChecker.get_global_func_return(stripped_identifer)
 		print_deb(T.BUILTIN, "ID", stripped_identifer, "RETURN", return_type)
 		return return_type
 	
@@ -992,7 +1042,7 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 		#print_deb(T.RESOLVE, "TYPE CHECK SUCCESS: ", type_declaration, " -> ", type_check)
 		#return type_check
 	
-	print_deb(T.RESOLVE, "FUNC OR VAR: ", type_declaration)
+	print_deb(T.RESOLVE, "FUNC OR VAR", type_declaration)
 	
 	return type_declaration
 
@@ -1096,19 +1146,19 @@ func _property_info_to_type_no_class(property_info) -> String:
 	return ""
 
 
+
 func _simple_type_check(type_hint:String):
-	if type_hint.find(" as ") > -1:
-		type_hint = type_hint.get_slice(" as ", 1)
-		if type_hint.find("#") > -1:
-			type_hint = type_hint.get_slice("#", 0)
-		type_hint = type_hint.strip_edges()
-		return type_hint # return here, since this must a valid type of identifier?
+	_initialize_op_regexes()
+	var as_check = _check_for_type_cast(type_hint)
+	if as_check != "":
+		return as_check
 	
-	
-	if type_hint.find(".new(") > -1:
-		type_hint = type_hint.substr(0, type_hint.find(".new(")) # was rfind, prob should be find?
-		if _is_class_name_valid(type_hint):
-			return type_hint
+	# TEST remove this from here, forces a recursion instead of allowing SomeClass.new()
+	#if type_hint.find(".new(") > -1:
+		#type_hint = type_hint.substr(0, type_hint.find(".new(")) # was rfind, prob should be find?
+		#if _is_class_name_valid(type_hint):
+			#return type_hint
+	# TEST
 	
 	if BuiltInChecker.is_builtin_class(type_hint):
 		return type_hint
@@ -1121,20 +1171,11 @@ func _simple_type_check(type_hint:String):
 		return Utils.file_path_to_type(type_hint) # do this here?
 		#return type_hint
 	
+	#TEST can remove this?
+	#var bool_bit_check = _check_for_bool_or_bitwise_operation(type_hint)
+	#if bool_bit_check != "":
+		#return bool_bit_check
 	#TEST
-	var parser = Utils.ParserRef.get_parser(self)
-	var string_map = parser.get_string_map(type_hint)
-	for bool_op in Utils.Keywords.BOOL_OPERATORS:
-		var bool_op_idx = type_hint.find(bool_op)
-		if bool_op_idx > -1 and not string_map.index_in_string_or_comment(bool_op_idx):
-			#print("TYPE HINT::BOOL::", type_hint, "::OP::", bool_op)
-			return "bool"
-	#TEST
-	
-	
-	
-	
-	
 	
 	if type_hint == "true" or type_hint == "false":
 		return "bool"
@@ -1142,43 +1183,121 @@ func _simple_type_check(type_hint:String):
 		return "int"
 	elif type_hint.is_valid_float():
 		return "float"
-	elif type_hint.begins_with("["):
+	elif type_hint.begins_with("[") and type_hint.ends_with("]"):
 		return "Array"
-	elif type_hint.begins_with("{"):
+	elif type_hint.begins_with("{") and type_hint.ends_with("}"):
 		return "Dictionary"
 	elif type_hint.begins_with("&"):
-		return "StringName"
+		if Utils.token_is_string(type_hint.trim_prefix("&")):
+			return "StringName"
 	elif type_hint.begins_with("^"):
-		return "NodePath"
-	elif type_hint.begins_with('"') or type_hint.begins_with("'"):
+		if Utils.token_is_string(type_hint.trim_prefix("^")):
+			return "NodePath"
+	elif Utils.token_is_string(type_hint):
 		return "String"
 	elif type_hint.begins_with("Array"): # for Array[SomeType]
 		return "Array"
 	elif type_hint.begins_with("Dictionary"): # for keyed dicts Dictionary[Key, Val]
 		return "Dictionary"
 	
-	#TEST
-	for non_bool_op in Utils.Keywords.NON_BOOL_OPERATORS:
-		var non_bool_op_idx = type_hint.find(non_bool_op)
-		if non_bool_op_idx > -1 and not string_map.index_in_string_or_comment(non_bool_op_idx):
-			var identifier = ""
-			var i = 0
-			while i < type_hint.length():
-				var _char = type_hint[i]
-				if _char in Utils.Keywords.NON_BOOL_OPERATORS:
-					break
-				identifier += _char
-				i += 1
-			#print("TYPE HINT::NON-BOOL::", type_hint, "::OP::", non_bool_op, "::ID::", identifier)
-			return identifier.strip_edges()
-	#TEST
-	
-	
-	
-	
 	if _is_class_name_valid(type_hint):
 		return type_hint
 	
+	return ""
+
+func _check_for_type_cast(type_hint:String):
+	_initialize_op_regexes()
+	var parser = Utils.ParserRef.get_parser(self)
+	var string_map:UString.StringMap
+	var as_matches = _as_regex.search_all(type_hint)
+	if not as_matches.is_empty():
+		string_map = parser.get_string_map(type_hint)
+		for m in as_matches:
+			var i = m.get_start(0)
+			if string_map.index_in_string_or_comment(i) or string_map.get_tightest_bracket_set(i) != -1:
+				continue
+			
+			var cast_type_hint = type_hint.substr(i).trim_prefix("as")
+			if cast_type_hint.find("#") > -1:
+				cast_type_hint = cast_type_hint.get_slice("#", 0)
+			cast_type_hint = cast_type_hint.strip_edges()
+			if cast_type_hint.is_valid_ascii_identifier():
+				return cast_type_hint # return here, since this must a valid type of identifier?
+			else:
+				break
+	return ""
+
+
+func _check_for_ternary_operation(text: String, class_obj:ParserClass, local_vars:Dictionary):
+	_initialize_op_regexes()
+	var parser = Utils.ParserRef.get_parser(self)
+	var string_map = parser.get_string_map(text)
+	
+	var true_expr = ""
+	var false_expr = ""
+	
+	for m in _ternary_if_regex.search_all(text):
+		var i = m.get_start()
+		if string_map.index_in_string_or_comment(i) or string_map.get_tightest_bracket_set(i) != -1:
+			continue # Find the depth 0 'if'
+		true_expr = text.substr(0, i).strip_edges()
+		break
+	
+	if true_expr == "":
+		return "" # no depth 0 'if', not ternary
+	
+	for m in _ternary_else_regex.search_all(text):
+		var i = m.get_start()
+		if string_map.index_in_string_or_comment(i) or string_map.get_tightest_bracket_set(i) != -1:
+			continue # find the depth 0 'else'
+		false_expr = text.substr(m.get_end()).strip_edges()
+		break
+	
+	var true_type = resolve_expression_to_type(true_expr, class_obj, local_vars)
+	var false_type = resolve_expression_to_type(false_expr, class_obj, local_vars)
+	if true_type == false_type:
+		return true_type
+	else:
+		return "Variant" # Mismatch! Fallback to Variant.
+
+
+func _check_for_bool_or_bitwise_operation(type_hint:String):
+	_initialize_op_regexes()
+	var parser = Utils.ParserRef.get_parser(self)
+	var string_map = parser.get_string_map(type_hint)
+	var bit_matches = _bitwise_op_regex.search_all(type_hint)
+	for m in bit_matches:
+		var i = m.get_start(0)
+		if string_map.index_in_string_or_comment(i):
+			continue
+		if string_map.get_tightest_bracket_set(i) != -1:
+			continue
+		return "int"
+	
+	var bool_matches = _bool_op_regex.search_all(type_hint)
+	for m in bool_matches:
+		var i = m.get_start(0)
+		if string_map.index_in_string_or_comment(i):
+			continue
+		if string_map.get_tightest_bracket_set(i) != -1:
+			continue
+		return "bool"
+	return ""
+
+
+func _check_for_math_operation(type_hint:String):
+	_initialize_op_regexes()
+	var parser = Utils.ParserRef.get_parser(self)
+	var string_map = parser.get_string_map(type_hint)
+	var compare_matches = _compar_op_regex.search_all(type_hint)
+	for m in compare_matches:
+		var i = m.get_start(0)
+		if string_map.get_tightest_bracket_set(i) != -1:
+			continue
+		if string_map.index_in_string_or_comment(i):
+			continue
+		var indentifier = type_hint.substr(0, i)
+		return indentifier.strip_edges()
 	return ""
 
 
@@ -1214,9 +1333,13 @@ func _get_script_member_type(line:int, column:int=0): # thjs could be a bit more
 func resolve_preload(preload_call:String, class_obj:ParserClass):
 	# at this point, this should not be a path, that would have been handled already
 	var preload_string = preload_call.get_slice("preload", 1).strip_edges().trim_prefix("(").trim_suffix(")").strip_edges()
+	var path
+	if _compar_op_regex.search_all(preload_string).is_empty():
+		var value = resolve_expression_to_value_at_line(preload_string, class_obj.line_indexes[0])
+		path = Utils.get_full_path_from_string(value)
+	else:
+		path = Utils.run_expression(preload_string, class_obj.script_resource)
 	
-	var value = resolve_expression_to_value_at_line(preload_string, class_obj.line_indexes[0])
-	var path = Utils.get_full_path_from_string(value)
 	if path == "":
 		return ""
 	if not Utils.is_absolute_path(path):
@@ -1330,6 +1453,33 @@ func _check_inf_on_exit():
 #endregion
 
 
+func _initialize_op_regexes():
+	if not is_instance_valid(_ternary_if_regex):
+		_ternary_if_regex = RegEx.new()
+		_ternary_if_regex.compile("\\bif\\b")
+	if not is_instance_valid(_ternary_else_regex):
+		_ternary_else_regex = RegEx.new()
+		_ternary_else_regex.compile("\\belse\\b")
+	if not is_instance_valid(_ternary_regex):
+		_ternary_regex = RegEx.new()
+		_ternary_regex.compile("\\bif\\b.*?\\belse\\b")
+	
+	if not is_instance_valid(_as_regex):
+		_as_regex = RegEx.new()
+		_as_regex.compile("\\bas\\b")
+	
+	if not is_instance_valid(_bitwise_op_regex):
+		_bitwise_op_regex = RegEx.new()
+		_bitwise_op_regex.compile("(?:<<|>>|~|\\^(?![\"\'])|(?<!&)&(?!&|[\"\'])|(?<!\\|)\\|(?!\\|))")
+	
+	if not is_instance_valid(_bool_op_regex):
+		_bool_op_regex = RegEx.new()
+		_bool_op_regex.compile("(?:==|!=|<=|>=|<|>|&&|\\|\\||!|\\b(?:and|or|not)\\b)")
+	
+	if not is_instance_valid(_compar_op_regex):
+		_compar_op_regex = RegEx.new()
+		_compar_op_regex.compile("(?:\\*\\*|\\*|\\/|%|(?<![eE])[+\\-])")
+
 
 
 
@@ -1358,7 +1508,7 @@ static func print_deb(section:String, ...msg:Array):
 		ALibEditor.PrintDebug.print(msg)
 
 const _PRINT = [
-	#T.BUILTIN, 
+	#T.BUILTIN,
 	#T.INHERITED,
 	#T.VAR_TO_CONST,
 	#T.RESOLVE,

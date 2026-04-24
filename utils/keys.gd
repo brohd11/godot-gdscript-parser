@@ -19,6 +19,8 @@ const CACHE_CLASSES = &"cache_classes"
 # class resolve cache
 const CLASS_CACHE_DEC = &"class_cache_dec"
 const CLASS_CACHE_TYPE = &"class_cache_type"
+const CLASS_CACHE_VALUE = &"class_cache_value"
+const CLASS_CACHE_DEPENDENCIES = &"class_cache_depencies"
 
 const PARSER_CODE_EDIT = &"_parser_code_edit"
 

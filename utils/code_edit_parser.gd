@@ -508,7 +508,8 @@ func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=fal
 				line_text = " " + line_text
 			context_text += line_text
 		else:
-			context_text += "\n" + line
+			#context_text += "\n" + line
+			context_text += " " + line #^r note: switching this new line, allows for multi line to be sqeezed into a single line for parsing
 	
 	
 	if has_semi_col:# and _caret_column > 0:

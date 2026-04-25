@@ -111,6 +111,14 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 		print_deb(T.ACCESS_PATH, "FUNC -> OPERATION") # possibly this should be only for script == external object? to find seems to work fine though
 		return find_path_to_type_simple(class_obj, secondary_access, to_find) # since we are in the external object it should be safe to use it 
 	
+	# new check, if declaration type is to_find type, should be simple find procedure
+	# this is needed for when a const is a global chain to preload, not when an explicit preload
+	if declaration_script_path == to_find_script_path:
+		var to_find_search = get_member_by_value(declaration_script_path, to_find)
+		if to_find_search != null:
+			access_options.standard = UString.dot_join(current_access.declaration_symbol, secondary_access.declaration_symbol)
+			return access_options
+	
 	
 	# secondary external to current script and primary access object.
 	if secondary_script_path != access_script_path:

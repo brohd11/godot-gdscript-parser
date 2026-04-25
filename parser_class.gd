@@ -233,10 +233,14 @@ func get_member_type(identifier:String) -> StringName:
 	
 	var cached = _resolve_cache.get_or_add(identifier, {})
 	var cached_value = cached.get(Keys.CLASS_CACHE_VALUE)
+	
+	
 	# ALERT This should check if the cache is valid somehow, simple checks would be valid
 	#if cache_valid: # but vars may be changed, hard to say. Honestly, doesn't make a huge difference
 	var cache_valid = false # ALERT REMOVE THIS
+	#cache_valid = cached.get(Keys.CLASS_CACHE_DEC, "") == declaration
 	
+	cached[Keys.CLASS_CACHE_DEC] = declaration
 	#if not is_func and Utils.member_is_const_class_enum(member_type):
 		#var value = Utils.run_expression(identifier, script_resource)
 		#if value != null and value == cached_value:

@@ -123,15 +123,17 @@ static func test():
 	print(run_expression("START_POS", script))
 	pass
 
-static func run_expression(expression:String, script:GDScript):
+static func run_expression(expression:String, script:GDScript) -> String:
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("EXPR")
 	if not is_instance_valid(script):
-		return null
+		return ""
 	var expr = Expression.new()
 	var err = expr.parse(expression)
 	var result = null
 	if err == OK:
 		result = expr.execute([], script, true, true)
+	if result == null:
+		result = ""
 	t.stop()
 	return result
 

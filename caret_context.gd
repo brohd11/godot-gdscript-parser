@@ -229,7 +229,7 @@ func _get_char_before_caret():
 	return _char
 
 func _get_string_type():
-	var i = caret_column
+	var i = min(caret_column, code_context_string_map.string_mask.size() - 1) # testing
 	while i > 0:
 		if code_context_string_map.string_mask[i] == 0:
 			break

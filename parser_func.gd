@@ -88,6 +88,8 @@ func _set_function_data():
 
 ## Scan current func for local vars and func data.
 func map_variables() -> void:
+	_set_function_data()
+	end_line = func_lines[func_lines.size() - 1]
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)
 	for i in range(declaration_line + 1, end_line):
 		if not code_edit_parser.is_valid_code(i, -1):
@@ -97,10 +99,13 @@ func map_variables() -> void:
 		var indent = code_edit_parser.get_indent_code_edit(i)
 		if Utils.line_has_any_declaration(stripped) and indent <= class_indent:
 			break
+		var is_for = stripped.begins_with("for ")
+		if is_for: # this should be regex
+			stripped = "var " + stripped.get_slice("for ", 1).get_slice(" in ", 0).strip_edges()
+		
 		var var_data = Utils.get_var_or_const_info(stripped)
 		if var_data != null:
 			var var_name = var_data[0]
-			#var_name = Utils.map_check_dupe_local_var_name(var_name, local_vars) # this is negated by using indexes
 			var type_hint = var_data[1]
 			if type_hint.find(".new(") > -1:
 				type_hint = type_hint.substr(0, type_hint.rfind(".new("))
@@ -111,6 +116,32 @@ func map_variables() -> void:
 				Keys.TYPE: type_hint,
 			}
 			local_vars[i] = data
+
+func get_local_var_type(line_idx:int, member_name:String):
+	var is_arg = arguments.has(member_name)
+	var std_local = local_vars.has(line_idx)
+	if not std_local and not is_arg:
+		return ""
+	
+	var dec_line:int
+	var var_data:Dictionary
+	if is_arg:
+		var_data = arguments.get(member_name)
+		dec_line = declaration_line
+	else:
+		var_data = local_vars.get(line_idx)
+		dec_line = var_data.get(Keys.LINE_INDEX)
+	
+	var type_hint = var_data.get(Keys.TYPE, "")
+	if type_hint == "":
+		return ""
+	
+	
+	
+	var parser = Utils.ParserRef.get_parser(self)
+	var res_type = parser.resolve_expression_to_type(type_hint, dec_line)
+	return res_type
+	
 
 
 

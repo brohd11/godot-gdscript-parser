@@ -350,6 +350,8 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 			script = load(script_path)
 		else: # some type of caching issue with out of fs scripts. Full reload to ensure changes are reflected
 			script = ResourceLoader.load(script_path, "", ResourceLoader.CACHE_MODE_IGNORE_DEEP)
+		if not is_instance_valid(script):
+			return
 		parser.set_current_script(script)
 		parser.set_source_code(script.source_code)
 		

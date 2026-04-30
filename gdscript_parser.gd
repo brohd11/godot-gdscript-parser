@@ -228,7 +228,7 @@ func resolve_expression_to_type(identifier_name:String, line:int=-1) -> String:
 		line = code_edit.get_caret_line()
 	
 	var result = _type_lookup.resolve_expression_to_type_at_line(identifier_name, line)
-	#print("GET IDENTIFIER::", result)
+	#print("GET IDENTIFIER::TO TYPE::", result)
 	return result
 
 func resolve_expression_to_value(identifier_name:String, line:int=-1) -> String:
@@ -236,7 +236,7 @@ func resolve_expression_to_value(identifier_name:String, line:int=-1) -> String:
 		line = code_edit.get_caret_line()
 	
 	var result = _type_lookup.resolve_expression_to_value_at_line(identifier_name, line)
-	#print("GET IDENTIFIER::", result)
+	#print("GET IDENTIFIER::TO VALUE::", result)
 	return result
 
 

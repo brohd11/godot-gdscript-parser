@@ -26,8 +26,10 @@ var _return_type_raw_line:= -1
 var _return_type:= "" # done
 var arguments = {} # done
 
+## All mapped local vars in function.
 var local_vars:= {}
 
+## In scope local vars, set during type look up.
 var in_scope_local_vars:= {}
 var _local_vars_set:=false
 
@@ -60,7 +62,7 @@ func _set_function_data():
 	if not _cache_dirty:
 		return arguments
 	#var parser = Utils.ParserRef.get_parser(self)
-	var column = member_data.get(Keys.COLUMN_INDEX, 0)
+	var column:int = member_data.get(Keys.COLUMN_INDEX, 0)
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)
 	if not code_edit_parser.check_member_line(member_data.get(Keys.MEMBER_TYPE), name, declaration_line, column):
 		print("FUNCTION DATA: NOT VALID")
@@ -94,16 +96,28 @@ func map_variables() -> void:
 	for i in range(declaration_line + 1, end_line):
 		if not code_edit_parser.is_valid_code(i, -1):
 			continue
+		
 		var line_text = code_edit_parser.get_line(i)
 		var stripped = line_text.strip_edges()
 		var indent = code_edit_parser.get_indent_code_edit(i)
-		if Utils.line_has_any_declaration(stripped) and indent <= class_indent:
+		var line_dec = GDScriptParser.CodeEditParser.get_line_declaration(stripped)
+		if line_dec.is_empty() and not stripped.begins_with("for "):
+			continue
+		if indent <= class_indent:
 			break
+		
+		var member_type = Keys.MEMBER_TYPE_VAR
 		var is_for = stripped.begins_with("for ")
 		if is_for: # this should be regex
-			stripped = "var " + stripped.get_slice("for ", 1).get_slice(" in ", 0).strip_edges()
+			member_type = Keys.MEMBER_TYPE_FOR
+		else:
+			stripped = code_edit_parser.get_line_context_text(i)
 		
-		var var_data = Utils.get_var_or_const_info(stripped)
+		var var_data
+		if is_for:
+			var_data = Utils.get_for_loop_info(stripped)
+		else:
+			var_data = Utils.get_var_or_const_info(stripped)
 		if var_data != null:
 			var var_name = var_data[0]
 			var type_hint = var_data[1]
@@ -112,10 +126,11 @@ func map_variables() -> void:
 			var data:= {
 				Keys.MEMBER_NAME: var_name,
 				Keys.LINE_INDEX: i,
-				Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_VAR,
+				Keys.MEMBER_TYPE: member_type,
 				Keys.TYPE: type_hint,
 			}
 			local_vars[i] = data
+			
 
 func get_local_var_type(line_idx:int, member_name:String):
 	var is_arg = arguments.has(member_name)
@@ -132,14 +147,24 @@ func get_local_var_type(line_idx:int, member_name:String):
 		var_data = local_vars.get(line_idx)
 		dec_line = var_data.get(Keys.LINE_INDEX)
 	
+	
+	
 	var type_hint = var_data.get(Keys.TYPE, "")
 	if type_hint == "":
 		return ""
 	
-	
-	
 	var parser = Utils.ParserRef.get_parser(self)
-	var res_type = parser.resolve_expression_to_type(type_hint, dec_line)
+	
+	var member_type = var_data.get(Keys.MEMBER_TYPE)
+	var is_for = member_type == Keys.MEMBER_TYPE_FOR
+	var res_type:String = ""
+	
+	if is_for:
+		res_type = parser.resolve_expression_to_type(member_name, dec_line + 1) # +1 forces the for in scope
+	else:
+		res_type = parser.resolve_expression_to_type(type_hint, dec_line)
+	
+	#print("GET IDENTIF::GET_LOCAL::", member_name, " -> ", res_type)
 	return res_type
 	
 
@@ -190,7 +215,9 @@ func get_in_scope_local_vars(line:int):
 		return in_scope_local_vars
 	
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)
-	var context_data = code_edit_parser.get_line_context_start_data(line)
+	var context_data = code_edit_parser.get_line_context_start_data(line, {
+		Keys.CONTEXT_BLOCKS: [Utils.Keywords.FOR]
+		})
 	var in_scope_vars = context_data.get(Keys.CONTEXT_LOCAL_VARS, {})
 	in_scope_vars.merge(arguments)
 	return in_scope_vars
@@ -203,7 +230,7 @@ func get_arguments():
 	_set_function_data()
 	return arguments
 
-func get_return_type(inferred:=true): # this could be used to parse
+func get_return_type(inferred:=true, get_value:=false): # this could be used to parse
 	_set_function_data()
 	if _return_type_raw == "":
 		_return_type_raw = _infer_return_type()
@@ -216,7 +243,16 @@ func get_return_type(inferred:=true): # this could be used to parse
 		#if _return_type_raw_line == null: #^ should be able to remove this
 			#_return_type_raw_line = -1
 		var return_line = maxi(declaration_line, _return_type_raw_line)
-		_return_type = parser.resolve_expression_to_type(_return_type_raw, return_line)
+		if not get_value:
+			_return_type = parser.resolve_expression_to_type(_return_type_raw, return_line)
+		else:
+			var val_ret = parser.resolve_expression_to_value(_return_type_raw, return_line)
+			_return_type = parser.get_type_lookup()._simple_type_check(val_ret, true)
+			if _return_type == "":
+				_return_type = "Variant"
+			return val_ret
+			
+			
 		#print("RESOLVED FUNC RETURN::", _return_type)
 	
 	if _return_type == "":

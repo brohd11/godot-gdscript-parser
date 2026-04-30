@@ -377,8 +377,7 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 							current_indent = line_indent
 							if control_flow in map_blocks_array:
 								if control_flow == Keywords.FOR:
-									var var_dec = "var " + stripped.get_slice("for ", 1).get_slice(" in ", 0).strip_edges()
-									var var_data = Utils.add_var_to_dict(var_dec, context_start_line, local_vars)
+									var var_data = Utils.add_var_to_dict(stripped, context_start_line, local_vars, Keys.MEMBER_TYPE_FOR)
 									blocks.append({"type":"for",
 									"indent": line_indent,
 									"var":{"name": var_data[0], "type": var_data[1]}})
@@ -775,8 +774,9 @@ func get_type_from_line_text(stripped_line_text:String):
 	if stripped_line_text.begins_with("@"):
 		stripped_line_text = strip_annotations(stripped_line_text)
 	if stripped_line_text.begins_with(Keywords.FOR):
-		stripped_line_text = "var " + stripped_line_text.get_slice("for ", 1).get_slice(" in ", 0).strip_edges()
-		data["result"] = Utils.get_var_or_const_info(stripped_line_text)
+		#stripped_line_text = "var " + stripped_line_text.get_slice("for ", 1).get_slice(" in ", 0).strip_edges()
+		#data["result"] = Utils.get_var_or_const_info(stripped_line_text)
+		data["result"] = Utils.get_for_loop_info(stripped_line_text)
 		data["type"] = Keys.MEMBER_TYPE_VAR
 		return data
 	for dec:StringName in Keywords.DECLARATIONS:

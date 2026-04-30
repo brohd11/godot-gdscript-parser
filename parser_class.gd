@@ -185,6 +185,26 @@ func has_enum(enum_name:String):
 		return false
 	return var_data.get(Keys.MEMBER_TYPE) == Keys.MEMBER_TYPE_ENUM
 
+func has_script_signal(signal_name:String):
+	var sig_data = members.get(signal_name)
+	if sig_data == null:
+		return false
+	return sig_data.get(Keys.MEMBER_TYPE) == Keys.MEMBER_TYPE_SIGNAL
+
+func get_script_signal_args(signal_name:String):
+	var sig_data = members.get(signal_name)
+	if sig_data == null:
+		return false
+	if sig_data.get(Keys.MEMBER_TYPE) != Keys.MEMBER_TYPE_SIGNAL:
+		return null
+	var code_edit_parser = Utils.ParserRef.get_code_edit_parser(self)
+	var signal_check = code_edit_parser.get_type_from_line(sig_data.get(Keys.LINE_INDEX), sig_data.get(Keys.COLUMN_INDEX, 0))
+	var result = signal_check.get("result")
+	if result == null:
+		return
+	return result.get(Keys.SIGNAL_ARGS) # this is the args as dict
+	
+
 func get_enum_members(enum_name:String):
 	var enum_data = constants.get(enum_name)
 	if enum_data == null:
@@ -267,12 +287,12 @@ func get_member_type(identifier:String) -> StringName:
 	return type
 
 
-func has_preload(path:String): # doesnt handle inherited, should cache this somehow
+func has_preload(path:String) -> Variant: # doesnt handle inherited, should cache this somehow
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET PRELOAD")
 	
 	var all_const = get_inherited_members().duplicate()
 	all_const.merge(constants.duplicate())
-	
+	print("TO FIND::", path)
 	var parser = Utils.ParserRef.get_parser(self)
 	for c in all_const.keys():
 		var data = all_const.get(c)
@@ -284,9 +304,11 @@ func has_preload(path:String): # doesnt handle inherited, should cache this some
 		var script_parser = parser.get_parser_for_path(script_path)
 		var class_object = script_parser.get_class_object(data.get(Keys.ACCESS_PATH, ""))
 		var type = class_object.get_member_type(c) # this will cache it in the proper class
+		print(type)
 		if type == path:
 			t.stop()
 			return c
+	return
 
 
 ## Get and cache the preloads of current scripts ancestors.

@@ -32,7 +32,7 @@ const CONTEXT_LOCAL_VARS = &"context_local_vars"
 const CONTEXT_SEMI_COLON = &"context_semi_colon"
 
 # var type
-const MEMBER_TYPE_FUNC_ARG = &"func_arg"
+
 const MEMBER_TYPE_STATIC_FUNC = &"static func"
 const MEMBER_TYPE_FUNC = &"func"
 const MEMBER_TYPE_STATIC_VAR = &"static var"
@@ -41,6 +41,9 @@ const MEMBER_TYPE_CONST = &"const"
 const MEMBER_TYPE_ENUM = &"enum"
 const MEMBER_TYPE_CLASS = &"class"
 const MEMBER_TYPE_SIGNAL = &"signal"
+
+const MEMBER_TYPE_FUNC_ARG = &"func_arg"
+const MEMBER_TYPE_FOR = &"for"
 
 const ENUM_PATH_SUFFIX = &"::Enum"
 

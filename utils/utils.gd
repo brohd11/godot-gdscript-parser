@@ -55,6 +55,9 @@ static func get_class_info(stripped_line: String):
 static func get_var_or_const_info(stripped_line:String):# -> Array:
 	return UString.GDScriptParse.get_var_or_const_info(stripped_line)
 
+static func get_for_loop_info(stripped_line:String):
+	return UString.GDScriptParse.get_for_loop_info(stripped_line)
+
 static func get_enum_info(stripped_line: String) -> Array:
 	return UString.GDScriptParse.get_enum_info(stripped_line)
 
@@ -64,6 +67,14 @@ static func get_func_info(stripped_text: String) -> Dictionary:
 static func get_signal_info(stripped_text: String) -> Dictionary:
 	return UString.GDScriptParse.get_signal_info(stripped_text)
 
+static func get_string_inside_brackets(string:String, must_be_string:=true):
+	var open_b = string.find("(") + 1
+	var bracket_string = string.substr(open_b, string.rfind(")") - open_b)
+	if not must_be_string:
+		return bracket_string
+	if UString.is_string_or_string_name(bracket_string):
+		return UString.unquote(bracket_string)
+	return ""
 
 
 static func line_has_any_declaration(stripped_line:String):
@@ -72,8 +83,15 @@ static func line_has_any_declaration(stripped_line:String):
 			return true
 	return false
 
-static func add_var_to_dict(stripped_line:String, line:int, dict:Dictionary, int_key:=false):
-	var var_data = get_var_or_const_info(stripped_line)
+static func add_var_to_dict(stripped_line:String, line:int, dict:Dictionary, member_type:=Keys.MEMBER_TYPE_VAR, int_key:=false):
+	var var_data = null
+	if member_type == Keys.MEMBER_TYPE_VAR:
+		var_data = get_var_or_const_info(stripped_line)
+	elif member_type == Keys.MEMBER_TYPE_FOR:
+		var_data = get_for_loop_info(stripped_line)
+	else:
+		printerr("UNHANDLED MEMBER TYPE::Utils.add_var_to_dict - ", stripped_line, "::", member_type)
+		return []
 	if var_data != null:
 		var var_name = var_data[0]
 		var type = var_data[1]
@@ -83,7 +101,7 @@ static func add_var_to_dict(stripped_line:String, line:int, dict:Dictionary, int
 		dict[key] = {
 			Keys.MEMBER_NAME: var_name,
 			Keys.LINE_INDEX: line,
-			Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_VAR,
+			Keys.MEMBER_TYPE: member_type,
 			Keys.TYPE: type,
 			}
 	return var_data
@@ -137,7 +155,7 @@ static func run_expression(expression:String, script:GDScript) -> String:
 	t.stop()
 	return result
 
-class Keywords:
+class Keywords: # this also exists in UString.GDScriptParse, move it?
 	const DECLARATIONS = [VAR, STATIC_VAR, FUNC, STATIC_FUNC, CONST, SIGNAL, ENUM, CLASS]
 	
 	const VAR = &"var "

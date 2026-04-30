@@ -31,7 +31,7 @@ func find_path_to_type(class_obj:ParserClass, current_access:AccessObject, secon
 
 func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, secondary_access:AccessObject, to_find:String, secondary_path:String):
 	if secondary_access == null or current_access == secondary_access: # if no valid argument access or is our main object, can just do the operation func
-		return find_path_to_type_simple(class_obj, current_access, to_find)
+		return _find_path_to_type_simple(class_obj, current_access, to_find)
 	
 	var current_script_path = class_obj.main_script_path
 	print_deb(T.ACCESS_PATH, "FUNCTION", "----------------------------------------")
@@ -58,7 +58,7 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 	
 	var access_script_data = UString.get_script_path_and_suffix(current_access.access_type) # same logic as above
 	if access_script_data.is_empty(): # should not happen any more, any object that does not have script will become 'self', however this is valid
-		return find_path_to_type_simple(class_obj, secondary_access, to_find) # since the function would still be similar to how this would be handle 
+		return _find_path_to_type_simple(class_obj, secondary_access, to_find) # since the function would still be similar to how this would be handle 
 	
 	var access_script_path = access_script_data[0]
 	#var access_script = load(access_script_path) as GDScript
@@ -109,7 +109,7 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 				return access_options
 		
 		print_deb(T.ACCESS_PATH, "FUNC -> OPERATION") # possibly this should be only for script == external object? to find seems to work fine though
-		return find_path_to_type_simple(class_obj, secondary_access, to_find) # since we are in the external object it should be safe to use it 
+		return _find_path_to_type_simple(class_obj, secondary_access, to_find) # since we are in the external object it should be safe to use it 
 	
 	# new check, if declaration type is to_find type, should be simple find procedure
 	# this is needed for when a const is a global chain to preload, not when an explicit preload
@@ -193,9 +193,15 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 	print_deb(T.ACCESS_PATH, "END OF FUNC")
 	return access_options
 
-
-
 func find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject, to_find:String):
+	var result = _find_path_to_type_simple(class_obj, access_object, to_find)
+	# ensure no suffixes, or self prefix
+	result.standard = _clean_path(result.standard)
+	result.script_alias = _clean_path(result.script_alias)
+	result.global = _clean_path(result.global)
+	return result
+
+func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject, to_find:String):
 	var parser = Utils.ParserRef.get_parser(self)
 	var current_script_path = class_obj.main_script_path
 	print_deb(T.ACCESS_PATH, "OPERATION", "----------------------------------------")
@@ -558,6 +564,8 @@ func get_global_name_and_script_alias(to_find:String, class_obj:ParserClass, acc
 func _clean_path(string:String):
 	#if string.begins_with("self."):
 	string = string.trim_prefix("self.").trim_suffix(".self")
+	if string.find(".new(") > -1:
+		string = string.substr(0, string.find(".new("))
 	return remove_suffixes(string)
 
 func remove_suffixes(string:String):

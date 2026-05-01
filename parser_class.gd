@@ -191,19 +191,32 @@ func has_script_signal(signal_name:String):
 		return false
 	return sig_data.get(Keys.MEMBER_TYPE) == Keys.MEMBER_TYPE_SIGNAL
 
-func get_script_signal_args(signal_name:String):
+func get_script_signal_args(signal_name:String, infer_to_type:=false):
 	var sig_data = members.get(signal_name)
 	if sig_data == null:
-		return false
+		if infer_to_type:
+			return ""
+		return null
 	if sig_data.get(Keys.MEMBER_TYPE) != Keys.MEMBER_TYPE_SIGNAL:
+		if infer_to_type:
+			return ""
 		return null
 	var code_edit_parser = Utils.ParserRef.get_code_edit_parser(self)
 	var signal_check = code_edit_parser.get_type_from_line(sig_data.get(Keys.LINE_INDEX), sig_data.get(Keys.COLUMN_INDEX, 0))
 	var result = signal_check.get("result")
 	if result == null:
-		return
-	return result.get(Keys.SIGNAL_ARGS) # this is the args as dict
-	
+		if infer_to_type:
+			return ""
+		return null
+	var args = result.get(Keys.SIGNAL_ARGS, {})
+	if not infer_to_type:
+		return args # this is the args as dict
+	if args.is_empty():
+		return "void"
+	elif args.size() > 1:
+		return "Array"
+	else:
+		return args[args.keys()[0]]
 
 func get_enum_members(enum_name:String):
 	var enum_data = constants.get(enum_name)

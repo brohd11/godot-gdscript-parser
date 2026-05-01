@@ -1,6 +1,8 @@
 
 #! import_p Keys,
 
+const PLUGIN_EXPORTED = false
+
 const UString = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_string.gd")
 const UClassDetail = preload("res://addons/addon_lib/brohd/alib_editor/utils/src/u_class_detail.gd")
 const UFile = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_file.gd")
@@ -271,9 +273,11 @@ func _set_class_obj(access_name:String, class_obj:ParserClass):
 	_class_access[access_name] = class_obj
 
 func get_member_info_from_script(full_script_path:String):
-	var script_data = UString.get_script_path_and_suffix(full_script_path)
+	var script_data = Utils.type_path_get_script_data(full_script_path)
 	var script_path = script_data[0]
 	var parser = get_parser_for_path(script_path)
+	#if not parser:
+		#return
 	var class_path = script_data[1]
 	var access_path = ""
 	var member_name = class_path
@@ -294,14 +298,22 @@ func get_line_context(line:int, column:int=0, insert_caret:=false):
 
 func resolve_expression_in_script(expression:String, script_path:String, class_path:String):
 	var target_parser = get_parser_and_class_obj(script_path, class_path)
+	if not target_parser:
+		if not PLUGIN_EXPORTED:
+			printerr("Could not get parser for path::", script_path, "::", class_path)
+		return ""
 	return target_parser.parser.resolve_expression_to_type(expression, target_parser.class_obj.line_indexes[0])
 
 func resolve_to_access_object_in_script(expression:String, script_path:String, class_path:String):
 	var target_parser = get_parser_and_class_obj(script_path, class_path)
+	if not target_parser:
+		if not PLUGIN_EXPORTED:
+			printerr("Could not get parser for path::", script_path, "::", class_path)
+		return
 	return target_parser.parser.resolve_to_access_object(expression, target_parser.class_obj.line_indexes[0])
 
 func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScriptParser:
-	var script_data = UString.get_script_path_and_suffix(full_script_path)
+	var script_data = Utils.type_path_get_script_data(full_script_path)
 	if script_data.is_empty():
 		return
 	var script_path = script_data[0]
@@ -416,6 +428,10 @@ func get_parser_and_class_obj(script_path:String, class_path:String):
 		return {Keys.GET_PARSER: self, Keys.GET_CLASS_OBJ:class_obj}
 	else:
 		var parser = get_parser_for_path(script_path)
+		if not parser:
+			if not PLUGIN_EXPORTED:
+				printerr("Could not get parser for path::", script_path, "::", class_path)
+			return
 		var class_obj = parser.get_class_object(class_path)
 		return {Keys.GET_PARSER: parser, Keys.GET_CLASS_OBJ:class_obj}
 

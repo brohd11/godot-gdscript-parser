@@ -45,7 +45,17 @@ const MEMBER_TYPE_SIGNAL = &"signal"
 const MEMBER_TYPE_FUNC_ARG = &"func_arg"
 const MEMBER_TYPE_FOR = &"for"
 
-const ENUM_PATH_SUFFIX = &"::Enum"
+
+# type lookup
+const MEMBER_DELIM = &"::"
+const TYPE_DELIM = &"##"
+const MEMBER_INFER_DELIM = &":;;:"
+
+const ENUM_PATH_SUFFIX = TYPE_DELIM + &"Enum"
+const CALLABLE_SUFFIX = TYPE_DELIM + &"Callable"
+const SIGNAL_SUFFIX = TYPE_DELIM + &"Signal"
+
+
 
 # map keys
 

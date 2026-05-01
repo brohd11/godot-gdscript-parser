@@ -89,6 +89,8 @@ static func _add_to_dict(class_nm, member_string:String, class_dict:Dictionary):
 
 
 static func is_builtin_class(identifier:String) -> bool:
+	if identifier == "":
+		return false
 	if _extension_api.is_empty():
 		_load_extension_api()
 	return _extension_api.has(identifier)
@@ -219,7 +221,22 @@ static func _get_member_type(class_nm:String, member_name:String) -> String:
 
 
 
-
+static func get_variant_index_access_type(type:String):
+	match type:
+		"PackedByteArray", "PackedInt32Array", "PackedInt64Array", "Vector2i", "Vector3i", "Vector4i":
+			return "int"
+		"PackedFloat32Array", "PackedFloat64Array", "Vector2", "Vector3", "Vector4", "Color":
+			return "float"
+		"PackedStringArray", "String", "StringName":
+			return "String"
+		"PackedVector2Array", "Transform2D":
+			return "Vector2"
+		"PackedVector3Array", "Basis":
+			return "Vector3"
+		"PackedColorArray":
+			return "Color"
+		_:
+			return "Variant" # Not a known primitive index
 
 
 

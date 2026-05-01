@@ -159,10 +159,12 @@ func get_local_var_type(line_idx:int, member_name:String):
 	var is_for = member_type == Keys.MEMBER_TYPE_FOR
 	var res_type:String = ""
 	
-	if is_for:
-		res_type = parser.resolve_expression_to_type(member_name, dec_line + 1) # +1 forces the for in scope
-	else:
-		res_type = parser.resolve_expression_to_type(type_hint, dec_line)
+	#if is_for:
+		#res_type = parser.resolve_expression_to_type(member_name, dec_line + 1) # +1 forces the for in scope
+	#else:
+		#res_type = parser.resolve_expression_to_type(type_hint, dec_line)
+	
+	res_type = parser.resolve_expression_to_type(member_name, dec_line + 1)
 	
 	#print("GET IDENTIF::GET_LOCAL::", member_name, " -> ", res_type)
 	return res_type

@@ -22,6 +22,8 @@ static func is_gdscript_path(file_path:String):
 
 #^r maybe a better way to handle this, either using FileSystem or extension
 static func file_path_to_type(file_path:String):
+	if file_path.contains(Keys.TYPE_DELIM) or file_path.contains(Keys.MEMBER_DELIM):
+		return file_path
 	if is_gdscript_path(file_path):
 		return file_path
 	var ext = file_path.get_extension().to_lower()
@@ -34,7 +36,64 @@ static func file_path_to_type(file_path:String):
 	var resource = load(file_path) as Resource
 	return resource.get_class()
 
+static func join_delim(part_1:String, part_2:String, delim:StringName) -> String:
+	if part_1 != "" and part_2 != "":
+		return part_1 + delim + part_2
+	elif part_1 != "":
+		return part_1
+	elif part_2 != "":
+		return part_2
+	else:
+		return ""
 
+static func get_or_add_current_type_path(current:String, class_object:GDScriptParser.ParserClass):
+	if current != "":
+		return current
+	return class_object.get_script_class_path()
+
+
+
+static func type_path_get_script_data(string:String):
+	print("TYPE_PATH_GET_SCRIPT_DATA::", string)
+	if string.contains(Keys.MEMBER_DELIM):
+		string = string.get_slice(Keys.MEMBER_DELIM, 0)
+	elif string.contains(Keys.TYPE_DELIM):
+		string = string.get_slice(Keys.TYPE_DELIM, 0)
+	var script_data = UString.get_script_path_and_suffix(string)
+	print("TYPE_PATH_GET_SCRIPT_DATA::", script_data)
+	return script_data
+
+static func type_path_get_non_member(string:String):
+	if not string.contains(Keys.MEMBER_DELIM):
+		return ""
+	return string.get_slice(Keys.MEMBER_DELIM, 0) #.strip_edges()
+
+static func type_path_get_member(string:String, include_type:=false):
+	if not string.contains(Keys.MEMBER_DELIM):
+		return ""
+	if include_type or not string.contains(Keys.TYPE_DELIM):
+		return string.get_slice(Keys.MEMBER_DELIM, 1) #.strip_edges()
+	return string.get_slice(Keys.MEMBER_DELIM, 1).get_slice(Keys.TYPE_DELIM, 0)
+
+static func type_path_add_member(string:String, member:String):
+	if string.is_empty():
+		return member
+	return string + Keys.MEMBER_DELIM + member
+
+static func type_path_get_type(string:String, allow_all:bool=false):
+	if not string.contains(Keys.TYPE_DELIM):
+		return ""
+	var type = string.get_slice(Keys.TYPE_DELIM, 1)
+	if allow_all:
+		return type
+	if type == "Callable" or type == "Signal" or type == "Enum":
+		return ""
+	return type
+
+static func type_path_add_type(string:String, type:String):
+	return string + Keys.TYPE_DELIM + type
+	
+	
 
 static func member_is_const_class_enum(member_type:String):
 	return member_type == Keys.MEMBER_TYPE_CLASS or member_type == Keys.MEMBER_TYPE_CONST or member_type == Keys.MEMBER_TYPE_ENUM

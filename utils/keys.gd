@@ -50,6 +50,7 @@ const MEMBER_TYPE_FOR = &"for"
 const MEMBER_DELIM = &"::"
 const TYPE_DELIM = &"##"
 const MEMBER_INFER_DELIM = &":;;:"
+const INS_DELIM = &"$$INS"
 
 const ENUM_PATH_SUFFIX = TYPE_DELIM + &"Enum"
 const CALLABLE_SUFFIX = TYPE_DELIM + &"Callable"

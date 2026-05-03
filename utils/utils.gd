@@ -22,6 +22,8 @@ static func is_gdscript_path(file_path:String):
 
 #^r maybe a better way to handle this, either using FileSystem or extension
 static func file_path_to_type(file_path:String):
+	if file_path.ends_with(Keys.INS_DELIM):
+		return file_path
 	if file_path.contains(Keys.TYPE_DELIM) or file_path.contains(Keys.MEMBER_DELIM):
 		return file_path
 	if is_gdscript_path(file_path):
@@ -46,6 +48,40 @@ static func join_delim(part_1:String, part_2:String, delim:StringName) -> String
 	else:
 		return ""
 
+static func valid_instance_type(string:String):
+	if string.contains(Keys.TYPE_DELIM):
+		string = type_path_get_type(string)
+		if string.is_empty(): # if empty this means it is Signal, Callable, or Enum, not valid to store in a var anyway
+			return false
+	elif string.ends_with(Keys.INS_DELIM):
+		string = string.trim_suffix(Keys.INS_DELIM)
+	if string.begins_with("D"):
+		if string.begins_with("Dictionary") and string.contains("["):
+			return false
+	elif string.begins_with("A"):
+		if string.begins_with("Array") and string.contains("["):
+			return false
+	elif string.begins_with("p"):
+		if string.begins_with("preload") and string.trim_prefix("preload").strip_edges().begins_with("("):
+			return false
+	
+	if GDScriptParser.BuiltInChecker.is_variant_type(string):
+		return false
+	elif GDScriptParser.BuiltInChecker.is_builtin_class(string):
+		return true
+	elif is_absolute_path(string):
+		return true
+	else:
+		return true
+	return false
+
+static func type_func_add_ins(string:String):
+	if not valid_instance_type(string):
+		return string
+	if not string.ends_with(Keys.INS_DELIM):
+		string += Keys.INS_DELIM
+	return string
+
 static func get_or_add_current_type_path(current:String, class_object:GDScriptParser.ParserClass):
 	if current != "":
 		return current
@@ -54,13 +90,17 @@ static func get_or_add_current_type_path(current:String, class_object:GDScriptPa
 
 
 static func type_path_get_script_data(string:String):
-	print("TYPE_PATH_GET_SCRIPT_DATA::", string)
+	#print("TYPE_PATH_GET_SCRIPT_DATA::", string)
+	
 	if string.contains(Keys.MEMBER_DELIM):
 		string = string.get_slice(Keys.MEMBER_DELIM, 0)
 	elif string.contains(Keys.TYPE_DELIM):
 		string = string.get_slice(Keys.TYPE_DELIM, 0)
+	elif string.contains(Keys.INS_DELIM):
+		string = string.get_slice(Keys.INS_DELIM, 0)
 	var script_data = UString.get_script_path_and_suffix(string)
-	print("TYPE_PATH_GET_SCRIPT_DATA::", script_data)
+	
+	#print("TYPE_PATH_GET_SCRIPT_DATA::", script_data)
 	return script_data
 
 static func type_path_get_non_member(string:String):
@@ -83,7 +123,7 @@ static func type_path_add_member(string:String, member:String):
 static func type_path_get_type(string:String, allow_all:bool=false):
 	if not string.contains(Keys.TYPE_DELIM):
 		return ""
-	var type = string.get_slice(Keys.TYPE_DELIM, 1)
+	var type = string.get_slice(Keys.TYPE_DELIM, 1).trim_suffix(Keys.INS_DELIM)
 	if allow_all:
 		return type
 	if type == "Callable" or type == "Signal" or type == "Enum":

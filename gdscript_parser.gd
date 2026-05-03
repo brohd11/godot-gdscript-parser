@@ -231,15 +231,16 @@ func resolve_expression_to_type(identifier_name:String, line:int=-1) -> String:
 	
 	var result = _type_lookup.resolve_expression_to_type_at_line(identifier_name, line)
 	#print("GET IDENTIFIER::TO TYPE::", result)
+	ALibRuntime.DebugPrint.print_deb(self, "GET ID TYPE", identifier_name, result)
 	return result
 
-func resolve_expression_to_value(identifier_name:String, line:int=-1) -> String:
-	if line == -1:
-		line = code_edit.get_caret_line()
-	
-	var result = _type_lookup.resolve_expression_to_value_at_line(identifier_name, line)
-	#print("GET IDENTIFIER::TO VALUE::", result)
-	return result
+#func resolve_expression_to_value(identifier_name:String, line:int=-1) -> String:
+	#if line == -1:
+		#line = code_edit.get_caret_line()
+	#
+	#var result = _type_lookup.resolve_expression_to_value_at_line(identifier_name, line)
+	##print("GET IDENTIFIER::TO VALUE::", result)
+	#return result
 
 
 func resolve_to_access_object(identifier:String, line:int=-1):
@@ -306,7 +307,7 @@ func resolve_expression_in_script(expression:String, script_path:String, class_p
 
 func resolve_to_access_object_in_script(expression:String, script_path:String, class_path:String):
 	var target_parser = get_parser_and_class_obj(script_path, class_path)
-	if not target_parser:
+	if not target_parser or not target_parser.class_obj:
 		if not PLUGIN_EXPORTED:
 			printerr("Could not get parser for path::", script_path, "::", class_path)
 		return
@@ -317,8 +318,8 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 	if script_data.is_empty():
 		return
 	var script_path = script_data[0]
-	if not Utils.is_gdscript_path(full_script_path):
-		#print("NOT A GDSCRIPT FILE::", full_script_path)
+	if not Utils.is_gdscript_path(script_path):
+		print("NOT A GDSCRIPT FILE::", full_script_path)
 		return
 	
 	if is_instance_valid(active_parser) and not force_cache:
@@ -408,6 +409,7 @@ func cached_data_valid(script_path:String, data:Dictionary):
 
 
 
+#! struct_dict Keys.GET_PARSER:GDScriptParser class_obj:ParserClass
 func get_parser_and_class_obj_for_script(script_path:String):
 	if not Utils.is_gdscript_path(script_path):
 		return {}
@@ -421,6 +423,7 @@ func get_parser_and_class_obj_for_script(script_path:String):
 		var parser = get_parser_for_path(script_main_path)
 		var class_obj = parser.get_class_object(class_path)
 		return {Keys.GET_PARSER: parser, Keys.GET_CLASS_OBJ:class_obj}
+
 
 func get_parser_and_class_obj(script_path:String, class_path:String):
 	if script_path == _script_path:

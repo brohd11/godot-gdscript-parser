@@ -77,11 +77,29 @@ func _set_function_data():
 	if result == null:
 		_return_type_raw = ""
 		return
-	
-	var arg_data = result.get(Keys.FUNC_ARGS, {})
+	if not result is Dictionary:
+		print(result, "::", name)
+	var arg_data = result.get(Keys.FUNC_ARGS, {}) as Dictionary[String, Array]
+	#for arg in arg_data.keys():
+		#arguments[arg] = {Keys.TYPE: arg_data[arg], Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_FUNC_ARG}
 	for arg in arg_data.keys():
-		arguments[arg] = {Keys.TYPE: arg_data[arg], Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_FUNC_ARG}
-	_return_type_raw = result.get(Keys.FUNC_RETURN, "")
+		var arg_data_array = arg_data[arg] as Array[String]
+		var arg_type = arg_data_array[1]
+		var arg_assign = arg_data_array[2]
+		if arg_type.is_empty():
+			arg_type = arg_assign
+		elif not GDScriptParser.BuiltInChecker.is_variant_type(arg_type):
+			arg_type = arg_type + Keys.INS_DELIM
+		else:
+			pass
+		arguments[arg] = {Keys.TYPE: arg_type, Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_FUNC_ARG}
+	
+	var ret_str = result.get(Keys.FUNC_RETURN, "")
+	if ret_str != "" and Utils.valid_instance_type(ret_str):
+		print("ADDING INS::", ret_str)
+		ret_str = Utils.type_func_add_ins(ret_str)
+		print("ADDING INS::", ret_str)
+	_return_type_raw = ret_str
 	#print("SET FUNC DATA: ", result)
 
 
@@ -106,6 +124,7 @@ func map_variables() -> void:
 		if indent <= class_indent:
 			break
 		
+		
 		var member_type = Keys.MEMBER_TYPE_VAR
 		var is_for = stripped.begins_with("for ")
 		if is_for: # this should be regex
@@ -121,8 +140,10 @@ func map_variables() -> void:
 		if var_data != null:
 			var var_name = var_data[0]
 			var type_hint = var_data[1]
-			if type_hint.find(".new(") > -1:
-				type_hint = type_hint.substr(0, type_hint.rfind(".new("))
+			if type_hint.is_empty():
+				type_hint = var_data[2]
+			#if type_hint.find(".new(") > -1:
+				#type_hint = type_hint.substr(0, type_hint.rfind(".new("))
 			var data:= {
 				Keys.MEMBER_NAME: var_name,
 				Keys.LINE_INDEX: i,
@@ -164,7 +185,7 @@ func get_local_var_type(line_idx:int, member_name:String):
 	#else:
 		#res_type = parser.resolve_expression_to_type(type_hint, dec_line)
 	
-	res_type = parser.resolve_expression_to_type(member_name, dec_line + 1)
+	res_type = parser.resolve_expression_to_type(member_name, dec_line + 1) # don't think the + 1 is actually needed..
 	
 	#print("GET IDENTIF::GET_LOCAL::", member_name, " -> ", res_type)
 	return res_type
@@ -240,25 +261,29 @@ func get_return_type(inferred:=true, get_value:=false): # this could be used to 
 	if not inferred:
 		return _return_type_raw
 	
-	if _return_type == "" or not Utils.is_absolute_path(_return_type):
+	if _return_type == "" or not Utils.is_absolute_path(_return_type) or true:
 		var parser = Utils.ParserRef.get_parser(self)
 		#if _return_type_raw_line == null: #^ should be able to remove this
 			#_return_type_raw_line = -1
 		var return_line = maxi(declaration_line, _return_type_raw_line)
-		if not get_value:
-			_return_type = parser.resolve_expression_to_type(_return_type_raw, return_line)
-		else:
-			var val_ret = parser.resolve_expression_to_value(_return_type_raw, return_line)
-			_return_type = parser.get_type_lookup()._simple_type_check(val_ret, true)
-			if _return_type == "":
-				_return_type = "Variant"
-			return val_ret
+		#if not get_value:
+		_return_type = parser.resolve_expression_to_type(_return_type_raw, return_line)
+		#else:
+			#var val_ret = parser.resolve_expression_to_value(_return_type_raw, return_line)
+			#_return_type = parser.get_type_lookup()._simple_type_check(val_ret, true)
+			#if _return_type == "":
+				#_return_type = "Variant"
+			#_return_type = Utils.type_func_add_ins(_return_type)
+			#return val_ret
 			
 			
 		#print("RESOLVED FUNC RETURN::", _return_type)
 	
 	if _return_type == "":
 		_return_type = "Variant"
+	print("RET BEFORE::", _return_type)
+	_return_type = Utils.type_func_add_ins(_return_type)
+	print("RET AFTER::", _return_type)
 	return _return_type
 
 
@@ -267,7 +292,9 @@ func get_return_type(inferred:=true, get_value:=false): # this could be used to 
 func _infer_return_type() -> String:
 	var code_edit_parser = Utils.ParserRef.get_code_edit_parser(self)
 	var func_indent = class_indent + code_edit_parser.indent_size
-	var potential_return = ""
+	# technically this should be Variant, but this will behave similar to a return of a Variant where a return is necessary even if null
+	# if not return statement at all is found, -> void, else Variant
+	var potential_return = "void" 
 	end_line = func_lines[func_lines.size() - 1]
 	#var i = min(end_line + 1, code_edit_parser.code_edit.get_line_count() - 1)
 	var i = end_line + 1
@@ -309,7 +336,7 @@ func _infer_return_type() -> String:
 	_return_type_raw_line = i
 	var raw_result = potential_return.strip_edges().trim_prefix("return").strip_edges()
 	if raw_result == "":
-		return "void"
+		return "Variant"
 	
 	#var parser = Utils.ParserRef.get_parser(self)
 	#

@@ -37,7 +37,7 @@ var constants:= {}
 var members:= {}
 var functions:={}
 
-var inherited_members := {}
+var inherited_members :Dictionary = {}
 var inherited_scripts := []
 var _inherited_script_mod_cache := {}
 
@@ -234,8 +234,8 @@ func get_members() -> Dictionary:
 	dict.merge(members.duplicate())
 	dict.merge(constants.duplicate())
 	dict.merge(inner_classes.duplicate())
-	dict.merge(functions.duplicate())
-	return dict
+	dict.merge(functions.duplicate()) # think this can be removed, this will not overwrite as is
+	return dict # maybe get_member to only return data to align with name, or could have flag to check function object?
 
 
 
@@ -252,35 +252,11 @@ func get_member_type(identifier:String) -> StringName:
 	var member_data = get_member(identifier)
 	if member_data == null:
 		return &""
-	var is_func = member_data is ParserFunc
-	var member_type:StringName
 	
 	var parser = Utils.ParserRef.get_parser(self)
-	var declaration:String
-	if is_func:
-		declaration = member_data.get_return_type(false)
-		member_type = Keys.MEMBER_TYPE_STATIC_FUNC if member_data.is_static() else Keys.MEMBER_TYPE_FUNC
-	else:
-		declaration = parser.get_type_lookup().get_class_obj_member_type(identifier, self, {})
-		member_type = member_data.get(Keys.MEMBER_TYPE)
 	
+	var cache_valid = cached_resolve_valid_for_member(identifier)
 	var cached = _resolve_cache.get_or_add(identifier, {})
-	var cached_value = cached.get(Keys.CLASS_CACHE_VALUE)
-	
-	
-	# ALERT This should check if the cache is valid somehow, simple checks would be valid
-	#if cache_valid: # but vars may be changed, hard to say. Honestly, doesn't make a huge difference
-	var cache_valid = false # ALERT REMOVE THIS
-	#cache_valid = cached.get(Keys.CLASS_CACHE_DEC, "") == declaration
-	
-	cached[Keys.CLASS_CACHE_DEC] = declaration
-	#if not is_func and Utils.member_is_const_class_enum(member_type):
-		#var value = Utils.run_expression(identifier, script_resource)
-		#if value != null and value == cached_value:
-			#cache_valid = true
-		#cached[Keys.CLASS_CACHE_VALUE] = value
-		#prints(identifier,"valid", cache_valid,  value, cached_value )
-	
 	var type:StringName
 	if not cache_valid:
 		#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET TYPE")
@@ -293,19 +269,55 @@ func get_member_type(identifier:String) -> StringName:
 		cached[Keys.CLASS_CACHE_TYPE] = StringName(type)
 		#t.stop()
 	else:
+		#print("WAS VAL")
 		type = cached.get(Keys.CLASS_CACHE_TYPE, &"")
 	
 	
 	_resolve_cache[identifier] = cached
 	return type
 
+func cached_resolve_valid_for_member(identifier:String):
+	return false
+	var member_data = get_member(identifier)
+	if member_data == null:
+		return false
+	
+	var parser = Utils.ParserRef.get_parser(self)
+	var is_func = member_data is ParserFunc
+	var declaration:String
+	if is_func:
+		declaration = member_data.get_return_type(false)
+	else:
+		declaration = parser.get_type_lookup().get_class_obj_member_type(identifier, self, {})
+	
+	var cached = _resolve_cache.get_or_add(identifier, {})
+	var cached_type = cached.get(Keys.CLASS_CACHE_TYPE, &"")
+
+	# ALERT This should check if the cache is valid somehow, simple checks would be valid
+	#if cache_valid: # but vars may be changed, hard to say. Honestly, doesn't make a huge difference
+	var cache_valid = false
+	
+	cache_valid = cached.get(Keys.CLASS_CACHE_DEC, "") == declaration and cached_type != &""
+	cached[Keys.CLASS_CACHE_DEC] = declaration
+	if cache_valid and Utils.is_absolute_path(cached_type):
+		var cache_modified_time = cached.get(Keys.CACHE_MODIFIED, 0)
+		var script_data = Utils.type_path_get_script_data(cached_type)
+		var path = script_data[0]
+		var mod_time = FileAccess.get_modified_time(path)
+		cache_valid = mod_time == cache_modified_time
+		cached[Keys.CACHE_MODIFIED] = mod_time
+	
+	return cache_valid
+
+func get_cached_resolve_for_member(identifier:String):
+	return _resolve_cache.get(identifier, {}).get(Keys.CLASS_CACHE_TYPE, &"")
 
 func has_preload(path:String) -> Variant: # doesnt handle inherited, should cache this somehow
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET PRELOAD")
 	
 	var all_const = get_inherited_members().duplicate()
 	all_const.merge(constants.duplicate())
-	print("TO FIND::", path)
+	#print("TO FIND::", path)
 	var parser = Utils.ParserRef.get_parser(self)
 	for c in all_const.keys():
 		var data = all_const.get(c)
@@ -317,10 +329,19 @@ func has_preload(path:String) -> Variant: # doesnt handle inherited, should cach
 		var script_parser = parser.get_parser_for_path(script_path)
 		var class_object = script_parser.get_class_object(data.get(Keys.ACCESS_PATH, ""))
 		var type = class_object.get_member_type(c) # this will cache it in the proper class
-		print(type)
+		#print("PRELOAD TYPE::", type)
 		if type == path:
 			t.stop()
 			return c
+	
+	var inherited_script_paths = get_inherited_scripts()
+	for script_path in inherited_script_paths:
+		var script_parser_data = parser.get_parser_and_class_obj_for_script(script_path)
+		var class_obj = script_parser_data.get(Keys.GET_CLASS_OBJ)
+		var check = class_obj.has_preload(path)
+		if check:
+			return check
+	
 	return
 
 
@@ -357,7 +378,7 @@ func get_inherited_members() -> Dictionary:
 	return inherited_members
 	
 
-func _get_inherited_members():
+func _get_inherited_members() -> void:
 	inherited_members.clear()
 	var parser = Utils.ParserRef.get_parser(self)
 	var inherited_script_paths = get_inherited_scripts()

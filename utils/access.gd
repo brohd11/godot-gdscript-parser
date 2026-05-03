@@ -24,9 +24,9 @@ var _parser:WeakRef
 func find_path_to_type(class_obj:ParserClass, current_access:AccessObject, secondary_access:AccessObject, to_find:String, secondary_path:String):
 	var result = _find_path_to_type(class_obj, current_access, secondary_access, to_find, secondary_path)
 	# ensure no suffixes, or self prefix
-	result.standard = _clean_path(result.standard)
-	result.script_alias = _clean_path(result.script_alias)
-	result.global = _clean_path(result.global)
+	result.standard = AccessUtils.clean_path(result.standard)
+	result.script_alias = AccessUtils.clean_path(result.script_alias)
+	result.global = AccessUtils.clean_path(result.global)
 	return result
 
 func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, secondary_access:AccessObject, to_find:String, secondary_path:String):
@@ -43,20 +43,32 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 	print_deb(T.ACCESS_PATH, "ACCESS-SEC", secondary_access.access_symbol, secondary_access.access_type)
 	print_deb(T.ACCESS_PATH, "FUNCTION", secondary_path)
 	
+	current_access.clean_symbols()
+	secondary_access.clean_symbols()
+	
 	var access_options = AccessOptions.new()
 	# get global name and script alias are easy to run
 	get_global_name_and_script_alias(to_find, class_obj, access_options)
 	
 	# script where func or var is, this may or may not be the current script
-	var secondary_script_data = UString.get_script_path_and_suffix(secondary_path)
+	#var secondary_script_data = UString.get_script_path_and_suffix(secondary_path)
+	var secondary_script_data = Utils.type_path_get_script_data(secondary_path)
 	var secondary_script_path = secondary_script_data[0]
 	
-	var to_find_script_data = UString.get_script_path_and_suffix(to_find) # same logic as above
+	#var to_find_script_data = UString.get_script_path_and_suffix(to_find) # same logic as above
+	var to_find_script_data = Utils.type_path_get_script_data(to_find) # same logic as above
 	var to_find_script_path = to_find_script_data[0]
 	var to_find_script = load(to_find_script_path) as GDScript
 	var to_find_class_path = to_find_script_data[1].trim_suffix(ENUM_SUFFIX) # trim suffix here? should not be needed after since we knew it going in
+	print("TO FIND CLASS::FUNC::", to_find_class_path)
+	#if to_find.ends_with(ENUM_SUFFIX):
+		#to_find_class_path = UString.dot_join(to_find_class_path, Utils.type_path_get_member(to_find))
+		#print("TO FIND CLASS::FUNC::", to_find_class_path)
 	
-	var access_script_data = UString.get_script_path_and_suffix(current_access.access_type) # same logic as above
+	
+	
+	#var access_script_data = UString.get_script_path_and_suffix(current_access.access_type) # same logic as above
+	var access_script_data = Utils.type_path_get_script_data(current_access.access_type) # same logic as above
 	if access_script_data.is_empty(): # should not happen any more, any object that does not have script will become 'self', however this is valid
 		return _find_path_to_type_simple(class_obj, secondary_access, to_find) # since the function would still be similar to how this would be handle 
 	
@@ -64,7 +76,8 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 	#var access_script = load(access_script_path) as GDScript
 	#var access_class_path = access_script_data[1].trim_suffix(ENUM_SUFFIX) # don't need for a search by val
 	
-	var declaration_script_data = UString.get_script_path_and_suffix(current_access.declaration_type) # same logic as above
+	#var declaration_script_data = UString.get_script_path_and_suffix(current_access.declaration_type) # same logic as above
+	var declaration_script_data = Utils.type_path_get_script_data(current_access.declaration_type) # same logic as above
 	var declaration_script_path = declaration_script_data[0]
 	var declaration_class_path = declaration_script_data[1]
 	
@@ -84,12 +97,13 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 	#print_deb(T.ACCESS_PATH, class_obj.get_script_class_path() ,"INHERITS CHECK 2", to_find_script_path, inherits)
 	
 	#^r ORIGINAL METHOD
-	var inherits = parser.script_inherits(current_script_path, to_find_script_path)
-	
+	#var inherits = parser.script_inherits(current_script_path, to_find_script_path)
+	# should this factor in the inner classes, probably so...
+	var inherits = parser.script_inherits(class_obj.get_script_class_path(), Utils.type_path_get_non_member(to_find))
+	#print("INHERITES::", inherits, "::",class_obj.get_script_class_path(),"::", Utils.type_path_get_non_member(to_find) )
 	
 	# if current script is relevant, can simplify process. if to find is in current or external is current
 	if current_script_path == to_find_script_path or current_script_path == secondary_script_path or inherits:
-		
 		# if current script has the declaration symbol, we are good. This function automatically splits member access parts
 		if class_has_const(secondary_access.declaration_symbol, class_obj) and secondary_access.declaration_type == to_find:
 			access_options.standard = secondary_access.declaration_symbol
@@ -97,8 +111,10 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 		elif class_has_const(current_access.access_symbol, class_obj):
 			# check direct for to find in access script, this doesn't seem to be affecting any thing negatively
 			# how does this affect the below search?
+			print("HERE::",access_script_path,"::", to_find)
 			var to_find_search = get_member_by_value(access_script_path, to_find)
 			if to_find_search != null:
+				print("HERE::", to_find_search)
 				access_options.standard = to_find_search
 				return access_options
 			# if it has the access symbol, can check for a path to declaration symbol
@@ -116,7 +132,9 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 	if declaration_script_path == to_find_script_path:
 		var to_find_search = get_member_by_value(declaration_script_path, to_find)
 		if to_find_search != null:
-			access_options.standard = UString.dot_join(current_access.declaration_symbol, secondary_access.declaration_symbol)
+			print_deb(T.ACCESS_PATH, "BREAKPOINT_0", to_find_search)
+			access_options.standard = UString.dot_joinv([current_access.declaration_symbol, secondary_access.declaration_symbol, to_find_search])
+			#access_options.standard = UString.dot_join(current_access.declaration_symbol, secondary_access.declaration_symbol)
 			return access_options
 	
 	
@@ -168,7 +186,7 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 		print_deb(T.ACCESS_PATH, "ARG IS GLOBAL", front_dec)
 		var declaration_suffix = "" # if the declation script is to_find or inherits, trim the class access in case of inner classes
 		if to_find_script_path.begins_with(declaration_script_path) or parser.script_inherits(declaration_script_path, to_find_script_path):
-			declaration_suffix = remove_suffixes(to_find_class_path.trim_prefix(declaration_class_path).trim_prefix("."))
+			declaration_suffix = AccessUtils.remove_suffixes(to_find_class_path.trim_prefix(declaration_class_path).trim_prefix("."))
 			print_deb(T.ACCESS_PATH, "DEC SUFFIX", declaration_suffix)
 		
 		access_options.standard = UString.dot_joinv([secondary_access.declaration_symbol, declaration_suffix])
@@ -196,32 +214,40 @@ func _find_path_to_type(class_obj:ParserClass, current_access:AccessObject, seco
 func find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject, to_find:String):
 	var result = _find_path_to_type_simple(class_obj, access_object, to_find)
 	# ensure no suffixes, or self prefix
-	result.standard = _clean_path(result.standard)
-	result.script_alias = _clean_path(result.script_alias)
-	result.global = _clean_path(result.global)
+	result.standard = AccessUtils.clean_path(result.standard)
+	result.script_alias = AccessUtils.clean_path(result.script_alias)
+	result.global = AccessUtils.clean_path(result.global)
 	return result
 
 func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject, to_find:String):
 	var parser = Utils.ParserRef.get_parser(self)
 	var current_script_path = class_obj.main_script_path
 	print_deb(T.ACCESS_PATH, "OPERATION", "----------------------------------------")
-	print_deb(T.ACCESS_PATH,"FROM", current_script_path, "TO FIND",to_find)
+	print_deb(T.ACCESS_PATH,"FROM", class_obj.get_script_class_path(), "TO FIND",to_find)
 	
 	var access_options = AccessOptions.new()
 	get_global_name_and_script_alias(to_find, class_obj, access_options)
 	
-	var to_find_script_data = UString.get_script_path_and_suffix(to_find)
+	#var to_find_script_data = UString.get_script_path_and_suffix(to_find)
+	var to_find_script_data = Utils.type_path_get_script_data(to_find)
 	var to_find_script_path = to_find_script_data[0]
 	#var to_find_script = load(to_find_script_path) as GDScript
 	var to_find_class_path = to_find_script_data[1].trim_suffix(ENUM_SUFFIX) # trim suffix here? should not be needed after since we knew it going in
+	print("TO FIND CLASS::", to_find_class_path)
+	#if to_find.ends_with(ENUM_SUFFIX):
+		#to_find_class_path = UString.dot_join(to_find_class_path, Utils.type_path_get_member(to_find))
+		#print("TO FIND CLASS::", to_find_class_path)
 	
-	var access_script_data = UString.get_script_path_and_suffix(access_object.access_type)
+	#var access_script_data = UString.get_script_path_and_suffix(access_object.access_type)
+	var access_script_data = Utils.type_path_get_script_data(access_object.access_type)
 	var access_script_path = access_script_data[0] # get script of access object resolved type
 	#var access_script = load(access_script_path) as GDScript
 	#var access_class_path = access_script_data[1].trim_suffix(ENUM_SUFFIX)
 	
 	print_deb(T.ACCESS_PATH, "DEC",  access_object.declaration_symbol, access_object.declaration_type)
 	print_deb(T.ACCESS_PATH, "ACCESS", access_object.access_symbol, access_object.access_type)
+	
+	access_object.clean_symbols()
 	
 	# TEST #^ note: see above func
 	#var to_find_has_suffix = to_find.ends_with(ENUM_SUFFIX)
@@ -234,8 +260,11 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 		#inherits = parser.script_inherits(class_obj.get_script_class_path(), to_find_script_path)
 	#print_deb(T.ACCESS_PATH, class_obj.get_script_class_path() ,"INHERITS CHECK 2", to_find_script_path, inherits)
 	
+	
+	
 	#^r ORIGINAL METHOD
-	var inherits = parser.script_inherits(current_script_path, to_find_script_path)
+	#var inherits = parser.script_inherits(current_script_path, to_find_script_path)
+	var inherits = parser.script_inherits(class_obj.get_script_class_path(), Utils.type_path_get_non_member(to_find))
 	
 	# if current script is to find or inherits, should be simple to get access
 	if current_script_path == to_find_script_path or inherits:# or current_script_path == access_script_path:
@@ -246,7 +275,8 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 			access_options.standard = to_find_class_path
 		return access_options
 	
-	var declaration_script_data = UString.get_script_path_and_suffix(access_object.declaration_type)
+	#var declaration_script_data = UString.get_script_path_and_suffix(access_object.declaration_type)
+	var declaration_script_data = Utils.type_path_get_script_data(access_object.declaration_type)
 	var declaration_script_path = declaration_script_data[0]
 	var declaration_class_path = declaration_script_data[1].trim_suffix(ENUM_SUFFIX)
 	
@@ -314,7 +344,8 @@ func _find_constant_relative_path(full_script_path:String, member_to_find:String
 
 func reverse_search_for_member(full_script_path:String, to_find:String):
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("REV")
-	var script_data = UString.get_script_path_and_suffix(full_script_path)
+	#var script_data = UString.get_script_path_and_suffix(full_script_path)
+	var script_data = Utils.type_path_get_script_data(full_script_path)
 	var script_path = script_data[0]
 	var script = load(script_path)
 	var class_access = script_data[1] as String
@@ -340,7 +371,8 @@ func reverse_search_for_member(full_script_path:String, to_find:String):
 
 # this one uses parser, access path is cached
 func parser_search_for_member(full_script_path:String, to_find:String):
-	var script_data = UString.get_script_path_and_suffix(full_script_path)
+	#var script_data = UString.get_script_path_and_suffix(full_script_path)
+	var script_data = Utils.type_path_get_script_data(full_script_path)
 	var script_path = script_data[0]
 	var script_parser = _get_parser_for_script(script_path)
 	var class_access = script_data[1] as String
@@ -385,7 +417,8 @@ func parser_has_path(path:String, parser:GDScriptParser):
 				var remaining_parts = ""
 				for ni in range(i + 1, path_parts.size()):
 					remaining_parts = UString.dot_join(remaining_parts, path_parts[ni])
-				var script_data = UString.get_script_path_and_suffix(type)
+				#var script_data = UString.get_script_path_and_suffix(type)
+				var script_data = Utils.type_path_get_script_data(type)
 				var next_parser = _get_parser_for_script(script_data[0])
 				remaining_parts = UString.dot_join(script_data[1], remaining_parts)
 				print("RECURSIVE::", remaining_parts, " -> ", script_data[0])
@@ -398,7 +431,8 @@ func parser_has_path(path:String, parser:GDScriptParser):
 
 func get_member_by_value(script_path:String, full_to_find_path:String):
 	print_deb(T.ACCESS_PATH, "FIND BY VAL", script_path, "->", full_to_find_path)
-	var to_find_script_data = UString.get_script_path_and_suffix(full_to_find_path)
+	#var to_find_script_data = UString.get_script_path_and_suffix(full_to_find_path)
+	var to_find_script_data = Utils.type_path_get_script_data(full_to_find_path)
 	var to_find_script_path = to_find_script_data[0]
 	var to_find_script = load(to_find_script_path)
 	
@@ -417,45 +451,41 @@ func _find_constant_by_value(type_to_find:String, initial_class_obj:ParserClass)
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("_find_constant_by_value")
 	var preload_name = initial_class_obj.has_preload(type_to_find)
 	if preload_name != null:
-		t.stop()
+		t.stop("_find_constant_by_value - found pre::" + preload_name)
 		return UString.dot_join(initial_class_obj.access_path, preload_name)
 	
 	var search_from_script = initial_class_obj.get_script_resource()
 	
 	var search_value = type_to_find
-	var script_data = UString.get_script_path_and_suffix(search_value)
+	
+	#var script_data = UString.get_script_path_and_suffix(search_value)
+	var script_data = GDScriptParser.Utils.type_path_get_script_data(search_value)
 	var script_path = script_data[0]
 	var script_class_path = script_data[1]
 	var suffix = ""
 	if type_to_find.ends_with(ENUM_SUFFIX):
-		if script_class_path.contains("."):
-			suffix = UString.get_member_access_back(script_class_path)
-			script_class_path = UString.trim_member_access_back(script_class_path)
-		else:
-			suffix = script_class_path
-			script_class_path = ""
-		suffix = remove_suffixes(suffix)
+		suffix = Utils.type_path_get_member(type_to_find)
 	
-	print("ACCESS PATH::", "SEARCH, ", script_class_path, " ",suffix)
+	print_deb(T.ACCESS_PATH, "SEARCH", script_class_path, suffix)
 	
 	var search_script = load(script_path)
 	if script_class_path != "":
 		search_script = UClassDetail.get_member_info_by_path(search_script, script_class_path, ["const"], false, false, false, false)
 	
-	print("ACCESS PATH::", "SEARCH, ", search_from_script, " ", search_script, " TO FIND ", type_to_find)
+	print_deb(T.ACCESS_PATH, "SEARCH, ", search_from_script, search_script, "TO FIND", type_to_find)
 	var access = UClassDetail.script_get_member_by_value(search_from_script, search_script, true, ["const", "enum"])
 	if access != null:
 		var parser = _get_parser_for_script(script_path)
 		var class_obj = parser.get_class_object(script_class_path)
 		if search_value != type_to_find: # if we modified the search value, check if the type exists where we found it, for enums and such
 			if class_obj.has_preload(type_to_find):
-				t.stop()
+				t.stop("_find_constant_by_value - search val == type")
 				return UString.dot_join(access, suffix)
 		else:
-			t.stop()
+			t.stop("_find_constant_by_value - search val != type")
 			return UString.dot_join(access, suffix)
 	
-	t.stop()
+	t.stop("_find_constant_by_value - fail")
 	return
 
 
@@ -530,6 +560,40 @@ func _find_constant_by_value(type_to_find:String, initial_class_obj:ParserClass)
 	## Return null if the queue empties out and nothing was found
 	#return null
 
+func reverse_path_chain_search(to_find:String, class_obj:ParserClass):
+	var script_data = Utils.type_path_get_script_data(to_find)
+	var script_path = script_data[0]
+	var script_access_path = script_data[1]
+	var working_script_access_path = script_access_path
+	#if to_find.ends_with(ENUM_SUFFIX):
+		#script_access_path = UString.dot_join(script_access_path, Utils.type_path_get_member(to_find))
+	
+	var pc = class_obj.has_preload(to_find)
+	if pc != null:
+		return pc
+	
+	
+	for i in range(script_access_path.count(".") + 1):
+		var search_path = UString.dot_join(script_path,working_script_access_path)
+		if working_script_access_path.contains("."):
+			working_script_access_path = UString.trim_member_access_back(working_script_access_path)
+		else:
+			working_script_access_path = ""
+		print("CHECKING::", search_path)
+		var check = class_obj.has_preload(search_path)
+		if check != null:
+			print("FOUND::", check, "::", working_script_access_path)
+			if to_find.ends_with(ENUM_SUFFIX):
+				working_script_access_path = UString.dot_join(working_script_access_path, Utils.type_path_get_member(to_find))
+			var return_val = UString.dot_join(check, working_script_access_path)
+			print("FINAL::", return_val)
+			return return_val
+		#if working_script_access_path.contains("."):
+			#working_script_access_path = UString.trim_member_access_back(working_script_access_path)
+		#else:
+			#working_script_access_path = ""
+	return ""
+
 func class_has_const(symbol:String, class_obj:ParserClass):
 	var front_arg_dec = UString.get_member_access_front(symbol)
 	var member_data = class_obj.get_member(front_arg_dec)
@@ -537,42 +601,42 @@ func class_has_const(symbol:String, class_obj:ParserClass):
 		member_data = class_obj.get_inherited_member(front_arg_dec)
 	if member_data != null:
 		var member_type = member_data.get(Keys.MEMBER_TYPE)
-		if member_type == Keys.MEMBER_TYPE_CLASS or member_type == Keys.MEMBER_TYPE_CONST or member_type == Keys.MEMBER_TYPE_ENUM:
+		if Utils.member_is_const_class_enum(member_type):
 			return true
 	return false
 
 
 func get_global_name_and_script_alias(to_find:String, class_obj:ParserClass, access_options:AccessOptions):
-	var to_find_script_data = UString.get_script_path_and_suffix(to_find)
+	var to_find_script_data = GDScriptParser.Utils.type_path_get_script_data(to_find)
 	var to_find_script = load(to_find_script_data[0]) as GDScript
 	var to_find_class_path = to_find_script_data[1]
+	var member_name = Utils.type_path_get_member(to_find)
+	
 	if to_find_script.get_global_name() != "":
-		access_options.global = remove_suffixes(UString.dot_join(to_find_script.get_global_name(), to_find_class_path))
+		access_options.global = AccessUtils.remove_suffixes(UString.dot_joinv([to_find_script.get_global_name(), to_find_class_path, member_name]))
 	if access_options.script_alias != "":
-		return # early exit if it has been changed, this can be expensive
-	var preloaded_name = class_obj.has_preload(to_find)
-	if preloaded_name != null:
-		access_options.script_alias = remove_suffixes(preloaded_name)
-	else: # if the type is not directly found, check if the script or class can be found
-		if to_find_class_path.contains("."): #^r this should maybe be an empty string check, as it is, only inner classes will be checked for, not the script
-			preloaded_name = class_obj.has_preload(UString.trim_member_access_back(to_find))
-			if preloaded_name != null:
-				var back = UString.get_member_access_back(to_find)
-				access_options.script_alias = remove_suffixes(UString.dot_join(preloaded_name, back))
+		return # early exit if it has been changed, this can be expensive, not sure if this needed now?
+	
+	var rev_search = reverse_path_chain_search(to_find, class_obj)
+	if rev_search != "":
+		print_deb(T.ACCESS_PATH, "reverse_path_chain_search", "->", rev_search)
+		access_options.script_alias = rev_search
+		return
+	
+	#^ think the above super sedes this
+	#var preloaded_name = class_obj.has_preload(to_find)
+	#if preloaded_name != null:
+		#access_options.script_alias = remove_suffixes(preloaded_name)
+	#else: # if the type is not directly found, check if the script or class can be found
+		#if to_find_class_path.contains("."): #^r this should maybe be an empty string check, as it is, only inner classes will be checked for, not the script
+			##preloaded_name = class_obj.has_preload(UString.trim_member_access_back(to_find))
+			#preloaded_name = class_obj.has_preload(to_find)
+			#if preloaded_name != null:
+				#access_options.script_alias = remove_suffixes(UString.dot_join(preloaded_name, member_name))
+				##var back = UString.get_member_access_back(to_find)
+				##access_options.script_alias = remove_suffixes(UString.dot_join(preloaded_name, back))
 
 
-func _clean_path(string:String):
-	#if string.begins_with("self."):
-	string = string.trim_prefix("self.").trim_suffix(".self")
-	if string.find(".new(") > -1:
-		string = string.substr(0, string.find(".new("))
-	return remove_suffixes(string)
-
-func remove_suffixes(string:String):
-	for suffix in SUFFIXES:
-		if string.ends_with(suffix):
-			string = string.trim_suffix(suffix)
-	return string
 
 func _get_parser_for_script(script_path:String):
 	var parser = Utils.ParserRef.get_parser(self)
@@ -591,6 +655,24 @@ class AccessObject:
 	var declaration_access_path:String
 	var access_type:String
 	var access_symbol:String
+	
+	func clean_symbols():
+		declaration_symbol = AccessUtils.clean_path(declaration_symbol)
+		access_symbol = AccessUtils.clean_path(access_symbol)
+	
+class AccessUtils:
+	
+	static func clean_path(string:String):
+		string = string.trim_prefix("self").trim_suffix("self").trim_prefix(".").trim_suffix(".")
+		if string.find(".new(") > -1:
+			string = string.substr(0, string.find(".new("))
+		return remove_suffixes(string)
+	
+	static func remove_suffixes(string:String):
+		for suffix in SUFFIXES:
+			if string.ends_with(suffix):
+				string = string.trim_suffix(suffix)
+		return string
 
 #! arg_location section:T
 static func print_deb(section:String, ...msg:Array):

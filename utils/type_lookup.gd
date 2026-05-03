@@ -25,6 +25,7 @@ const SIGNAL_SUFFIX = Keys.SIGNAL_SUFFIX
 
 const OTHER_TYPES = ["void", "Variant"]
 const CALL_METHODS = ["call", "callv", "call_deferred"]
+const ARRAY_INDEX_METHODS = [&"get", &"back", &"front", &"pop_back", &"pop_front", &"pop_at"]
 
 const INDEX_PREFIX = &"%%INDEX"
 
@@ -76,11 +77,11 @@ func _get_parser_main_script():
 #region Get Function Data
 
 func get_function_data_at_line(identifier:String, line:int):
-	var class_data = get_parser_objects_and_local_vars(line)
+	var class_data = get_class_data_at_line(line)
 	return get_function_data(identifier, class_data.class_obj, line)
 
 
-func get_function_data(identifier, class_obj:ParserClass, line:int=-1):
+func get_function_data(identifier:String, class_obj:ParserClass, line:int=-1):
 	#print("GET FUNC DATA::", identifier , "::IN::", class_obj.get_script_class_path())
 	var inherited_func:=false
 	var complex_identifier = identifier.find(".") != -1
@@ -205,11 +206,11 @@ static func property_info_to_function_data(property_info:Dictionary):
 ## This is because the class must be declared by something in the current script, impossible to be an inherited member.
 func resolve_inner_class_at_line(expression:String, line:int):
 	class_resolution = true
-	var class_data = get_parser_objects_and_local_vars(line)
+	
+	var class_data = get_class_data_at_line(line)
 	var class_obj = class_data.class_obj
 	class_resolution_obj = class_obj
-	var local_vars = class_data.local_vars
-	var result = _resolve_expression_to_val(expression, class_obj, local_vars)
+	var result = _resolve_expression_to_val(expression, class_data)
 	class_resolution = false
 	var type_check = _simple_type_check(result)
 	if type_check != "":
@@ -222,54 +223,58 @@ func resolve_expression_to_type_at_line(expression:String, line:int):
 		printerr("CLASS RES TRUE")
 	class_resolution = false
 	
-	var result = resolve_expression_to_value_at_line(expression, line)
+	var class_data = get_class_data_at_line(line)
+	return _resolve_expression_to_type(expression, class_data)
+	#var inf_context = _get_or_instance_inf_context()
+	#var inf_expression = _get_inf_expression(class_data, expression)
+	#var inf_check = _check_inf_expression(inf_context, inf_expression)
+	#if inf_check != null:
+		#_check_inf_on_exit()
+		#return inf_check
+	#
+	#var result = _resolve_expression_to_val(expression, class_data)
+	#inf_context.finish_expression(inf_expression, result)
+	#_check_inf_on_exit()
+	#return result
 	
-	_check_inf_on_exit()
-	#var type_check = _simple_type_check(result, true)
-	#if type_check != "":
-		#return type_check
-	return result
 
-func resolve_expression_to_value_at_line(expression:String, line:int):
+func _resolve_expression_to_type(expression: String, class_data:ClassData) -> String:
 	if class_resolution == true:
 		printerr("CLASS RES TRUE")
 	class_resolution = false
 	
-	var class_data = get_parser_objects_and_local_vars(line)
-	var class_obj = class_data.class_obj
-	
 	var inf_context = _get_or_instance_inf_context()
-	var inf_expression = _get_inf_expression(class_obj, expression)
+	var inf_expression = _get_inf_expression(class_data, expression)
 	var inf_check = _check_inf_expression(inf_context, inf_expression)
 	if inf_check != null:
 		_check_inf_on_exit()
 		return inf_check
 	
-	var local_vars = class_data.local_vars
-	var result = _resolve_expression_to_val(expression, class_obj, local_vars)
+	var result = _resolve_expression_to_val(expression, class_data)
 	inf_context.finish_expression(inf_expression, result)
 	_check_inf_on_exit()
 	return result
 
+# this was only used by ternary, which was rerouted to above to trigger inf context, seems ok
+#func resolve_expression_to_type(expression: String, class_data:ClassData) -> String:
+	#var result = _resolve_expression_to_val(expression, class_data)
+	#return result
 
-func resolve_expression_to_type(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary) -> String:
-	var result = _resolve_expression_to_val(expression, initial_class_obj, local_vars)
-	var type_check = _simple_type_check(result, true)
-	if type_check != "":
-		return type_check
-	return result
 
-func resolve_expression_to_value(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary) -> String:
-	return _resolve_expression_to_val(expression, initial_class_obj, local_vars)
 
+#^ consider passing the class data object instead this will allow better local var shadow checking and clean up the arguments
 # resolves expression to value
-func _resolve_expression_to_val(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary, recursions=0) -> String:
+#func _resolve_expression_to_val(expression: String, initial_class_obj: ParserClass, initial_local_vars:Dictionary, recursions=0) -> String:
+func _resolve_expression_to_val(expression: String, class_data:ClassData, recursions=0) -> String:
 	if recursions >= 10:
 		return "Variant"
 	print_deb(T.RESOLVE, recursions, "CALLING AGAIN", expression)
 	var parser = _get_parser()
 	var main_script = parser.get_current_script()
 	var main_script_path = main_script.resource_path
+	
+	var initial_class_obj = class_data.class_obj
+	var local_vars = class_data.local_vars
 	
 	if expression.begins_with("(") and expression.ends_with(")"):
 		expression = expression.trim_prefix("(").trim_suffix(")")
@@ -285,7 +290,7 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 	elif expression.begins_with("self."):
 		expression = expression.trim_prefix("self.")
 	
-	var tern_check = _check_for_ternary_operation(expression, initial_class_obj, local_vars)
+	var tern_check = _check_for_ternary_operation(expression, class_data)
 	if tern_check != "":
 		#print("TERN::", expression, " -> ", tern_check)
 		return tern_check
@@ -303,7 +308,8 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 	var parts: Array = UString.split_member_access(expression, string_map)
 	
 	var current_class_obj:ParserClass = initial_class_obj
-	var current_type_path = ""
+	var current_type_path = Keys.INS_DELIM # set this based on if function is static or not
+	var initial_is_ins = current_type_path == Keys.INS_DELIM
 	
 	var external_script_path:String
 	var external_script_class_access:String
@@ -311,12 +317,19 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 	var current_part_in_script = true
 	var is_awaited = false
 	
-	print_deb(T.RESOLVE, "START:%s - %s ----------" % [recursions, expression])
+	print_deb(T.RESOLVE, "START:%s - %s ----------" % [recursions, expression], "INITIAL CLASS", initial_class_obj.get_script_class_path())
 	print_deb(T.RESOLVE, "PARTS", parts)
 	var count = 0
 	while parts.size() > 0 and count < 10:
 		count += 1
 		var current_part: String = parts.pop_front()
+		
+		var is_initial_class = current_class_obj == initial_class_obj
+		
+		if current_class_obj == initial_class_obj:
+			local_vars = class_data.local_vars
+		else: # out of initial class, local vars no longer valid
+			local_vars = {}
 		
 		print_deb(T.RESOLVE, "         ----------------------            ")
 		print_deb(T.RESOLVE, "NEXT PART", current_part, "CURRENT TYPE PATH", current_type_path)
@@ -325,10 +338,17 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 		var identifier = current_part.split("(", false, 1)[0] if is_func else current_part
 		identifier = identifier.strip_edges()
 		
-		if is_func and identifier == "new":
-			if current_type_path == "":
-				current_type_path = current_class_obj.get_script_class_path()
-			continue
+		var is_ins = current_type_path.ends_with(Keys.INS_DELIM) or is_initial_class
+		if is_ins:
+			current_type_path = current_type_path.trim_suffix(Keys.INS_DELIM)
+		
+		
+		var id_is_ins = identifier.ends_with(Keys.INS_DELIM)
+		if id_is_ins:
+			print("ID IS INS::", identifier)
+			identifier = identifier.get_slice(Keys.INS_DELIM, 0)
+		
+		print("TYPE IS INS::", is_ins, "::ID IS INS::", id_is_ins)
 		
 		if current_type_path.contains(Keys.TYPE_DELIM):
 			var type = Utils.type_path_get_type(current_type_path, true)
@@ -347,32 +367,48 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 					current_type_path = type
 					current_part_in_script = false
 		
+		if is_func and identifier == "new":
+			if current_type_path == "":
+				current_type_path = current_class_obj.get_script_class_path()
+			if not current_type_path.ends_with(Keys.INS_DELIM):
+				current_type_path = current_type_path + Keys.INS_DELIM
+			continue
+		
 		print_deb(T.RESOLVE, "CURRENT TYPE PATH", current_type_path)
 		
 		if current_part.begins_with("await "):
 			is_awaited = true
-			current_part = current_part.get_slice("await ", 1).strip_edges()
+			#current_part = current_part.get_slice("await ", 1).strip_edges()
+			identifier = current_part.get_slice("await ", 1).strip_edges()
 		
 		var is_callable = current_type_path.ends_with(CALLABLE_SUFFIX)
 		#var is_signal = current_type_path.ends_with(SIGNAL_SUFFIX)
-		
-		
+		var current_t_is_dict = current_type_path == "Dictionary" or current_type_path.begins_with("Dictionary[")
+		var current_t_is_arr = current_type_path == "Array" or current_type_path.begins_with("Array[")
+		var current_t_is_collection = current_t_is_dict or current_t_is_arr
 		
 		var resolved_type = ""
 		if not current_part.begins_with(INDEX_PREFIX):
 			var index_access = not current_part.begins_with("[") and current_part.ends_with("]")
+			if current_t_is_collection: # i think this was a indent issue
+				index_access = false
+			if not is_func:
+				var part_check = current_part.get_slice("[", 0).strip_edges()
+				if part_check == "Dictionary" or part_check == "Array":
+					index_access = false
 			if index_access:
 				var all_index_access = get_index_access_in_string(current_part)
 				for string in all_index_access:
 					parts.push_front(INDEX_PREFIX + string)
 			
-			if not is_func:
-				identifier = current_part.get_slice("[", 0) # proceed to process the identifier
+				if not is_func:
+					var part_check = current_part.get_slice("[", 0).strip_edges()
+					identifier = part_check # proceed to process the identifier
 		else:
 			var identifier_name = current_part.trim_prefix(INDEX_PREFIX).trim_prefix("[").trim_suffix("]")
 			if UString.is_string_or_string_name(identifier_name):
 				identifier = UString.unquote(identifier_name) # proceed to process the identifier
-			elif current_type_path.begins_with("Array") or current_type_path.begins_with("Dictionary"):
+			elif current_t_is_collection:
 				resolved_type = get_type_hint_from_collection(current_type_path)
 			else:
 				resolved_type = BuiltInChecker.get_variant_index_access_type(current_type_path)
@@ -382,20 +418,28 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 		
 		if identifier == "preload" and is_func:
 			resolved_type = resolve_preload(current_part, current_class_obj)
+			#if id_is_ins:
+				#resolved_type += Keys.INS_DELIM
 		elif BuiltInChecker.is_builtin_class(identifier):
 			resolved_type = identifier
 		elif local_vars.has(identifier):
 			pass # if the identifier is a local var it may shadow a built in
 		elif current_type_path != "null" and _class_has_member(current_type_path, identifier) or is_callable:
+			if not is_ins and not BuiltInChecker.is_variant_type(current_type_path) and not BuiltInChecker.is_member_const(current_type_path, identifier):
+				print("NOT A CONST::", current_type_path, "::", identifier)
+				return ""
+				
+				
 			# not sure why this is checking for 'null' string
 			# callable and built in handling
 			print_deb(T.RESOLVE, "class has member")
 			if not is_callable:
 				if is_func:
-					if current_type_path == "Dictionary" and identifier == "get":
+					if current_t_is_dict and identifier == "get":
 						pass # skip for now, this is handled below, maybe move here
 					else:
 						resolved_type = get_class_member_type(current_type_path, identifier)
+						
 					
 				elif BuiltInChecker.class_has_signal(current_type_path, identifier):
 					if is_awaited: # signal arguments
@@ -406,6 +450,7 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 				
 				elif not BuiltInChecker.class_has_method(current_type_path, identifier):
 					resolved_type = get_class_member_type(current_type_path, identifier)
+					
 				else:
 					resolved_type = Utils.type_path_add_member(current_type_path, identifier) + CALLABLE_SUFFIX
 			
@@ -427,6 +472,9 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 							builtin = trimmed_type_path.get_slice(Keys.MEMBER_DELIM, 0)
 							method_name = trimmed_type_path.get_slice(Keys.MEMBER_DELIM, 1)
 						resolved_type = get_class_member_type(builtin, method_name)
+			
+			if resolved_type != "" and is_ins:
+				resolved_type = Utils.type_func_add_ins(resolved_type)
 		
 		if resolved_type == "": 
 			if current_class_obj.class_has_member(identifier):
@@ -456,6 +504,7 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 				if not member_in_class_or_local_vars(identifier, current_class_obj, local_vars):
 					resolved_type = _get_inherited_member_type(current_part, current_class_obj)
 				else:
+					
 					if is_func:
 						resolved_type = _resolve_process_in_script_data(identifier, current_class_obj, local_vars)
 						print_deb(T.RESOLVE, "RESOLVE IN SCRIPT", identifier, resolved_type)
@@ -477,7 +526,17 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 					if resolved_type.contains(Keys.MEMBER_INFER_DELIM):
 						identifier = resolved_type.get_slice(Keys.MEMBER_INFER_DELIM, 0)
 						resolved_type = resolved_type.get_slice(Keys.MEMBER_INFER_DELIM, 1)
+					if not is_ins:
+						var member_data = current_class_obj.get_member_data(identifier)
+						print("MEMBER_DATA::", member_data)
+						if not member_data:
+							resolved_type = ""
+						elif not Utils.member_is_const_class_enum(member_data.get(Keys.MEMBER_TYPE)):
+							resolved_type = ""
+						
+					if resolved_type != "":
 						resolved_member = true
+					
 				
 			else: #^ --- OUTSIDE SCRIPT ---
 				if Utils.is_absolute_path(current_type_path):
@@ -504,6 +563,7 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 		if resolved_type == "":
 			var part_simple_check = _variant_type_check(current_part)
 			if part_simple_check != "":
+				print_deb(T.RESOLVE, "VARIANT CHECK", resolved_type,"->" ,part_simple_check)
 				resolved_type = part_simple_check
 		
 		#^ --- HANDLE THE RESULT ---
@@ -528,6 +588,7 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 		
 		var as_check = _check_for_type_cast(resolved_type)
 		if as_check != "":
+			print_deb(T.RESOLVE, "AS CHECK", resolved_type,"->" ,as_check)
 			resolved_type = as_check
 		
 		
@@ -538,7 +599,7 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 		if _is_unresolved_expression(resolved_type):
 			print_deb(T.RESOLVE, "UNRESOLVED RECURSING", resolved_type)
 			# Pass the initial context because expressions are evaluated where they were declared!
-			var recursive = _resolve_expression_to_val(resolved_type, initial_class_obj, local_vars, recursions + 1)
+			var recursive = _resolve_expression_to_val(resolved_type, class_data, recursions + 1)
 			if recursive.is_empty():
 				print_deb(T.RESOLVE, "RECURSE FAIL EMPTY", resolved_type)
 				return ""
@@ -568,7 +629,7 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 		
 		#if not resolved_type.begins_with("res://"):
 		if not Utils.is_absolute_path(resolved_type):
-			print("RESMEM",resolved_member,"PRE::",identifier, " -> ", resolved_type, " ->:", current_type_path, ":")
+			print_deb(T.RESOLVE ,"RESMEM",resolved_member,"PRE::",identifier, " -> ", resolved_type, " ->:", current_type_path, ":")
 			current_part_in_script = false
 			
 			var non_member_part = Utils.type_path_get_non_member(resolved_type)
@@ -611,9 +672,9 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 							current_type_path = resolved_type
 					else:
 						current_type_path = resolved_type
-			print("POST::",identifier, " -> ", resolved_type, " -> ", current_type_path)
+			print_deb(T.RESOLVE ,"POST::",identifier, " -> ", resolved_type, " -> ", current_type_path)
 		else:
-			print("RESOLVED IS PATH::RAW::", resolved_type,)
+			print_deb(T.RESOLVE ,"RESOLVED IS PATH::RAW::", resolved_type,)
 			#if parts.size() > 0:
 			var tc = Utils.type_path_get_type(resolved_type)
 			if tc != "" and Utils.is_absolute_path(tc):
@@ -623,8 +684,8 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 			var current_script_path = script_data[0]
 			var access_path = script_data[1]
 			
-			print("RESOLVED IS PATH::", resolved_type, "::ACCESS::", access_path)
-			print("RESOLVED IS PATH::CURRENT TYPE::", current_type_path)
+			print_deb(T.RESOLVE ,"RESOLVED IS PATH::", resolved_type, "::ACCESS::", access_path)
+			print_deb(T.RESOLVE ,"RESOLVED IS PATH::CURRENT TYPE::", current_type_path)
 			current_part_in_script = resolved_type.begins_with(main_script_path)
 			if current_part_in_script:
 				var new_class_obj = parser.get_class_object(access_path)
@@ -636,9 +697,10 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 			else:
 				external_script_path = current_script_path
 				external_script_class_access = access_path
-				print("SET EXTERNAL::", external_script_path, "::", external_script_class_access)
+				print_deb(T.RESOLVE ,"SET EXTERNAL::", external_script_path, "::", external_script_class_access)
 			
 			current_type_path = resolved_type # last thing
+		
 		
 		
 		
@@ -654,6 +716,12 @@ func _resolve_expression_to_val(expression: String, initial_class_obj: ParserCla
 				type_path = resolved_type.get_slice(Keys.MEMBER_DELIM, 0)
 			parts.push_front(signal_name)
 			current_type_path = type_path
+		
+		# should this do both id and the current?
+		if id_is_ins and Utils.valid_instance_type(current_type_path):
+			current_type_path = Utils.type_func_add_ins(current_type_path)
+			#if not current_type_path.ends_with(Keys.INS_DELIM):
+				#current_type_path += Keys.INS_DELIM
 		
 		#else:
 			#current_type_path = resolved_type # last thing
@@ -676,6 +744,10 @@ func _is_unresolved_expression(identifier:String):
 	#if identifier.begins_with("res://"):
 	#if _simple_type_check(identifier) != "":
 		#return false
+	if identifier.ends_with(Keys.INS_DELIM):
+		if Utils.is_absolute_path(identifier) or BuiltInChecker.is_builtin_class(identifier.get_slice(Keys.INS_DELIM, 0)):
+			return false
+		return true
 	if _variant_type_check(identifier) != "":
 		return false
 	if Utils.is_absolute_path(identifier):
@@ -704,9 +776,13 @@ func _is_unresolved_expression(identifier:String):
 
 
 func _resolve_process_in_script_data(member_name:String, class_obj:ParserClass, local_vars:Dictionary):
+	if class_obj.cached_resolve_valid_for_member(member_name):
+		return class_obj.get_cached_resolve_for_member(member_name)
 	var count = 0
 	var last_result = ""
 	var result = member_name
+	var is_ins = member_name.ends_with(Keys.INS_DELIM)
+	print(member_name, "::GOING IN")
 	while member_in_class_or_local_vars(result, class_obj, local_vars):
 		count += 1
 		if count > 50:
@@ -722,6 +798,14 @@ func _resolve_process_in_script_data(member_name:String, class_obj:ParserClass, 
 			last_result = next_result.get_slice(Keys.MEMBER_INFER_DELIM, 0)
 			result = next_result.get_slice(Keys.MEMBER_INFER_DELIM, 1)
 		
+		print(next_result, "::RESULT")
+		if result.ends_with(Keys.INS_DELIM):
+			is_ins = true
+			result = result.get_slice(Keys.INS_DELIM, 0)
+			
+	
+	if is_ins and Utils.valid_instance_type(result) and not result.ends_with(Keys.INS_DELIM):
+		result += Keys.INS_DELIM
 	
 	if last_result != "":
 		return Utils.join_delim(last_result, result, Keys.MEMBER_INFER_DELIM)
@@ -746,6 +830,10 @@ func _resolve_builtin_class_member(identifier:String, current_type_path:String, 
 				return "Variant"
 			type_to_check = args.get_slice(",", 1).strip_edges()
 			method_handled = true
+	elif current_type_path.begins_with("Dictionary["):
+		var key = stripped_identifer == "keys"
+		type_to_check = get_type_hint_from_collection(current_type_path, not key)
+		method_handled = true
 	
 	#if Utils.is_absolute_path(current_type_path): 
 		#if identifier.begins_with("get"):
@@ -788,7 +876,8 @@ func _process_external_identifier(identifier:String, script_path:String, class_a
 	var class_obj = external_parser.get_class_object(class_access_path) as ParserClass
 	
 	if is_instance_valid(class_obj):
-		type = external_parser.resolve_expression_to_value(identifier, class_obj.line_indexes[0])
+		#type = external_parser.resolve_expression_to_value(identifier, class_obj.line_indexes[0])
+		type = external_parser.resolve_expression_to_type(identifier, class_obj.declaration_line)
 	print_deb(T.RESOLVE, "ATTEMPT_EXTERNAL_END", identifier, script_path, class_access_path)
 	#t.stop()
 	return type
@@ -837,6 +926,7 @@ func _ensure_valid_type_path(full_script_path:String):
 		full_script_path = const_data[1]
 		print("TYPE_PRELOAD::", full_script_path)
 		## TEST
+	
 	var script_data = UString.get_script_path_and_suffix(full_script_path)
 	var script_path = script_data[0]
 	var class_access = script_data[1]
@@ -846,6 +936,8 @@ func _ensure_valid_type_path(full_script_path:String):
 	if full_script_path.contains(Keys.TYPE_DELIM) or full_script_path.contains(Keys.MEMBER_DELIM):
 		return full_script_path
 	
+	if full_script_path.ends_with(Keys.INS_DELIM):
+		return full_script_path
 	var suffix = path_has_suffix(class_access)
 	if suffix != ENUM_SUFFIX:
 		return full_script_path # does this need 
@@ -878,19 +970,21 @@ func _ensure_valid_type_path(full_script_path:String):
 
 func resolve_expression_to_access_object_at_line(expression:String, line:int):
 	if true:
+		printerr("FIRING IN TOP")
 		return _resolve_expression_to_access_object_at_line(expression, line)
 	# the above will trigger the inference context object, bottom won't but is slightly more efficient
-	var parser_data = get_parser_objects_and_local_vars(line)
-	return resolve_expression_to_access_object(expression, parser_data.class_obj, parser_data.local_vars)
+	var class_data = get_class_data_at_line(line)
+	return resolve_expression_to_access_object(expression, class_data)
 
-func _resolve_expression_to_access_object_at_line(expression: String, line):
+func _resolve_expression_to_access_object_at_line(expression: String, line:int):
 	var parser = _get_parser()
 	var main_script = parser.get_current_script()
 	var main_script_path = main_script.resource_path
 	
-	var parser_data = get_parser_objects_and_local_vars(line)
-	var initial_class_obj = parser_data.class_obj
-	var local_vars = parser_data.local_vars
+	
+	var class_data = get_class_data_at_line(line)
+	var initial_class_obj = class_data.class_obj
+	var local_vars = class_data.local_vars
 	
 	#^ should this ever really be called? returns string instead of access_object, doesn't make sense to me..
 	#if Utils.is_absolute_path(expression) and not expression.begins_with("preload"):
@@ -958,10 +1052,16 @@ func _resolve_expression_to_access_object_at_line(expression: String, line):
 	print_deb(T.VAR_TO_CONST, "TYPE", access_object.declaration_type, "DEC",access_object.declaration_symbol, "ACCESS" ,access_object.access_symbol)
 	return access_object
 
-func resolve_expression_to_access_object(expression: String, initial_class_obj: ParserClass, local_vars:Dictionary):
+
+#DEPRECATED this function is just permanently bypassed and 
+func resolve_expression_to_access_object(expression: String, class_data:ClassData):
+	printerr("FIRING IN BOTTOM")
 	var parser = _get_parser()
 	var main_script = parser.get_current_script()
 	var main_script_path = main_script.resource_path
+	
+	var initial_class_obj = class_data.class_obj
+	var local_vars = class_data.local_vars
 	
 	#^ should this ever really be called? returns string instead of access_object, doesn't make sense to me..
 	#if Utils.is_absolute_path(expression) and not expression.begins_with("preload"):
@@ -1017,14 +1117,14 @@ func resolve_expression_to_access_object(expression: String, initial_class_obj: 
 		#access_symbol = "self" #^r this was for when base types were here? EditorInterface, String etc.. where was it an issue though?
 	access_object.access_symbol = access_symbol
 	
-	access_object.declaration_type = _resolve_expression_to_val(dec_symbol, initial_class_obj, local_vars)
+	access_object.declaration_type = _resolve_expression_to_val(dec_symbol, class_data)
 	#if access_object.declaration_type.begins_with("res://"):
 	if Utils.is_absolute_path(access_object.declaration_type):
 		var member_data = parser.get_member_info_from_script(access_object.declaration_type)
 		if member_data != null:
 			access_object.declaration_access_path = member_data.get(Keys.ACCESS_PATH)
 	
-	access_object.access_type = _resolve_expression_to_val(access_symbol, initial_class_obj, local_vars)
+	access_object.access_type = _resolve_expression_to_val(access_symbol, class_data)
 	
 	print_deb(T.VAR_TO_CONST, "TYPE", access_object.declaration_type, "DEC",access_object.declaration_symbol, "ACCESS" ,access_object.access_symbol)
 	return access_object
@@ -1048,6 +1148,7 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 		if is_func and identifier == "new":
 			return current_class_obj.get_script_class_path()
 		
+		print_deb(T.VAR_TO_CONST, "")
 		print_deb(T.VAR_TO_CONST, "CYCLE ----------")
 		print_deb(T.VAR_TO_CONST, "CHECK", identifier)
 		
@@ -1061,7 +1162,12 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 					#pass
 					return _resolve_const_path(identifier, current_class_obj)
 			
-			resolved_type = _var_to_const(identifier, current_class_obj, local_vars, first_const)
+			#resolved_type = _var_to_const(identifier, current_class_obj, local_vars, first_const)
+			var res = _var_to_const(identifier, current_class_obj, local_vars, first_const)
+			if res.contains(Keys.MEMBER_INFER_DELIM):
+				resolved_type = res.get_slice(Keys.MEMBER_INFER_DELIM, 1)
+			else:
+				resolved_type = res
 			print_deb(T.VAR_TO_CONST, "IN CLASS RESOLVED", resolved_type)
 			var front = UString.get_member_access_front(resolved_type)
 			
@@ -1076,8 +1182,9 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 				return resolved_type
 		elif current_class_obj.has_inherited_member(identifier):
 			#return ""
+			var member_data = current_class_obj.get_inherited_member(identifier)
 			#^c Unsure about this, technically, if it is inherited, the access is self? Not sure what this should resolve to.
-			var inh_script_path = _find_member_inheriting_script(identifier, current_class_obj.script_resource)
+			var inh_script_path = member_data.get(Keys.SCRIPT_PATH, &"")
 			if inh_script_path == "":
 				return ""
 			var parser_data = _get_parser_and_class_for_script(inh_script_path)
@@ -1111,10 +1218,9 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 			return ""
 	return ""
 
-
-
 func _var_to_const(member_name:String, class_obj:ParserClass, local_vars:Dictionary, first_const:=false):
 	var count = 0
+	var last_result = ""
 	var result = member_name
 	while member_in_class_or_local_vars(result, class_obj, local_vars):
 		if first_const:
@@ -1128,16 +1234,29 @@ func _var_to_const(member_name:String, class_obj:ParserClass, local_vars:Diction
 		if class_obj.has_function(result):
 			var function:ParserFunc = class_obj.get_function(result)
 			next_result = function.get_return_type(false) # returns the raw declaration
+			print_deb(T.VAR_TO_CONST, "_var_to_const - get return type", next_result)
 		else:
 			next_result = _check_class_obj_member_data(result, class_obj, local_vars)
+			print_deb(T.VAR_TO_CONST, "_var_to_const - get member data", next_result)
 		if next_result == null:
 			break
-		#if result == next_result or next_result.begins_with("res://"):
-		if result == next_result or Utils.is_absolute_path(next_result):
+		
+		if next_result.contains(Keys.MEMBER_INFER_DELIM):
+			last_result = next_result.get_slice(Keys.MEMBER_INFER_DELIM, 0)
+			next_result = next_result.get_slice(Keys.MEMBER_INFER_DELIM, 1)
+		
+		if result == next_result or Utils.is_absolute_path(result):
 			break
 		result = next_result
 	
+	
+	if last_result != "":
+		print_deb(T.VAR_TO_CONST, "_var_to_const - return w delim", Utils.join_delim(last_result, result, Keys.MEMBER_INFER_DELIM))
+		return Utils.join_delim(last_result, result, Keys.MEMBER_INFER_DELIM)
+	print_deb(T.VAR_TO_CONST, "_var_to_const - return", result)
 	return result
+
+
 
 func _var_to_const_get_inh_func_return(identifier:String, class_obj:ParserClass, first_const:=false):
 	var inh_script_path = _find_inheriting_script(identifier, class_obj)
@@ -1240,6 +1359,7 @@ func path_has_suffix(string:String) -> StringName:
 func get_class_obj_member_type(member_name:String, class_obj:ParserClass, local_vars:Dictionary={}, allow_rebuild:=true):
 	return _check_class_obj_member_data(member_name, class_obj, local_vars, allow_rebuild)
 
+## Get the member's definition text, returned as member_name:;;:declaration
 func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, local_vars:Dictionary, allow_rebuild:=true):
 	var is_local = false
 	var member_data = local_vars.get(member_name)
@@ -1307,7 +1427,7 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 				var resolved_type = resolve_expression_to_type_at_line(type_declaration, line_index)
 				
 				type_declaration = get_type_hint_from_collection(resolved_type)
-				print("RES::", resolved_type, " -> ", type_declaration)
+				print_deb(T.RESOLVE, resolved_type, " -> ", type_declaration)
 				#if resolved_type.begins_with("Packed"):
 					#type_declaration = resolved_type.get_slice("Packed", 1).get_slice("Array", 0)
 				#else:
@@ -1317,6 +1437,10 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 	#if type_check != "":
 		#print_deb(T.RESOLVE, "TYPE CHECK SUCCESS: ", type_declaration, " -> ", type_check)
 		#return type_check
+	
+	#if Utils.is_absolute_path(type_declaration) or BuiltInChecker.is_builtin_class(type_declaration):
+		#if not BuiltInChecker.is_variant_type(type_declaration):
+			#type_declaration = Utils.type_path_add_type(type_declaration, "class")
 	
 	if type_declaration != "":
 		type_declaration = member_name + Keys.MEMBER_INFER_DELIM + type_declaration
@@ -1395,10 +1519,26 @@ func _class_has_member(base_type:String, identifier:String):
 	#return false
 
 static func get_class_member_type(base_type:String, identifier:String, resolve_const:=false):
+	var original_base = base_type
+	var collection_base = false
 	if base_type.contains("["):
+		var is_dupe = identifier == "duplicate" or identifier == "duplicate_deep"
 		if base_type.begins_with("Array"):
-			base_type = "Array"
+			collection_base = true
+			if is_dupe:
+				return base_type
+			elif identifier in ARRAY_INDEX_METHODS:
+				return get_type_hint_from_collection(base_type)
+			else:
+				base_type = "Array"
 		elif base_type.begins_with("Dictionary"):
+			collection_base = true
+			if is_dupe:
+				return base_type
+			elif identifier == "find_key":
+				return get_type_hint_from_collection(base_type)
+			elif identifier == "get" or identifier == "get_or_add":
+				return get_type_hint_from_collection(base_type, true)
 			if identifier == "keys":
 				return "Array[%s]" % get_type_hint_from_collection(base_type)
 			elif identifier == "values":
@@ -1416,8 +1556,13 @@ static func get_class_member_type(base_type:String, identifier:String, resolve_c
 			return "int"
 		return UString.dot_join(base_type, identifier)
 	
-	
-	return BuiltInChecker.get_member_type(base_type, identifier)
+	var result = BuiltInChecker.get_member_type(base_type, identifier)
+	return result
+	if not collection_base:
+		return result
+	if result != base_type:
+		return result
+	return original_base
 	
 	#if BuiltInChecker.is_builtin_class(base_type): # this checks seems to be handling things fine
 		#return BuiltInChecker.get_member_type(base_type, identifier)
@@ -1633,17 +1778,16 @@ func _variant_type_check(type_hint:String, exit_check:=false):
 	elif type_hint.begins_with("typedarray::"):
 		return "Array[%s]" % type_hint.get_slice("::", 1)
 	elif type_hint.begins_with("Array"): # for Array[SomeType]
-		var arr_hint = type_hint.get_slice("Array", 1).strip_edges()
+		var arr_hint = type_hint.substr(5).strip_edges()
 		if arr_hint.begins_with("["):
 			return "Array" + arr_hint
 	elif type_hint.begins_with("Dictionary"): # for keyed dicts Dictionary[Key, Val]
-		var type_pair = type_hint.get_slice("Dictionary", 1).strip_edges()
+		var type_pair = type_hint.substr(10).strip_edges()
 		if type_pair.begins_with("["):
 			return "Dictionary" + type_pair
 	elif type_hint.begins_with("f"): # will this cause issues?
 		if type_hint.begins_with("func ") or type_hint.begins_with("func("):
 			return "Callable"
-	
 	
 	#if _is_class_name_valid(type_hint):
 		#return type_hint
@@ -1674,10 +1818,14 @@ static func get_type_hint_from_collection(string:String, value:bool=false) -> St
 		return string.get_slice("[", 1).get_slice("]", 0).strip_edges()
 	elif string.begins_with("Dictionary"):
 		var key_pair = string.get_slice("[", 1).get_slice("]", 0)
+		var type:String
 		if value:
-			return key_pair.get_slice(",", 1).strip_edges()
+			type = key_pair.get_slice(",", 1).strip_edges()
 		else:
-			return  key_pair.get_slice(",", 0).strip_edges()
+			type = key_pair.get_slice(",", 0).strip_edges()
+		if BuiltInChecker.is_variant_type(type):
+			return type
+		return type + Keys.INS_DELIM
 	return "Variant"
 
 func get_index_access_in_string(string:String):
@@ -1711,12 +1859,15 @@ func _check_for_type_cast(type_hint:String):
 			var i = m.get_start(0)
 			if string_map.index_in_string_or_comment(i) or string_map.get_tightest_bracket_set(i) != -1:
 				continue
+			var cast = m.get_string(1).strip_edges()
+			if BuiltInChecker.is_variant_type(cast):
+				return cast
 			
-			return m.get_string(1).strip_edges()
+			return cast + Keys.INS_DELIM
 	return ""
 
 
-func _check_for_ternary_operation(text: String, class_obj:ParserClass, local_vars:Dictionary):
+func _check_for_ternary_operation(text: String, class_data:ClassData):
 	_initialize_op_regexes()
 	var parser = Utils.ParserRef.get_parser(self)
 	var string_map = parser.get_string_map(text)
@@ -1741,12 +1892,21 @@ func _check_for_ternary_operation(text: String, class_obj:ParserClass, local_var
 		false_expr = text.substr(m.get_end()).strip_edges()
 		break
 	
-	var true_type = resolve_expression_to_type(true_expr, class_obj, local_vars)
-	var false_type = resolve_expression_to_type(false_expr, class_obj, local_vars)
+	var true_type = _resolve_expression_to_type(true_expr, class_data)
+	var true_check = Utils.type_path_get_type(true_type)
+	if true_check != "":
+		true_type = true_check
+	if true_check == "Variant": # at this point, it will always return variant
+		return "Variant"
+	var false_type = _resolve_expression_to_type(false_expr, class_data)
+	var false_check = Utils.type_path_get_type(false_type)
+	if false_check != "":
+		false_type = false_check
+	
 	if true_type == false_type:
 		return true_type
 	else:
-		return "Variant" # Mismatch! Fallback to Variant.
+		return "Variant" # mismatch, fallback to variant
 
 
 func _check_for_bool_or_bitwise_operation(type_hint:String):
@@ -1799,7 +1959,16 @@ func _get_script_member_type(line:int, column:int=0): # thjs could be a bit more
 		return ""
 	var dec_type = get_type_data.get("type", &"")
 	if dec_type == Keys.MEMBER_TYPE_CONST or dec_type == Keys.MEMBER_TYPE_VAR or dec_type == Keys.MEMBER_TYPE_STATIC_VAR or dec_type == Keys.MEMBER_TYPE_FOR:
-		return result[1]
+		var type_hint = result[1]
+		var assign = result[2]
+		print("IN GET SCRIPT MEMBER")
+		print(result)
+		if type_hint.is_empty() or dec_type == Keys.MEMBER_TYPE_CONST:
+			return assign
+		elif BuiltInChecker.is_variant_type(type_hint):
+			return type_hint
+		else:
+			return type_hint + Keys.INS_DELIM
 	elif dec_type == Keys.MEMBER_TYPE_ENUM:
 		var parser = Utils.ParserRef.get_parser(self)
 		var class_at_line = parser.get_class_object(parser.get_class_at_line(line)) as ParserClass
@@ -1840,7 +2009,7 @@ func resolve_preload(preload_call:String, class_obj:ParserClass):
 		path = Utils.ensure_absolute_path(path, class_obj.main_script_path)
 	else:
 		path = UFile.uid_to_path(path)
-	
+	#if is_ins
 	return path
 
 
@@ -1909,7 +2078,7 @@ func _get_parser_and_class_for_script(full_script_path:String):
 	return parser.get_parser_and_class_obj(script_path, class_access)
 
 
-func get_parser_objects_and_local_vars(line:int) -> ClassData:
+func get_class_data_at_line(line:int) -> ClassData:
 	var parser = Utils.ParserRef.get_parser(self)
 	var class_data = ClassData.new(parser, line)
 	return class_data
@@ -1928,8 +2097,8 @@ func _get_or_instance_inf_context():
 		set_inference_context(inf_context)
 	return inf_context
 
-func _get_inf_expression(class_obj:ParserClass, expression:String):
-	return class_obj.get_script_class_path() + "::" + expression
+func _get_inf_expression(class_data:ClassData, expression:String):
+	return class_data.class_obj.get_script_class_path() + "::" + class_data.func_name + "::" + expression
 
 func _check_inf_expression(inf_context:InferenceContext, inf_expression:String):
 	if inf_context.has_expression(inf_expression):
@@ -1960,7 +2129,7 @@ func _initialize_op_regexes():
 	
 	if not is_instance_valid(_as_regex):
 		_as_regex = RegEx.new() # this should remove all doubt
-		_as_regex.compile(r"\bas\s+([A-Za-z_][A-Za-z0-9_]*(\s*\.\s*[A-Za-z_][A-Za-z0-9_]*)*)")
+		_as_regex.compile(r"\bas\s+([A-Za-z_][A-Za-z0-9_]*(\s*\.\s*[A-Za-z_][A-Za-z0-9_]*)*(\s*\[([^\[\]]*|\[[^\[\]]*\])*\])?)")
 		#_as_regex.compile("\\bas\\b")
 	
 	if not is_instance_valid(_bitwise_op_regex):
@@ -1969,7 +2138,7 @@ func _initialize_op_regexes():
 	
 	if not is_instance_valid(_bool_op_regex):
 		_bool_op_regex = RegEx.new()
-		_bool_op_regex.compile("(?:==|!=|<=|>=|<|>|&&|\\|\\||!|\\b(?:and|or|not)\\b)")
+		_bool_op_regex.compile("(?:==|!=|<=|>=|<|>|&&|\\|\\||!|\\b(?:and|or|not|in)\\b)")
 	
 	if not is_instance_valid(_compar_op_regex):
 		_compar_op_regex = RegEx.new()
@@ -1979,19 +2148,27 @@ func _initialize_op_regexes():
 
 
 class ClassData:
+	var initial_line:int
 	var class_obj:ParserClass
 	var func_obj:ParserFunc
+	var func_name:String = ""
 	var local_vars:Dictionary = {}
 	
 	func _init(parser:GDScriptParser, line:int) -> void:
-		class_obj = parser.get_class_object(parser.get_class_at_line(line))
-		var function_name = class_obj.get_function_at_line(line)
+		initial_line = line
+		class_obj = parser.get_class_object(parser.get_class_at_line(initial_line))
+		var function_name = class_obj.get_function_at_line(initial_line)
 		if function_name != Keys.CLASS_BODY:
+			func_name = function_name
 			func_obj = class_obj.get_function(function_name)
 			if is_instance_valid(func_obj):
 				func_obj.parse()
-				local_vars = func_obj.get_in_scope_local_vars(line)
-				
+				local_vars = func_obj.get_in_scope_local_vars(initial_line)
+	
+	func in_static_function():
+		if is_instance_valid(func_obj):
+			return func_obj.is_static()
+		return false
 
 
 #! arg_location section:T
@@ -2005,7 +2182,7 @@ static func print_deb(section:String, ...msg:Array):
 const _PRINT = [
 	#T.BUILTIN,
 	#T.INHERITED,
-	#T.VAR_TO_CONST,
+	T.VAR_TO_CONST,
 	T.RESOLVE,
 	#T.ACCESS_PATH
 	]

@@ -6,7 +6,11 @@ const UFile = GDScriptParser.UFile
 
 const MEMBER_TYPE = &"member_type"
 const _METHODS = &"methods"
+const _PROPERTIES = &"properties"
 const _SIGNALS = &"signals"
+const _MEMBERS = &"members"
+const _CONSTANTS = &"constants"
+const _ENUMS = &"enums"
 
 const EXTENSION_API_PATH = "res://.godot/addons/gdscript_parser"
 
@@ -21,6 +25,63 @@ const _GDSCRIPT_FUNCS = {
 	"convert": "Variant",
 	"range": "Array[int]"
 }
+
+const _VARIANTS: Dictionary = {
+	# Primitives & Core Types
+	"Variant":true,
+	"Nil": true,
+	"bool": true,
+	"int": true,
+	"float": true,
+	"String": true,
+	"void": true, # Valid for return types
+	
+	# Vector Types
+	"Vector2": true,
+	"Vector2i": true,
+	"Vector3": true,
+	"Vector3i": true,
+	"Vector4": true,
+	"Vector4i": true,
+	
+	# Matrix & Transform Types
+	"Transform2D": true,
+	"Projection": true,
+	"Basis": true,
+	"Transform3D": true,
+	"Quaternion": true,
+	
+	# Geometry Types
+	"Rect2": true,
+	"Rect2i": true,
+	"Plane": true,
+	"AABB": true,
+	
+	# Miscellaneous Core Types
+	"Color": true,
+	"StringName": true,
+	"NodePath": true,
+	"RID": true,
+	
+	# Core Objects
+	"Object": true,
+	"Callable": true,
+	"Signal": true,
+	"Dictionary": true,
+	"Array": true,
+	
+	# Packed Arrays
+	"PackedByteArray": true,
+	"PackedInt32Array": true,
+	"PackedInt64Array": true,
+	"PackedFloat32Array": true,
+	"PackedFloat64Array": true,
+	"PackedStringArray": true,
+	"PackedVector2Array": true,
+	"PackedVector3Array": true,
+	"PackedColorArray": true,
+	"PackedVector4Array": true,
+	}
 
 
 static var _extension_api:Dictionary = {}
@@ -65,20 +126,20 @@ static func _load_extension_api() -> void:
 	for class_dict in built_in_classes:
 		var class_nm = class_dict.get("name")
 		_extension_api[class_nm] = {}
-		_add_to_dict(class_nm, "methods", class_dict)
-		_add_to_dict(class_nm, "constants", class_dict)
-		_add_to_dict(class_nm, "members", class_dict)
+		_add_to_dict(class_nm, _METHODS, class_dict)
+		_add_to_dict(class_nm, _CONSTANTS, class_dict)
+		_add_to_dict(class_nm, _MEMBERS, class_dict)
 	
 	var classes = data.get("classes", [])
 	for class_dict in classes:
 		var class_nm = class_dict.get("name")
 		_extension_api[class_nm] = {}
-		_add_to_dict(class_nm, "methods", class_dict)
-		_add_to_dict(class_nm, "constants", class_dict)
-		_add_to_dict(class_nm, "enums", class_dict)
-		_add_to_dict(class_nm, "members", class_dict)
+		_add_to_dict(class_nm, _METHODS, class_dict)
+		_add_to_dict(class_nm, _CONSTANTS, class_dict)
+		_add_to_dict(class_nm, _ENUMS, class_dict)
+		_add_to_dict(class_nm, _MEMBERS, class_dict)
 		_add_to_dict(class_nm, _SIGNALS, class_dict)
-		_add_to_dict(class_nm, "properties", class_dict)
+		_add_to_dict(class_nm, _PROPERTIES, class_dict)
 
 static func _add_to_dict(class_nm, member_string:String, class_dict:Dictionary):
 	var member_dict_array = class_dict.get(member_string, [])
@@ -219,7 +280,14 @@ static func _get_member_type(class_nm:String, member_name:String) -> String:
 
 
 
-
+static func is_variant_type(type:String):
+	if type.begins_with("D"):
+		if type.begins_with("Dictionary") and type.contains("["):
+			type = "Dictionary"
+	elif type.begins_with("A"):
+		if type.begins_with("Array") and type.contains("["):
+			type = "Array"
+	return _VARIANTS.has(type)
 
 static func get_variant_index_access_type(type:String):
 	match type:
@@ -238,11 +306,38 @@ static func get_variant_index_access_type(type:String):
 		_:
 			return "Variant" # Not a known primitive index
 
+static func get_class_names():
+	if _extension_api.is_empty():
+		_load_extension_api()
+	var names = _extension_api.keys()
+	names.erase("")
+	return names
 
+static func get_class_data(class_nm:StringName, include_inherited:=true):
+	if _extension_api.is_empty():
+		_load_extension_api()
+	var class_data = _extension_api.get(class_nm, {})
+	if not include_inherited or not ClassDB.class_exists(class_nm):
+		return class_data
+	var inherited = ClassDB.get_parent_class(class_nm)
+	while inherited != "":
+		class_data.merge(_extension_api.get(inherited, {}))
+		inherited = ClassDB.get_parent_class(inherited)
+	return class_data
 
+static func get_member_data(class_nm:StringName, member_name:String, include_inherited:=true):
+	var class_data = get_class_data(class_nm, include_inherited)
+	return class_data.get(member_name, {})
 
-
-
+static func is_member_const(class_nm:StringName, member_name:String, include_inherited:=true):
+	var member_data = get_member_data(class_nm, member_name, include_inherited)
+	var member_type = member_data.get(MEMBER_TYPE)
+	if member_type == _MEMBERS or member_type == _SIGNALS:
+		return false
+	if member_type == _CONSTANTS or member_type == _ENUMS:
+		return true
+	
+	return true
 
 
 # these methods are easier but slower

@@ -61,7 +61,7 @@ class _ParserContext:
 	var current_func_dict:={}
 	
 	var class_name_data:= {}
-	var main_script_path:=""
+	var main_script_path:StringName= &""
 
 func ensure_first_parse():
 	if _first_parse_complete:
@@ -207,7 +207,7 @@ func parse_text(force:=false):
 	# reassign the classes and new classes
 	parser.set_class_objs(temp_class_access)
 	
-	#t.stop()
+	t.stop()
 	#print("CLASSES ",temp_class_access.keys())
 	cache_dirty = false
 	_first_parse_complete = true
@@ -254,12 +254,12 @@ func _parse_line(stripped:String, line:int, column:int=0):
 	
 	var result = _map_regex.search(stripped)
 	if result:
-		var keyword = result.get_string(2)
+		var keyword:StringName = result.get_string(2)
 		if result.get_string(1) != "":
 			if result.get_string(1) != "static":
 				printerr("REGEX MISTAKE SHOULD BE STATIC ", result.get_string(1))
 			keyword = "static " + keyword
-		var member_name = result.get_string(3)
+		var member_name = StringName(result.get_string(3))
 		
 		var data = {
 			Keys.MEMBER_TYPE:keyword,
@@ -293,17 +293,17 @@ func _parse_line(stripped:String, line:int, column:int=0):
 			_pc.class_access_map[_pc.access_path] = []
 		else:#if _pc.current_indentation_level == indentation_level:
 			data[Keys.COLUMN_INDEX] = column
-			if keyword.ends_with("func"):
+			if keyword.ends_with(&"func"):
 				_pc.current_func_dict = data
 				_pc.in_function = true
 				data[Keys.FUNC_LINES] = PackedInt32Array()
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
-			elif keyword == "class_name":
+			elif keyword == &"class_name":
 				if stripped.contains(" extends "):
 					var extended = _get_extends_out_line(stripped)
-					_pc.member_map.get_or_add(_pc.access_path, {})["extends"] = extended
+					_pc.member_map.get_or_add(_pc.access_path, {})[&"extends"] = extended
 				_pc.class_name_data = data
-			elif keyword.begins_with("c") or keyword == "enum":
+			elif keyword.begins_with("c") or keyword == &"enum":
 				_pc.constant_map.get_or_add(_pc.access_path, {})[member_name] = data
 			else:
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
@@ -352,6 +352,8 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 	var blocks:= []
 	var local_vars:= {}
 	
+	var first_line = code_edit.get_line(target_line_index).strip_edges()
+	var first_line_empty = first_line == "" or first_line.begins_with("#")
 	var original_indent = get_indent_code_edit(target_line_index)
 	var current_indent = original_indent
 	
@@ -367,6 +369,13 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 			continue
 		if code_edit.is_in_string(context_start_line, 0) != -1:
 			continue
+		
+		if first_line_empty and current_indent == original_indent: # ensure empty string first line doesn't mess up indent
+			current_indent = get_indent_code_edit(context_start_line)
+			for control_flow in Keywords.CONTROL_FLOW_KEYWORDS:
+				if stripped.begins_with(control_flow):
+					current_indent += get_indent_size()
+					break
 		
 		if respect_scope:
 			var line_indent = get_indent_code_edit(context_start_line)

@@ -229,6 +229,8 @@ func _get_char_before_caret():
 	return _char
 
 func _get_string_type():
+	if code_context.is_empty():
+		return ""
 	var i = min(caret_column, code_context_string_map.string_mask.size() - 1) # testing
 	while i > 0:
 		if code_context_string_map.string_mask[i] == 0:
@@ -462,6 +464,8 @@ func get_symbol_data(chain_text:String, class_obj:GDScriptParser.ParserClass, li
 	var parser = Utils.ParserRef.get_parser(self)
 	var type_lookup = parser.get_type_lookup()
 	
+	var class_data = type_lookup.get_class_data_at_line(line)
+	
 	# infer type of entire chain
 	symbol_data.type = parser.resolve_expression_to_type(chain_text, line)
 	
@@ -471,7 +475,7 @@ func get_symbol_data(chain_text:String, class_obj:GDScriptParser.ParserClass, li
 	symbol_data.name = back.substr(0, back.find("("))
 	
 	# get the access symbol of the front object
-	symbol_data.current_script_access_object = type_lookup.resolve_expression_to_access_object(front, class_obj, local_var_dict)
+	symbol_data.current_script_access_object = type_lookup.resolve_expression_to_access_object(front, class_data)
 	var resolved_symbol_script:String
 	if front == chain_text:
 		if GDScriptParser.TypeLookup.BuiltInChecker.is_global_method(chain_text):
@@ -485,7 +489,7 @@ func get_symbol_data(chain_text:String, class_obj:GDScriptParser.ParserClass, li
 	
 	symbol_data.symbol_script_path = resolved_symbol_script
 	if Utils.is_absolute_path(resolved_symbol_script):
-		var script_data = UString.get_script_path_and_suffix(resolved_symbol_script)
+		var script_data = Utils.type_path_get_script_data(resolved_symbol_script)
 		symbol_data.symbol_script_access_object = parser.resolve_to_access_object_in_script(symbol_data.name, script_data[0], script_data[1])
 	return symbol_data
 

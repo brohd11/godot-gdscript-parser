@@ -77,21 +77,21 @@ static func insert_types(parser:GDScriptParser, script_editor:CodeEdit, untyped_
 			var type_info:Array = data.get("type_info")
 			var nm:String = type_info[0]
 			var type_hint:String = type_info[1]
-			var type_access_path = get_type_access_path(parser, type_hint, i)
+			var type_access_path = get_type_access_path(parser, type_hint, i + 1)
 			print(type_access_path)
 			if type_access_path == "":
-				type_access_path = get_type_access_path(parser, nm, i)
+				type_access_path = get_type_access_path(parser, nm, i + 1)
 				if type_access_path == "":
 					continue
 			
 			
-			if not action_started:
-				action_started = true
-				script_editor.start_action(TextEdit.ACTION_TYPING)
-			
-			var nm_end_i = line_text.find(nm) + nm.length()
-			line_text = line_text.insert(nm_end_i, ":" + type_access_path)
-			script_editor.set_line(i, line_text)
+			#if not action_started:
+				#action_started = true
+				#script_editor.start_action(TextEdit.ACTION_TYPING)
+			#
+			#var nm_end_i = line_text.find(nm) + nm.length()
+			#line_text = line_text.insert(nm_end_i, ":" + type_access_path)
+			#script_editor.set_line(i, line_text)
 	
 	if action_started:
 		script_editor.end_action()

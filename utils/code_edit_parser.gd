@@ -74,9 +74,11 @@ func parse_text(force:=false):
 		_map_regex.compile("^(?:(static)\\s+)?(var|func|enum|const|signal|class_name|class)\\s+([a-zA-Z_]\\w*)")
 	_initialize_regex_annotation()
 	
-	
 	var parser = _get_parser()
+	
+	
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("S::" + parser.get_script_path())
+	
 	_set_code_edit(parser.code_edit)
 	indent_size = code_edit.get_tab_size()
 	
@@ -91,7 +93,6 @@ func parse_text(force:=false):
 	
 	var main_script = parser._script_resource
 	var main_script_path = main_script.resource_path
-	
 	
 	_pc = _ParserContext.new()
 	_pc.main_script_path = StringName(main_script_path)
@@ -207,7 +208,7 @@ func parse_text(force:=false):
 	# reassign the classes and new classes
 	parser.set_class_objs(temp_class_access)
 	
-	t.stop()
+	#t.stop()
 	#print("CLASSES ",temp_class_access.keys())
 	cache_dirty = false
 	_first_parse_complete = true
@@ -353,7 +354,8 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 	var local_vars:= {}
 	
 	var first_line = code_edit.get_line(target_line_index).strip_edges()
-	var first_line_empty = first_line == "" or first_line.begins_with("#")
+	var first_line_empty_check = first_line == "" or first_line.begins_with("#") or get_control_flow(first_line) != ""
+	
 	var original_indent = get_indent_code_edit(target_line_index)
 	var current_indent = original_indent
 	
@@ -370,7 +372,8 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 		if code_edit.is_in_string(context_start_line, 0) != -1:
 			continue
 		
-		if first_line_empty and current_indent == original_indent: # ensure empty string first line doesn't mess up indent
+		if first_line_empty_check and context_start_line < target_line_index: # ensure empty string first line doesn't mess up indent
+			first_line_empty_check = false
 			current_indent = get_indent_code_edit(context_start_line)
 			for control_flow in Keywords.CONTROL_FLOW_KEYWORDS:
 				if stripped.begins_with(control_flow):
@@ -396,10 +399,11 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 									"expr": _get_control_flow_expression(context_start_line, control_flow)})
 				
 				if map_local_vars:
-					var var_data = Utils.add_var_to_dict(stripped, context_start_line, local_vars)
-					if var_data != null:
-						#print("MAP LOCAL::", var_data, "::IND::CUR::", current_indent, "::LINE::", line_indent)
-						continue
+					if context_start_line < target_line_index:
+						var var_data = Utils.add_var_to_dict(stripped, context_start_line, local_vars)
+						if var_data != null:
+							#print("MAP LOCAL::", var_data, "::IND::CUR::", current_indent, "::LINE::", line_indent)
+							continue
 				else:
 					if not Utils.line_has_any_declaration(stripped):
 						continue
@@ -786,7 +790,7 @@ func get_type_from_line_text(stripped_line_text:String):
 		#stripped_line_text = "var " + stripped_line_text.get_slice("for ", 1).get_slice(" in ", 0).strip_edges()
 		#data["result"] = Utils.get_var_or_const_info(stripped_line_text)
 		data["result"] = Utils.get_for_loop_info(stripped_line_text)
-		data["type"] = Keys.MEMBER_TYPE_VAR
+		data["type"] = Keys.MEMBER_TYPE_FOR
 		return data
 	for dec:StringName in Keywords.DECLARATIONS:
 		if stripped_line_text.begins_with(dec):

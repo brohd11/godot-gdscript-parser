@@ -231,7 +231,17 @@ func resolve_expression_to_type(identifier_name:String, line:int=-1) -> String:
 	
 	var result = _type_lookup.resolve_expression_to_type_at_line(identifier_name, line)
 	#print("GET IDENTIFIER::TO TYPE::", result)
-	ALibRuntime.DebugPrint.print_deb(self, "GET ID TYPE", identifier_name, result)
+	#ALibRuntime.DebugPrint.print_deb(self, "GET ID TYPE", identifier_name, result)
+	return result
+
+#! keys origin:String type:String member_stack:Array
+func resolve_expression_to_type_rich(identifier_name:String, line:int=-1) -> Dictionary:
+	if line == -1:
+		line = code_edit.get_caret_line()
+	
+	var result = _type_lookup.resolve_expression_to_var_data_at_line(identifier_name, line)
+	#print("GET IDENTIFIER::TO TYPE::", result)
+	#ALibRuntime.DebugPrint.print_deb(self, "GET ID TYPE", identifier_name, result)
 	return result
 
 #func resolve_expression_to_value(identifier_name:String, line:int=-1) -> String:
@@ -299,9 +309,9 @@ func get_line_context(line:int, column:int=0, insert_caret:=false):
 
 func resolve_expression_in_script(expression:String, script_path:String, class_path:String):
 	var target_parser = get_parser_and_class_obj(script_path, class_path)
-	if not target_parser:
+	if not target_parser or not target_parser.class_obj:
 		if not PLUGIN_EXPORTED:
-			printerr("Could not get parser for path::", script_path, "::", class_path)
+			printerr("Could not get parser for path::resolve_expression_in_script::", script_path, "::", class_path)
 		return ""
 	return target_parser.parser.resolve_expression_to_type(expression, target_parser.class_obj.line_indexes[0])
 
@@ -309,7 +319,7 @@ func resolve_to_access_object_in_script(expression:String, script_path:String, c
 	var target_parser = get_parser_and_class_obj(script_path, class_path)
 	if not target_parser or not target_parser.class_obj:
 		if not PLUGIN_EXPORTED:
-			printerr("Could not get parser for path::", script_path, "::", class_path)
+			printerr("Could not get parser for path::resolve_to_access_object_in_script::", script_path, "::", class_path)
 		return
 	return target_parser.parser.resolve_to_access_object(expression, target_parser.class_obj.line_indexes[0])
 
@@ -409,11 +419,11 @@ func cached_data_valid(script_path:String, data:Dictionary):
 
 
 
-#! struct_dict Keys.GET_PARSER:GDScriptParser class_obj:ParserClass
+#! keys parser:GDScriptParser class_obj:ParserClass
 func get_parser_and_class_obj_for_script(script_path:String):
 	if not Utils.is_gdscript_path(script_path):
 		return {}
-	var script_data = UString.get_script_path_and_suffix(script_path)
+	var script_data = Utils.type_path_get_script_data(script_path)
 	var script_main_path = script_data[0]
 	var class_path = script_data[1]
 	if script_main_path == _script_path:

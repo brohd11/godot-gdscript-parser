@@ -92,13 +92,17 @@ func _set_function_data():
 			arg_type = arg_type + Keys.INS_DELIM
 		else:
 			pass
-		arguments[arg] = {Keys.TYPE: arg_type, Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_FUNC_ARG}
+		arguments[arg] = {
+			Keys.TYPE: arg_type, 
+			Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_FUNC_ARG,
+			Keys.LINE_INDEX: declaration_line
+			}
 	
 	var ret_str = result.get(Keys.FUNC_RETURN, "")
-	if ret_str != "" and Utils.valid_instance_type(ret_str):
-		print("ADDING INS::", ret_str)
-		ret_str = Utils.type_func_add_ins(ret_str)
-		print("ADDING INS::", ret_str)
+	if ret_str != "":
+		#print("ADDING INS::", ret_str)
+		ret_str = Utils.type_path_add_ins(ret_str)
+		#print("ADDING INS::", ret_str)
 	_return_type_raw = ret_str
 	#print("SET FUNC DATA: ", result)
 
@@ -153,7 +157,7 @@ func map_variables() -> void:
 			local_vars[i] = data
 			
 
-func get_local_var_type(line_idx:int, member_name:String):
+func get_local_var_type(line_idx:int, member_name:String, find_origin:=false):
 	var is_arg = arguments.has(member_name)
 	var std_local = local_vars.has(line_idx)
 	if not std_local and not is_arg:
@@ -168,7 +172,7 @@ func get_local_var_type(line_idx:int, member_name:String):
 		var_data = local_vars.get(line_idx)
 		dec_line = var_data.get(Keys.LINE_INDEX)
 	
-	
+	dec_line += 1 # +1 forces the var to be in scope
 	
 	var type_hint = var_data.get(Keys.TYPE, "")
 	if type_hint == "":
@@ -176,16 +180,17 @@ func get_local_var_type(line_idx:int, member_name:String):
 	
 	var parser = Utils.ParserRef.get_parser(self)
 	
-	var member_type = var_data.get(Keys.MEMBER_TYPE)
-	var is_for = member_type == Keys.MEMBER_TYPE_FOR
 	var res_type:String = ""
-	
-	#if is_for:
-		#res_type = parser.resolve_expression_to_type(member_name, dec_line + 1) # +1 forces the for in scope
-	#else:
-		#res_type = parser.resolve_expression_to_type(type_hint, dec_line)
-	
-	res_type = parser.resolve_expression_to_type(member_name, dec_line + 1) # don't think the + 1 is actually needed..
+	if find_origin:
+		var type_data = parser.resolve_expression_to_type_rich(member_name, dec_line)
+		res_type = type_data.get("type")
+		#var explicit_type = type_data.get("explicit_type", "")
+		#if explicit_type:
+			#if res_type.contains(Keys.TYPE_DELIM):
+				#res_type = res_type.get_slice(Keys.TYPE_DELIM, 0)
+			#res_type = Utils.type_path_add_type(res_type, explicit_type)
+	else:
+		res_type = parser.resolve_expression_to_type(member_name, dec_line)
 	
 	#print("GET IDENTIF::GET_LOCAL::", member_name, " -> ", res_type)
 	return res_type
@@ -261,19 +266,19 @@ func get_return_type(inferred:=true, get_value:=false): # this could be used to 
 	if not inferred:
 		return _return_type_raw
 	
-	if _return_type == "" or not Utils.is_absolute_path(_return_type) or true:
+	if _return_type == "" or not Utils.is_absolute_path(_return_type):
 		var parser = Utils.ParserRef.get_parser(self)
 		#if _return_type_raw_line == null: #^ should be able to remove this
 			#_return_type_raw_line = -1
 		var return_line = maxi(declaration_line, _return_type_raw_line)
 		#if not get_value:
-		_return_type = parser.resolve_expression_to_type(_return_type_raw, return_line)
+		_return_type = parser.get_type_lookup().resolve_expression_to_type_at_line_respect_inf_context(_return_type_raw, return_line)
 		#else:
 			#var val_ret = parser.resolve_expression_to_value(_return_type_raw, return_line)
 			#_return_type = parser.get_type_lookup()._simple_type_check(val_ret, true)
 			#if _return_type == "":
 				#_return_type = "Variant"
-			#_return_type = Utils.type_func_add_ins(_return_type)
+			#_return_type = Utils.type_path_add_ins(_return_type)
 			#return val_ret
 			
 			
@@ -281,9 +286,9 @@ func get_return_type(inferred:=true, get_value:=false): # this could be used to 
 	
 	if _return_type == "":
 		_return_type = "Variant"
-	print("RET BEFORE::", _return_type)
-	_return_type = Utils.type_func_add_ins(_return_type)
-	print("RET AFTER::", _return_type)
+	#print("RET BEFORE::", _return_type)
+	_return_type = Utils.type_path_add_ins(_return_type)
+	#print("RET AFTER::", _return_type)
 	return _return_type
 
 

@@ -37,6 +37,7 @@ var constants:= {}
 var members:= {}
 var functions:={}
 
+var _check_inherited_debounce:=false
 var inherited_members :Dictionary = {}
 var inherited_scripts := []
 var _inherited_script_mod_cache := {}
@@ -209,6 +210,11 @@ func get_script_signal_args(signal_name:String, infer_to_type:=false):
 			return ""
 		return null
 	var args = result.get(Keys.SIGNAL_ARGS, {})
+	for arg_name in args.keys():
+		var type = args[arg_name]
+		if type != "":
+			args[arg_name] = Utils.type_path_add_ins(type)
+		
 	if not infer_to_type:
 		return args # this is the args as dict
 	if args.is_empty():
@@ -265,7 +271,10 @@ func get_member_type(identifier:String) -> StringName:
 		elif member_data.get(Keys.MEMBER_TYPE) == Keys.MEMBER_TYPE_CLASS:
 			type = parser.get_type_lookup().resolve_inner_class_at_line(identifier, declaration_line)
 		else:
-			type = parser.resolve_expression_to_type(identifier, declaration_line)
+			# ALERT unsure about this. Do I want the type to evaluate to the explicit type or the origin
+			# i think this way, it ensures the most recent explicit type or inference, then you can get origin if needed
+			# this will set the find_origin to false, then back to it's original setting
+			type = parser.get_type_lookup().resolve_expression_to_type_at_line(identifier, declaration_line)
 		cached[Keys.CLASS_CACHE_TYPE] = StringName(type)
 		#t.stop()
 	else:
@@ -347,10 +356,11 @@ func has_preload(path:String) -> Variant: # doesnt handle inherited, should cach
 
 ## Get and cache the preloads of current scripts ancestors.
 func get_inherited_members() -> Dictionary:
-	#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET INH::" + get_name())
+	_check_inherited_valid()
+	
 	if not inherited_members.is_empty():
 		return inherited_members
-	
+	#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("INHCHJECK::" + get_name())
 	_get_inherited_members()
 	
 	#t.stop()
@@ -481,11 +491,11 @@ func _set_inherited_scripts():
 			if not ClassDB.class_exists(last_path):
 				var extended_resolved = _get_extended_type_of_class(last_path)
 				if Utils.is_absolute_path(extended_resolved):
-					valid.append(extended_resolved)
+					valid.append(StringName(extended_resolved))
 					last_path = extended_resolved
 		else:
 			last_path = script.resource_path
-			valid.append(script.resource_path)
+			valid.append(StringName(script.resource_path))
 	
 	inherited_scripts = valid
 	return valid
@@ -505,6 +515,9 @@ func get_extended_type():
 
 
 func _check_inherited_valid():
+	if _check_inherited_debounce:
+		return
+	_check_inherited_debounce = true
 	if _inherited_script_mod_cache == null:
 		_inherited_script_mod_cache = {}
 	if is_instance_valid(script_resource):
@@ -524,6 +537,8 @@ func _check_inherited_valid():
 		valid_scripts[script_path] = mod_time
 	
 	_inherited_script_mod_cache = valid_scripts
+	await Engine.get_main_loop().root.get_tree().process_frame
+	_check_inherited_debounce = false
 
 
 func _clean_resolve_cache():

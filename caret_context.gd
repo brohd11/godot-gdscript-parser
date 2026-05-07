@@ -151,6 +151,8 @@ func parse():
 	word_before_caret = code_edit_parser.parse_identifier_at_position(caret_left, caret_left.length() - 1)
 	expression_before_caret = code_edit_parser.parse_expression_at_position(code_context, code_context_caret_pos - 1, code_context_string_map)
 	
+	push_warning(resolve_expression_to_type(UString.trim_member_access_back(expression_before_caret)))
+	
 	char_before_caret = _get_char_before_caret()
 	
 	var current_block_type = ""
@@ -506,6 +508,11 @@ func resolve_expression_to_type(expression:String):
 	var parser = Utils.ParserRef.get_parser(self)
 	return parser.resolve_expression_to_type(expression, caret_line)
 
+##! keys origin:String explicit_type:String
+func resolve_expression_to_type_rich(expression:String):
+	var parser = Utils.ParserRef.get_parser(self)
+	return parser.resolve_expression_to_type_rich(expression, caret_line)
+
 func get_current_class_object() -> GDScriptParser.ParserClass:
 	var parser = Utils.ParserRef.get_parser(self)
 	return parser.get_class_object(current_class)
@@ -532,6 +539,18 @@ func get_match_block_data() -> MatchBlockData:
 	_match_data.is_valid = true
 	return _match_data
 
+func trim_last_member_access_part():
+	if expression_state == ExpressionState.MEMBER_ACCESS:
+		if not word_before_caret.contains("."):
+			return ""
+		return UString.trim_member_access_back(word_before_caret)
+	return ""
+
+func get_last_member_access_part():
+	if expression_state == ExpressionState.MEMBER_ACCESS:
+		return UString.get_member_access_back(word_before_caret)
+	return ""
+
 func get_index_access_identifier():
 	return _index_access_identifier
 
@@ -548,7 +567,7 @@ func is_in_array():
 	return closest_bracket_type == "[" and _index_access_identifier == ""
 
 func is_in_dictionary_access():
-	
+	printerr("is_in_dictionary_access is not implemented yet")
 	pass
 
 func get_type_hint_text():
@@ -713,6 +732,7 @@ class FunctionCallData:
 	func get_function_name():
 		return symbol_data.name
 	
+	## Get script path of the function object. Includes inner classes in the path.
 	func get_function_script():
 		return symbol_data.symbol_script_path
 	
@@ -728,6 +748,7 @@ class FunctionCallData:
 		var arg = Argument.new()
 		arg.name = _func_get_current_arg_name()
 		arg.type = func_get_current_arg_type()
+		print("ARG TYPE:::", arg.type)
 		arg.declaration = func_get_current_arg_declaration()
 		
 		var function_object = get_function_script()
@@ -736,7 +757,7 @@ class FunctionCallData:
 		if Utils.is_absolute_path(function_object):
 			var parser = Utils.ParserRef.get_parser(self)
 			
-			var script_data = UString.get_script_path_and_suffix(function_object)
+			var script_data = Utils.type_path_get_script_data(function_object)
 			var arg_access_obj = parser.resolve_to_access_object_in_script(arg.declaration, script_data[0], script_data[1])
 		
 		#if arg_access_obj.access_symbol == "" or (UClassDetail.get_global_class_path(arg_access_obj.access_symbol) == "" and not class_obj.has_constant_or_class(arg_access_obj.access_symbol)):
@@ -764,28 +785,28 @@ class FunctionCallData:
 	func func_get_current_arg_type():
 		var current_arg_data = _func_get_current_arg_data()
 		var function_object = get_function_script()
-		#print("ARG DATA::", current_arg_data)
-		#print("FUNC OBJ::", function_object)
+		print("ARG DATA::", current_arg_data)
+		print("FUNC OBJ::", function_object)
 		if current_arg_data == null:
 			return ""
 		var arg_type_resolved = current_arg_data.get(Keys.TYPE_RESOLVED)
-		if arg_type_resolved != null:
-			return arg_type_resolved
+		if arg_type_resolved != null and arg_type_resolved != "": # null was being used instead of empty string
+			return arg_type_resolved # likely for caching purposes, an empty is valid, is type_resolved being set somewhere?
 		var arg_type = current_arg_data.get(Keys.TYPE)
+		arg_type = arg_type.trim_suffix(Keys.INS_DELIM)
 		#if arg_type.begins_with("res://"):
 		if Utils.is_absolute_path(arg_type):
 			return arg_type
 		var resolved:String
-		#if function_object.begins_with("res://"):
 		if Utils.is_absolute_path(function_object):
 			var parser = Utils.ParserRef.get_parser(self)
-			var script_data = UString.get_script_path_and_suffix(function_object)
+			var script_data = Utils.type_path_get_script_data(function_object)
 			resolved = parser.resolve_expression_in_script(arg_type, script_data[0], script_data[1])
 		else:
-			#print("FUNC OBJ NOT SCRIPT::", function_object)
+			print("FUNC OBJ NOT SCRIPT::", function_object)
 			resolved = arg_type
 		
-		#print("ARG DATA RESOLVED::", resolved)
+		print("ARG DATA RESOLVED::", resolved)
 		current_arg_data[Keys.TYPE_RESOLVED] = resolved
 		return resolved
 	

@@ -4,6 +4,7 @@ const Utils = GDScriptParser.Utils
 const Keys = Utils.Keys
 const UFile = GDScriptParser.UFile
 
+const CLASS_NAME = &"class_name"
 const MEMBER_TYPE = &"member_type"
 const _METHODS = &"methods"
 const _PROPERTIES = &"properties"
@@ -29,6 +30,7 @@ const _GDSCRIPT_FUNCS = {
 const _VARIANTS: Dictionary = {
 	# Primitives & Core Types
 	"Variant":true,
+	"null": true,
 	"Nil": true,
 	"bool": true,
 	"int": true,
@@ -64,7 +66,7 @@ const _VARIANTS: Dictionary = {
 	"RID": true,
 	
 	# Core Objects
-	"Object": true,
+	#"Object": true,
 	"Callable": true,
 	"Signal": true,
 	"Dictionary": true,
@@ -125,7 +127,7 @@ static func _load_extension_api() -> void:
 	var built_in_classes = data.get("builtin_classes", [])
 	for class_dict in built_in_classes:
 		var class_nm = class_dict.get("name")
-		_extension_api[class_nm] = {}
+		_extension_api[class_nm] = {CLASS_NAME: class_nm}
 		_add_to_dict(class_nm, _METHODS, class_dict)
 		_add_to_dict(class_nm, _CONSTANTS, class_dict)
 		_add_to_dict(class_nm, _MEMBERS, class_dict)
@@ -133,7 +135,7 @@ static func _load_extension_api() -> void:
 	var classes = data.get("classes", [])
 	for class_dict in classes:
 		var class_nm = class_dict.get("name")
-		_extension_api[class_nm] = {}
+		_extension_api[class_nm] = {CLASS_NAME: class_nm}
 		_add_to_dict(class_nm, _METHODS, class_dict)
 		_add_to_dict(class_nm, _CONSTANTS, class_dict)
 		_add_to_dict(class_nm, _ENUMS, class_dict)
@@ -251,8 +253,6 @@ static func _get_member_type(class_nm:String, member_name:String) -> String:
 		_load_extension_api()
 	var class_data = _extension_api.get(class_nm, {})
 	var api_data = class_data.get(member_name, {})
-	if member_name == "text_changed":
-		print("EXIT::_get_member_type", class_nm, " -> ", api_data)
 	if not api_data.is_empty():
 		if api_data.has("return_type"):
 			return api_data.get("return_type", "void")
@@ -313,21 +313,24 @@ static func get_class_names():
 	names.erase("")
 	return names
 
-static func get_class_data(class_nm:StringName, include_inherited:=true):
+static func get_class_data(class_nm:StringName, include_inherited:=true) -> Array[Dictionary]:
 	if _extension_api.is_empty():
 		_load_extension_api()
-	var class_data = _extension_api.get(class_nm, {})
+	var class_data_array:Array[Dictionary] = [_extension_api.get(class_nm, {})]
 	if not include_inherited or not ClassDB.class_exists(class_nm):
-		return class_data
+		return class_data_array
 	var inherited = ClassDB.get_parent_class(class_nm)
 	while inherited != "":
-		class_data.merge(_extension_api.get(inherited, {}))
+		class_data_array.append(_extension_api.get(inherited, {}))
 		inherited = ClassDB.get_parent_class(inherited)
-	return class_data
+	return class_data_array
 
 static func get_member_data(class_nm:StringName, member_name:String, include_inherited:=true):
-	var class_data = get_class_data(class_nm, include_inherited)
-	return class_data.get(member_name, {})
+	var class_data_array = get_class_data(class_nm, include_inherited)
+	for dict in class_data_array:
+		if dict.has(member_name):
+			return dict.get(member_name, {})
+	return {}
 
 static func is_member_const(class_nm:StringName, member_name:String, include_inherited:=true):
 	var member_data = get_member_data(class_nm, member_name, include_inherited)

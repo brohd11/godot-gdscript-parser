@@ -46,11 +46,13 @@ const MEMBER_TYPE_FUNC_ARG = &"func_arg"
 const MEMBER_TYPE_FOR = &"for"
 
 
-# type lookup
-const MEMBER_DELIM = &"::"
-const TYPE_DELIM = &"##"
-const MEMBER_INFER_DELIM = &":;;:"
-const INS_DELIM = &"$$INS"
+# type lookup - These are split so that they don't create false positives
+const MEMBER_DELIM = &":" + &":"
+const TYPE_DELIM = &"#" + &"#"
+const MEMBER_INFER_DELIM = &":;" + &";:"
+const MEMBER_ASSIGN_DELIM = &"@" + &"@"
+const MEMBER_STACK_DELIM = &">>" + &">"
+const INS_DELIM = &"$$I" + &"NS"
 
 const ENUM_PATH_SUFFIX = TYPE_DELIM + &"Enum"
 const CALLABLE_SUFFIX = TYPE_DELIM + &"Callable"

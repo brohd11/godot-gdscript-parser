@@ -1,3 +1,4 @@
+#! import_p Keys,
 const SELF = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/utils.gd")
 
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
@@ -11,13 +12,15 @@ const UClassDetail = GDScriptParser.UClassDetail
 
 const ENUM_SUFFIX = Keys.ENUM_PATH_SUFFIX
 
+const VALID_STATIC_MEMBER_TYPES = [Keys.MEMBER_TYPE_CLASS, Keys.MEMBER_TYPE_CONST, Keys.MEMBER_TYPE_ENUM, Keys.MEMBER_TYPE_STATIC_FUNC, Keys.MEMBER_TYPE_STATIC_VAR]
+
 const _PACKED_SCENE_EXTS = ["tscn", "glb", "fbx", "gltf"]
 const _TEXTURE_EXTS = ["svg", "png", "jpg", "jpeg", "exr", "dds"]
 
 static var _string_path_regex:RegEx
 
 static func is_gdscript_path(file_path:String):
-	return file_path.ends_with(".gd") or file_path.contains(".gd.")
+	return file_path.ends_with(".gd") or file_path.contains(".gd.") or file_path.contains(".gd::")
 
 
 #^r maybe a better way to handle this, either using FileSystem or extension
@@ -71,16 +74,43 @@ static func valid_instance_type(string:String):
 		return true
 	elif is_absolute_path(string):
 		return true
+	elif string.contains("."):
+		var front = UString.get_member_access_front(string)
+		if ClassDB.class_exists(front):
+			var back = UString.get_member_access_back(string)
+			if ClassDB.class_has_enum(front, back):
+				return false
+		return true
+	
+		
 	else:
 		return true
 	return false
 
-static func type_func_add_ins(string:String):
+
+static func type_path_add_ins(string:String):
 	if not valid_instance_type(string):
 		return string
 	if not string.ends_with(Keys.INS_DELIM):
 		string += Keys.INS_DELIM
 	return string
+
+#! keys class_path:String member_name:String line:int
+static func type_path_get_local_var(string:String):
+	string = string.get_slice(Keys.MEMBER_STACK_DELIM, 0)
+	if not string.contains("local("):
+		return
+	var non_member_part = type_path_get_non_member(string)
+	var member_data_str = string.get_slice("local(", 1).get_slice(")", 0)
+	var member_name = member_data_str.get_slice("-", 0)
+	var line_number = member_data_str.get_slice("-", 1)
+	return {
+		"class_path": non_member_part,
+		"line": line_number,
+		"member_name": member_name,
+	}
+	pass
+
 
 static func get_or_add_current_type_path(current:String, class_object:GDScriptParser.ParserClass):
 	if current != "":
@@ -138,6 +168,8 @@ static func type_path_add_type(string:String, type:String):
 static func member_is_const_class_enum(member_type:String):
 	return member_type == Keys.MEMBER_TYPE_CLASS or member_type == Keys.MEMBER_TYPE_CONST or member_type == Keys.MEMBER_TYPE_ENUM
 
+static func member_is_valid_static(member_type:String):
+	return member_type in VALID_STATIC_MEMBER_TYPES
 
 static func is_absolute_path(string:String):
 	return UString.GDScriptParse.is_absolute_path(string)
@@ -166,6 +198,36 @@ static func get_func_info(stripped_text: String) -> Dictionary:
 static func get_signal_info(stripped_text: String) -> Dictionary:
 	return UString.GDScriptParse.get_signal_info(stripped_text)
 
+static func get_type_from_var_info(var_data:Array):
+	#if var_data[2] == "":
+		#return type_path_add_ins(var_data[1])
+	#return var_data[2]
+	var type = var_data[1]
+	var assign = var_data[2]
+	if type != "":
+		if not GDScriptParser.BuiltInChecker.is_variant_type(type):
+			type = type_path_add_ins(type)
+		if assign != "":
+			type = assign + Keys.MEMBER_ASSIGN_DELIM + type
+	else:
+		type = assign
+	return type
+
+static func get_type_from_for_info(var_data:Array):
+	#if var_data[2] == "":
+		#return type_path_add_ins(var_data[1])
+	#return var_data[2]
+	var type = var_data[1]
+	var collection = var_data[2]
+	if type == "":
+		type = collection
+	else:
+		if not GDScriptParser.BuiltInChecker.is_variant_type(type):
+			type = type_path_add_ins(type)
+		type = collection + Keys.MEMBER_ASSIGN_DELIM + type
+	return type
+
+
 static func get_string_inside_brackets(string:String, must_be_string:=true):
 	var open_b = string.find("(") + 1
 	var bracket_string = string.substr(open_b, string.rfind(")") - open_b)
@@ -193,10 +255,15 @@ static func add_var_to_dict(stripped_line:String, line:int, dict:Dictionary, mem
 		return []
 	if var_data != null:
 		var var_name = var_data[0]
-		var type = var_data[1]
-		if type.find(".new(") > -1:
-			type = type.get_slice(".new(", 0)
+		var type:String
+		if member_type == Keys.MEMBER_TYPE_VAR:
+			type = get_type_from_var_info(var_data)
+		elif member_type == Keys.MEMBER_TYPE_FOR:
+			type = get_type_from_for_info(var_data)
+		
 		var key = line if int_key else var_name
+		if dict.has(key):
+			printerr("LOCAL VARS HAS KEY ALREADY::", key, "::",var_name, "::",line)
 		dict[key] = {
 			Keys.MEMBER_NAME: var_name,
 			Keys.LINE_INDEX: line,
@@ -205,6 +272,8 @@ static func add_var_to_dict(stripped_line:String, line:int, dict:Dictionary, mem
 			}
 	return var_data
 
+static func _parse_raw_type_hint(type_hint:String, assignment:String):
+	pass
 
 
 static func token_is_string(text:String): # should this account for StringName and NodePath?

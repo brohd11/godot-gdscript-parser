@@ -672,6 +672,7 @@ class AccessUtils:
 		for suffix in SUFFIXES:
 			if string.ends_with(suffix):
 				string = string.trim_suffix(suffix)
+		string = string.trim_suffix(Keys.INS_DELIM)
 		return string
 
 #! arg_location section:T

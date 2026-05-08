@@ -13,6 +13,8 @@ var _code_edit_parser:WeakRef
 
 var _cache_dirty:=true
 
+var _cache:= {} # not related to above member
+
 var func_lines:PackedInt32Array
 var declaration_line:int
 var end_line:int
@@ -41,6 +43,9 @@ func queue_refresh():
 	_cache_dirty = true
 	_local_vars_set = false
 	in_scope_local_vars.clear() # not sure how this will interact with parse
+	
+	# these are not related to type lookup local vars
+	local_vars.clear()
 
 func set_in_scope_local_vars(new_vars:Dictionary):
 	_local_vars_set = true
@@ -57,19 +62,16 @@ func parse():
 
 
 func _set_function_data():
-	#var class_obj = Utils.ParserRef.get_class_obj(self)
-	#print("SET FUNC DATA::", class_obj.get_script_class_path() +"." + name, "::DIRTY::", _cache_dirty)
 	if not _cache_dirty:
 		return arguments
-	#var parser = Utils.ParserRef.get_parser(self)
+	
 	var column:int = member_data.get(Keys.COLUMN_INDEX, 0)
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)
 	if not code_edit_parser.check_member_line(member_data.get(Keys.MEMBER_TYPE), name, declaration_line, column):
 		print("FUNCTION DATA: NOT VALID")
 		return
-	var func_data = code_edit_parser.get_type_from_line(declaration_line, column)
 	
-	#print("FUNCTION DATA: ",func_data)
+	var func_data = code_edit_parser.get_type_from_line(declaration_line, column)
 	
 	arguments.clear()
 	var result = func_data.get("result")
@@ -79,9 +81,8 @@ func _set_function_data():
 		return
 	if not result is Dictionary:
 		print(result, "::", name)
+	
 	var arg_data = result.get(Keys.FUNC_ARGS, {}) as Dictionary[String, Array]
-	#for arg in arg_data.keys():
-		#arguments[arg] = {Keys.TYPE: arg_data[arg], Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_FUNC_ARG}
 	for arg in arg_data.keys():
 		var arg_data_array = arg_data[arg] as Array[String]
 		var arg_type = arg_data_array[1]
@@ -100,10 +101,9 @@ func _set_function_data():
 	
 	var ret_str = result.get(Keys.FUNC_RETURN, "")
 	if ret_str != "":
-		#print("ADDING INS::", ret_str)
 		ret_str = Utils.type_path_add_ins(ret_str)
-		#print("ADDING INS::", ret_str)
 	_return_type_raw = ret_str
+	
 	#print("SET FUNC DATA: ", result)
 
 
@@ -112,6 +112,10 @@ func _set_function_data():
 
 ## Scan current func for local vars and func data.
 func map_variables() -> void:
+	if not _cache_dirty:
+		return
+	var found_for_local_vars = {}
+	
 	_set_function_data()
 	end_line = func_lines[func_lines.size() - 1]
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)
@@ -146,8 +150,7 @@ func map_variables() -> void:
 			var type_hint = var_data[1]
 			if type_hint.is_empty():
 				type_hint = var_data[2]
-			#if type_hint.find(".new(") > -1:
-				#type_hint = type_hint.substr(0, type_hint.rfind(".new("))
+			
 			var data:= {
 				Keys.MEMBER_NAME: var_name,
 				Keys.LINE_INDEX: i,
@@ -155,14 +158,23 @@ func map_variables() -> void:
 				Keys.TYPE: type_hint,
 			}
 			local_vars[i] = data
-			
+			found_for_local_vars[_get_cache_string(var_name, type_hint)] = true
+	
+	for key in arguments.keys():
+		var type_hint = arguments[key].get(Keys.TYPE)
+		found_for_local_vars[_get_cache_string(key, type_hint)] = true
+	
+	for key in _cache.keys():
+		if not found_for_local_vars.has(key):
+			_cache.erase(key)
 
-func get_local_var_type(line_idx:int, member_name:String, find_origin:=false):
+func get_local_var_type(line_idx:int, member_name:String) -> String:
 	var is_arg = arguments.has(member_name)
 	var std_local = local_vars.has(line_idx)
 	if not std_local and not is_arg:
 		return ""
 	
+	var parser = Utils.ParserRef.get_parser(self)
 	var dec_line:int
 	var var_data:Dictionary
 	if is_arg:
@@ -172,70 +184,32 @@ func get_local_var_type(line_idx:int, member_name:String, find_origin:=false):
 		var_data = local_vars.get(line_idx)
 		dec_line = var_data.get(Keys.LINE_INDEX)
 	
-	dec_line += 1 # +1 forces the var to be in scope
-	
 	var type_hint = var_data.get(Keys.TYPE, "")
 	if type_hint == "":
 		return ""
 	
-	var parser = Utils.ParserRef.get_parser(self)
+	var cache_string = _get_cache_string(member_name, type_hint)
+	for i in range(1): # single loop for early break
+		if not _cache.has(cache_string):
+			break
+		var cache_data = _cache[cache_string]
+		if cache_data.get(Keys.CLASS_CACHE_DEC) != type_hint:
+			break
+		var cached_deps = cache_data.get(Keys.CLASS_CACHE_DEPENDENCIES)
+		if not GDScriptParser.InferenceContext.validate_dependencies(cached_deps, parser.get_script_path()):
+			break
+		
+		return cache_data.get(Keys.CLASS_CACHE_TYPE)
 	
-	var res_type:String = ""
-	if find_origin:
-		var type_data = parser.resolve_expression_to_type_rich(member_name, dec_line)
-		res_type = type_data.get("type")
-		#var explicit_type = type_data.get("explicit_type", "")
-		#if explicit_type:
-			#if res_type.contains(Keys.TYPE_DELIM):
-				#res_type = res_type.get_slice(Keys.TYPE_DELIM, 0)
-			#res_type = Utils.type_path_add_type(res_type, explicit_type)
-	else:
-		res_type = parser.resolve_expression_to_type(member_name, dec_line)
+	var cached_data = _cache.get_or_add(cache_string, {})
+	cached_data[Keys.CLASS_CACHE_DEC] = type_hint
 	
-	#print("GET IDENTIF::GET_LOCAL::", member_name, " -> ", res_type)
-	return res_type
+	dec_line += 1 # +1 forces the var to be in scope
+	var type_rich = parser.resolve_expression_to_type_rich(member_name, dec_line)
 	
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-### Scan current func for local vars and func data.
-#func map_variables() -> void:
-	#var code_edit_parser = ParserRef.get_code_edit_parser(self)
-	#for i in range(declaration_line + 1, end_line):
-		#if not code_edit_parser.is_valid_code(i, -1):
-			#continue
-		#var line_text = code_edit_parser.get_line(i)
-		#var stripped = line_text.strip_edges()
-		#var indent = code_edit_parser.get_indent_code_edit(i)
-		#if Utils.line_has_any_declaration(stripped) and indent <= class_indent:
-			#break
-		#var var_data = Utils.get_var_or_const_info(stripped)
-		#if var_data != null:
-			#var var_name = var_data[0]
-			##var_name = Utils.map_check_dupe_local_var_name(var_name, local_vars) # this is negated by using indexes
-			#var type_hint = var_data[1]
-			#if type_hint.find(".new(") > -1:
-				#type_hint = type_hint.substr(0, type_hint.rfind(".new("))
-			#var data:= {
-				#Keys.MEMBER_NAME: var_name,
-				#Keys.LINE_INDEX: i,
-				#Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_VAR,
-				#Keys.TYPE: type_hint,
-			#}
-			#local_vars[i] = data
-
+	cached_data[Keys.CLASS_CACHE_DEPENDENCIES] = GDScriptParser.InferenceContext.get_dependencies_from_member_stack(type_rich)
+	cached_data[Keys.CLASS_CACHE_TYPE] = type_rich.type
+	return type_rich.type
 
 
 func get_in_scope_local_vars(line:int):
@@ -258,7 +232,7 @@ func get_arguments():
 	_set_function_data()
 	return arguments
 
-func get_return_type(inferred:=true, get_value:=false): # this could be used to parse
+func get_return_type(inferred:=true): # this could be used to parse
 	_set_function_data()
 	if _return_type_raw == "":
 		_return_type_raw = _infer_return_type()
@@ -268,29 +242,32 @@ func get_return_type(inferred:=true, get_value:=false): # this could be used to 
 	
 	if _return_type == "" or not Utils.is_absolute_path(_return_type):
 		var parser = Utils.ParserRef.get_parser(self)
-		#if _return_type_raw_line == null: #^ should be able to remove this
-			#_return_type_raw_line = -1
 		var return_line = maxi(declaration_line, _return_type_raw_line)
-		#if not get_value:
 		_return_type = parser.get_type_lookup().resolve_expression_to_type_at_line_respect_inf_context(_return_type_raw, return_line)
-		#else:
-			#var val_ret = parser.resolve_expression_to_value(_return_type_raw, return_line)
-			#_return_type = parser.get_type_lookup()._simple_type_check(val_ret, true)
-			#if _return_type == "":
-				#_return_type = "Variant"
-			#_return_type = Utils.type_path_add_ins(_return_type)
-			#return val_ret
-			
-			
-		#print("RESOLVED FUNC RETURN::", _return_type)
 	
 	if _return_type == "":
 		_return_type = "Variant"
-	#print("RET BEFORE::", _return_type)
+	
 	_return_type = Utils.type_path_add_ins(_return_type)
-	#print("RET AFTER::", _return_type)
 	return _return_type
 
+func get_return_type_raw():
+	_set_function_data()
+	if _return_type_raw == "":
+		_return_type_raw = _infer_return_type()
+	return _return_type_raw
+
+func get_return_type_rich():
+	_set_function_data()
+	if _return_type_raw == "":
+		_return_type_raw = _infer_return_type()
+	
+	var parser = Utils.ParserRef.get_parser(self)
+	var return_line = maxi(declaration_line, _return_type_raw_line)
+	var type_rich = parser.resolve_expression_to_type_rich(_return_type_raw, return_line)
+	if type_rich.type == "":
+		type_rich.type = "Variant"
+	return type_rich
 
 # this may be slowww, possibly do it in the mapping step
 # other option would be to set a limit for indent, check only func level
@@ -349,3 +326,7 @@ func _infer_return_type() -> String:
 	#print("FUNC INFERRING::", raw_result, " -> ", _return_type)
 	#print("FUNC INFER::", _return_type)
 	return raw_result
+
+
+func _get_cache_string(member_name:String, type_hint:String):
+	return member_name + "::" + type_hint

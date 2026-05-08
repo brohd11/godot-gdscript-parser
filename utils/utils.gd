@@ -272,9 +272,6 @@ static func add_var_to_dict(stripped_line:String, line:int, dict:Dictionary, mem
 			}
 	return var_data
 
-static func _parse_raw_type_hint(type_hint:String, assignment:String):
-	pass
-
 
 static func token_is_string(text:String): # should this account for StringName and NodePath?
 	if text.begins_with('"') or text.begins_with("'"):
@@ -310,7 +307,6 @@ static func test():
 	pass
 
 static func run_expression(expression:String, script:GDScript) -> String:
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("EXPR")
 	if not is_instance_valid(script):
 		return ""
 	var expr = Expression.new()
@@ -320,7 +316,6 @@ static func run_expression(expression:String, script:GDScript) -> String:
 		result = expr.execute([], script, true, true)
 	if result == null:
 		result = ""
-	t.stop()
 	return result
 
 class Keywords: # this also exists in UString.GDScriptParse, move it?

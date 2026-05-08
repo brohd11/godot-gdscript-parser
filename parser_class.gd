@@ -8,6 +8,7 @@ const Keys = Utils.Keys
 const UString = GDScriptParser.UString
 const UClassDetail = GDScriptParser.UClassDetail
 
+
 @warning_ignore_start("unused_private_class_variable")
 var _parser:WeakRef
 var _code_edit_parser:WeakRef
@@ -108,14 +109,19 @@ func _create_function(_name, data:Dictionary):
 	var member_type = data.get(Keys.MEMBER_TYPE)
 	if member_type != Keys.MEMBER_TYPE_FUNC and member_type != Keys.MEMBER_TYPE_STATIC_FUNC:
 		return
-	var function = ParserFunc.new()
-	function.name = _name
-	Utils.ParserRef.set_refs(function, ParserRef.get_parser(self), self)
+	var function:ParserFunc
+	if functions.has(_name):
+		function = functions[_name]
+		function.queue_refresh()
+	else:
+		function = ParserFunc.new()
+		function.name = _name
+		Utils.ParserRef.set_refs(function, ParserRef.get_parser(self), self)
+		functions[_name] = function
 	function.class_indent = indent_level
 	function.member_data = data
 	function.declaration_line = data.get(Keys.LINE_INDEX, -1)
 	function.func_lines = data.get(Keys.FUNC_LINES)
-	functions[_name] = function
 
 
 func set_constants(const_dict:Dictionary):
@@ -255,6 +261,7 @@ func get_constant_or_class(identifier:String):
 		return inner_classes[identifier]
 
 func get_member_type(identifier:String) -> StringName:
+	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET MEMBER::" + identifier)
 	var member_data = get_member(identifier)
 	if member_data == null:
 		return &""
@@ -267,22 +274,34 @@ func get_member_type(identifier:String) -> StringName:
 	if not cache_valid:
 		#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET TYPE")
 		if member_data is ParserFunc:
-			type = member_data.get_return_type(true)
+			#type = member_data.get_return_type(true)
+			cached[Keys.CLASS_CACHE_DEC] = member_data.get_return_type_raw()
+			
+			var type_rich = member_data.get_return_type_rich()
+			type = type_rich.type
+			cached["deps"] = GDScriptParser.InferenceContext.get_dependencies_from_member_stack(type_rich)
 		elif member_data.get(Keys.MEMBER_TYPE) == Keys.MEMBER_TYPE_CLASS:
+			cached[Keys.CLASS_CACHE_DEC] = parser.get_type_lookup().get_class_obj_member_type(identifier, self, {})
+			
 			type = parser.get_type_lookup().resolve_inner_class_at_line(identifier, declaration_line)
 		else:
+			cached[Keys.CLASS_CACHE_DEC] = parser.get_type_lookup().get_class_obj_member_type(identifier, self, {})
+			
+			var type_rich = parser.resolve_expression_to_type_rich(identifier, declaration_line)
+			type = type_rich.type
+			cached["deps"] = GDScriptParser.InferenceContext.get_dependencies_from_member_stack(type_rich)
 			# ALERT unsure about this. Do I want the type to evaluate to the explicit type or the origin
 			# i think this way, it ensures the most recent explicit type or inference, then you can get origin if needed
 			# this will set the find_origin to false, then back to it's original setting
-			type = parser.get_type_lookup().resolve_expression_to_type_at_line(identifier, declaration_line)
+			#type = parser.get_type_lookup().resolve_expression_to_type_at_line(identifier, declaration_line)
 		cached[Keys.CLASS_CACHE_TYPE] = StringName(type)
 		#t.stop()
 	else:
-		#print("WAS VAL")
 		type = cached.get(Keys.CLASS_CACHE_TYPE, &"")
 	
 	
 	_resolve_cache[identifier] = cached
+	#t.stop("GET MEMBER::WAS_VALID::" + str(cache_valid) + "::" + identifier + " -> " + type)
 	return type
 
 func cached_resolve_valid_for_member(identifier:String):
@@ -295,26 +314,24 @@ func cached_resolve_valid_for_member(identifier:String):
 	var is_func = member_data is ParserFunc
 	var declaration:String
 	if is_func:
-		declaration = member_data.get_return_type(false)
+		declaration = member_data.get_return_type_raw()
 	else:
 		declaration = parser.get_type_lookup().get_class_obj_member_type(identifier, self, {})
 	
 	var cached = _resolve_cache.get_or_add(identifier, {})
-	var cached_type = cached.get(Keys.CLASS_CACHE_TYPE, &"")
-
-	# ALERT This should check if the cache is valid somehow, simple checks would be valid
-	#if cache_valid: # but vars may be changed, hard to say. Honestly, doesn't make a huge difference
-	var cache_valid = false
+	if not cached.has("deps"):
+		return false
+	var cached_deps = cached.get("deps", {})
+	if cached_deps == null:
+		cached_deps = {}
 	
-	cache_valid = cached.get(Keys.CLASS_CACHE_DEC, "") == declaration and cached_type != &""
-	cached[Keys.CLASS_CACHE_DEC] = declaration
-	if cache_valid and Utils.is_absolute_path(cached_type):
-		var cache_modified_time = cached.get(Keys.CACHE_MODIFIED, 0)
-		var script_data = Utils.type_path_get_script_data(cached_type)
-		var path = script_data[0]
-		var mod_time = FileAccess.get_modified_time(path)
-		cache_valid = mod_time == cache_modified_time
-		cached[Keys.CACHE_MODIFIED] = mod_time
+	if not GDScriptParser.InferenceContext.validate_dependencies(cached_deps, main_script_path):
+		return false
+	
+	# this seems to be working now that this can use the member stack to determine deps
+	# everything seems to be updating properly so far...
+	var cached_type = cached.get(Keys.CLASS_CACHE_TYPE, &"")
+	var cache_valid = cached.get(Keys.CLASS_CACHE_DEC, "") == declaration and cached_type != &""
 	
 	return cache_valid
 
@@ -430,20 +447,40 @@ func get_outer_script_constants():
 func get_gdscript_constants():
 	var valid = []
 	for c in constants.keys():
-		if get_member_declaration(c) != Keys.MEMBER_TYPE_CONST:
+		var member_data = constants[c] as Dictionary
+		if member_data[Keys.MEMBER_TYPE] == Keys.MEMBER_TYPE_ENUM:
+			valid.append(c)
+			continue
+		elif member_data[Keys.MEMBER_TYPE] != Keys.MEMBER_TYPE_CONST:
 			continue
 		var type = get_member_type(c)
-		if Utils.is_absolute_path(type) and not type.ends_with(Keys.ENUM_PATH_SUFFIX):
+		if Utils.is_absolute_path(type) and (not type.contains(Keys.MEMBER_DELIM) or Utils.type_path_get_type(type, true) == "Enum"):
 			valid.append(c)
+		
 	for ic in inner_classes.keys():
 		valid.append(ic)
+	
+	var main_parser = Utils.ParserRef.get_parser(self)
+	var inher = get_inherited_members()
+	for member in inher.keys():
+		var member_data = inher[member]
+		if member_data[Keys.MEMBER_TYPE] == Keys.MEMBER_TYPE_CONST:
+			var inh_script_path = member_data[Keys.SCRIPT_PATH]
+			var target_class_obj = self
+			if inh_script_path != main_script_path:
+				var full_script_path = UString.dot_join(inh_script_path, member_data[Keys.ACCESS_PATH])
+				var inh_parser = main_parser.get_parser_and_class_obj_for_script(full_script_path)
+				target_class_obj = inh_parser.class_obj
+			var type = target_class_obj.get_member_type(member)
+			if Utils.is_absolute_path(type) and (not type.contains(Keys.MEMBER_DELIM) or Utils.type_path_get_type(type, true) == "Enum"):
+				valid.append(member)
+		elif member_data[Keys.MEMBER_TYPE] == Keys.MEMBER_TYPE_CLASS:
+			valid.append(member)
+		elif member_data[Keys.MEMBER_TYPE] == Keys.MEMBER_TYPE_ENUM:
+			valid.append(member)
+	
 	return valid
 
-
-func get_member_declaration(member_name:String):
-	var member_data = get_member(member_name)
-	if member_data == null: return ""
-	return member_data.get(Keys.MEMBER_TYPE)
 
 func class_has_member(identifier:String):
 	if ClassDB.class_has_enum(script_base_type, identifier):

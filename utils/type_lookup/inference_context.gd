@@ -50,6 +50,40 @@ static func get_stack_string(member_name:String, full_result:String, class_obj:G
 	stack_string = stack_string + "::" + member_string + Keys.MEMBER_STACK_DELIM + full_result.get_slice(Keys.MEMBER_INFER_DELIM, 1)
 	return stack_string
 
+#! keys i-GDScriptParser.resolve_expression_to_type_rich;
+static func get_dependencies_from_member_stack(type_rich:Dictionary):
+	return get_dependencies_from_type_rich(type_rich)
+
+#! keys i-GDScriptParser.resolve_expression_to_type_rich;
+static func get_dependencies_from_type_rich(type_rich:Dictionary):
+	var deps = {}
+	for string:String in type_rich.member_stack:
+		#if not GDScriptParser.Utils.is_absolute_path(string):
+			#continue
+		var member_sides = string.split(Keys.MEMBER_STACK_DELIM, false)
+		for side in member_sides:
+			if not GDScriptParser.Utils.is_absolute_path(side):
+				continue
+			var script_data = GDScriptParser.Utils.type_path_get_script_data(side)
+			var main_path = script_data[0]
+			if not deps.has(main_path):
+				deps[main_path] = FileAccess.get_modified_time(main_path)
+	
+	if GDScriptParser.Utils.is_absolute_path(type_rich.origin):
+		var script_data = GDScriptParser.Utils.type_path_get_script_data(type_rich.origin)
+		var main_path = script_data[0]
+		if not deps.has(main_path):
+			deps[main_path] = FileAccess.get_modified_time(main_path)
+	return deps
+
+
+static func validate_dependencies(deps:Dictionary, main_script_path:=""):
+	for path in deps:
+		if path == main_script_path:
+			continue
+		if FileAccess.get_modified_time(path) != deps[path]:
+			return false
+	return true
 
 static func print_member_stack(stack:Array):
 	print(" --- InferenceContext Stack ---")

@@ -13,6 +13,9 @@ const _MAP_BLOCKS = [Keywords.FOR, Keywords.MATCH]
 
 const _VALID_OPERATORS = ["=", "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "%"]
 
+const _CACHED_TYPE = &"_cached_type"
+const _CACHED_TYPE_RICH = &"_cached_type_rich"
+
 enum TokenState {
 	NONE,
 	COMMENT,
@@ -50,6 +53,12 @@ var _parser:WeakRef #
 var _code_edit_parser:WeakRef
 var code_edit:CodeEdit #
 @warning_ignore_restore("unused_private_class_variable")
+
+# lifespan of this class is one code completion, store resolved expressions
+var _cache:= {
+	_CACHED_TYPE: {},
+	_CACHED_TYPE_RICH: {}
+}
 
 var token_state:TokenState
 var expression_state:ExpressionState
@@ -114,7 +123,7 @@ func _init(parser:GDScriptParser, parse_context:=true) -> void:
 
 
 func parse():
-	#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("CARET CONTEXT")
+	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("CARET CONTEXT")
 	
 	var parser = ParserRef.get_parser(self)
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)
@@ -150,8 +159,6 @@ func parse():
 	
 	word_before_caret = code_edit_parser.parse_identifier_at_position(caret_left, caret_left.length() - 1)
 	expression_before_caret = code_edit_parser.parse_expression_at_position(code_context, code_context_caret_pos - 1, code_context_string_map)
-	
-	push_warning(resolve_expression_to_type(UString.trim_member_access_back(expression_before_caret)))
 	
 	char_before_caret = _get_char_before_caret()
 	
@@ -215,7 +222,7 @@ func parse():
 	else:
 		scope_state = ScopeState.FUNCTION_BODY
 	
-	#t.stop()
+	t.stop()
 
 
 
@@ -499,19 +506,39 @@ func get_symbol_data(chain_text:String, class_obj:GDScriptParser.ParserClass, li
 # was just being used to make sure this was being freed
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:
-		#print("FREE CC")
+		print("FREE CC")
 		pass
 
 # API
 
-func resolve_expression_to_type(expression:String):
+#! keys i-GDScriptParser.resolve_expression_to_type;
+func resolve_expression_to_type(expression:String, line:int=-1):
+	if line == -1:
+		line = caret_line
+	var cache_tag = expression + "%%%" + str(line)
+	var cached_type_rich = _cache[_CACHED_TYPE_RICH].get(cache_tag)
+	if cached_type_rich:
+		return cached_type_rich.get("type")
+	var cached_type = _cache[_CACHED_TYPE].get(cache_tag)
+	if cached_type:
+		return cached_type
 	var parser = Utils.ParserRef.get_parser(self)
-	return parser.resolve_expression_to_type(expression, caret_line)
+	var result = parser.resolve_expression_to_type(expression, line)
+	_cache[_CACHED_TYPE][cache_tag] = result
+	return result
 
-##! keys origin:String explicit_type:String
-func resolve_expression_to_type_rich(expression:String):
+#! keys i-GDScriptParser.resolve_expression_to_type_rich;
+func resolve_expression_to_type_rich(expression:String, line:int=-1):
+	if line == -1:
+		line = caret_line
+	var cache_tag = expression + "%%%" + str(line)
+	var cached_type_rich = _cache[_CACHED_TYPE_RICH].get(cache_tag)
+	if cached_type_rich:
+		return cached_type_rich
 	var parser = Utils.ParserRef.get_parser(self)
-	return parser.resolve_expression_to_type_rich(expression, caret_line)
+	var result = parser.resolve_expression_to_type_rich(expression, line)
+	_cache[_CACHED_TYPE_RICH][cache_tag] = result
+	return result
 
 func get_current_class_object() -> GDScriptParser.ParserClass:
 	var parser = Utils.ParserRef.get_parser(self)
@@ -538,6 +565,10 @@ func get_match_block_data() -> MatchBlockData:
 	
 	_match_data.is_valid = true
 	return _match_data
+
+func get_trimmed_member_access_type_rich():
+	var trimmed = trim_last_member_access_part()
+	return resolve_expression_to_type_rich(trimmed)
 
 func trim_last_member_access_part():
 	if expression_state == ExpressionState.MEMBER_ACCESS:

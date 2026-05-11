@@ -343,6 +343,9 @@ func _line_has_open_bracket(stripped:String):
 #region CaretContext
 
 func get_line_context_start_data(target_line_index:int, params:Dictionary={}) -> Dictionary:
+	if not is_instance_valid(code_edit):
+		return {}
+	
 	var all_blocks_array = Keywords.CONTROL_FLOW_KEYWORDS
 	var map_blocks_array = params.get(Keys.CONTEXT_BLOCKS, []) as Array
 	var has_blocks = not map_blocks_array.is_empty()

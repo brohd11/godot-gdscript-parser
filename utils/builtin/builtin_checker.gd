@@ -6,12 +6,12 @@ const UFile = GDScriptParser.UFile
 
 const CLASS_NAME = &"class_name"
 const MEMBER_TYPE = &"member_type"
-const _METHODS = &"methods"
-const _PROPERTIES = &"properties"
-const _SIGNALS = &"signals"
-const _MEMBERS = &"members"
-const _CONSTANTS = &"constants"
-const _ENUMS = &"enums"
+const METHODS = &"methods"
+const PROPERTIES = &"properties"
+const SIGNALS = &"signals"
+const MEMBERS = &"members"
+const CONSTANTS = &"constants"
+const ENUMS = &"enums"
 
 const EXTENSION_API_PATH = "res://.godot/addons/gdscript_parser"
 
@@ -113,7 +113,7 @@ static func _load_extension_api() -> void:
 	
 	for key in _GDSCRIPT_FUNCS.keys():
 		_extension_api[""][key] = {
-			MEMBER_TYPE: _METHODS,
+			MEMBER_TYPE: METHODS,
 			"return_value":{
 				"type":_GDSCRIPT_FUNCS[key]
 				}
@@ -121,27 +121,27 @@ static func _load_extension_api() -> void:
 	
 	# break it down into dict[class][method] = method_data, empty class = global func
 	for dict in data.get("utility_functions", []):
-		dict[MEMBER_TYPE] = _METHODS
+		dict[MEMBER_TYPE] = METHODS
 		_extension_api[""][dict.get("name")] = dict
 	
 	var built_in_classes = data.get("builtin_classes", [])
 	for class_dict in built_in_classes:
 		var class_nm = class_dict.get("name")
 		_extension_api[class_nm] = {CLASS_NAME: class_nm}
-		_add_to_dict(class_nm, _METHODS, class_dict)
-		_add_to_dict(class_nm, _CONSTANTS, class_dict)
-		_add_to_dict(class_nm, _MEMBERS, class_dict)
+		_add_to_dict(class_nm, METHODS, class_dict)
+		_add_to_dict(class_nm, CONSTANTS, class_dict)
+		_add_to_dict(class_nm, MEMBERS, class_dict)
 	
 	var classes = data.get("classes", [])
 	for class_dict in classes:
 		var class_nm = class_dict.get("name")
 		_extension_api[class_nm] = {CLASS_NAME: class_nm}
-		_add_to_dict(class_nm, _METHODS, class_dict)
-		_add_to_dict(class_nm, _CONSTANTS, class_dict)
-		_add_to_dict(class_nm, _ENUMS, class_dict)
-		_add_to_dict(class_nm, _MEMBERS, class_dict)
-		_add_to_dict(class_nm, _SIGNALS, class_dict)
-		_add_to_dict(class_nm, _PROPERTIES, class_dict)
+		_add_to_dict(class_nm, METHODS, class_dict)
+		_add_to_dict(class_nm, CONSTANTS, class_dict)
+		_add_to_dict(class_nm, ENUMS, class_dict)
+		_add_to_dict(class_nm, MEMBERS, class_dict)
+		_add_to_dict(class_nm, SIGNALS, class_dict)
+		_add_to_dict(class_nm, PROPERTIES, class_dict)
 
 static func _add_to_dict(class_nm, member_string:String, class_dict:Dictionary):
 	var member_dict_array = class_dict.get(member_string, [])
@@ -199,7 +199,7 @@ static func class_has_method(class_nm:String, member_name:String, include_inheri
 	if class_data.has(member_name):
 		var member_data = class_data.get(member_name)
 		if member_data:
-			return member_data.get(MEMBER_TYPE) == _METHODS
+			return member_data.get(MEMBER_TYPE) == METHODS
 			#return member_data.has("return_value") or member_data.has("return_type")
 	if not include_inheritance or not ClassDB.class_exists(class_nm):
 		return false
@@ -209,7 +209,7 @@ static func class_has_method(class_nm:String, member_name:String, include_inheri
 		if inh_class_data and inh_class_data.has(member_name):
 			var member_data = class_data.get(member_name)
 			if member_data:
-				return member_data.get(MEMBER_TYPE) == _METHODS
+				return member_data.get(MEMBER_TYPE) == METHODS
 				#return member_data.has("return_value") or member_data.has("return_type")
 		inherited = ClassDB.get_parent_class(inherited)
 	return false
@@ -335,9 +335,9 @@ static func get_member_data(class_nm:StringName, member_name:String, include_inh
 static func is_member_const(class_nm:StringName, member_name:String, include_inherited:=true):
 	var member_data = get_member_data(class_nm, member_name, include_inherited)
 	var member_type = member_data.get(MEMBER_TYPE)
-	if member_type == _MEMBERS or member_type == _SIGNALS:
+	if member_type == MEMBERS or member_type == SIGNALS:
 		return false
-	if member_type == _CONSTANTS or member_type == _ENUMS:
+	if member_type == CONSTANTS or member_type == ENUMS:
 		return true
 	
 	return true
@@ -357,6 +357,16 @@ static func class_has_signal(class_nm:String, member_name:String, include_inheri
 		return data.get(MEMBER_TYPE, &"") == &"signals"
 	
 	return _class_has(signal_check, class_nm, member_name, include_inheritance)
+
+static func class_has_enum(class_nm:String, member_name:String, include_inheritance:=true) -> bool:
+	
+	var signal_check:= func(data) -> bool:
+		if data == null:
+			return false
+		return data.get(MEMBER_TYPE, &"") == ENUMS
+	
+	return _class_has(signal_check, class_nm, member_name, include_inheritance)
+
 
 static func _class_has(check_callable:Callable, class_nm:String, member_name:String, include_inheritance:=true) -> bool:
 	if _extension_api.is_empty():

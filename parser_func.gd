@@ -28,6 +28,8 @@ var _return_type_raw_line:= -1
 var _return_type:= "" # done
 var arguments = {} # done
 
+var _has_static_types:bool=false
+
 ## All mapped local vars in function.
 var local_vars:= {}
 
@@ -71,6 +73,8 @@ func _set_function_data():
 		print("FUNCTION DATA: NOT VALID")
 		return
 	
+	_has_static_types = true
+	
 	var func_data = code_edit_parser.get_type_from_line(declaration_line, column)
 	
 	arguments.clear()
@@ -87,7 +91,9 @@ func _set_function_data():
 		var arg_data_array = arg_data[arg] as Array[String]
 		var arg_type = arg_data_array[1]
 		var arg_assign = arg_data_array[2]
+		var has_static_type = true
 		if arg_type.is_empty():
+			has_static_type = arg_data_array[3] # implicit type check
 			arg_type = arg_assign
 		elif not GDScriptParser.BuiltInChecker.is_variant_type(arg_type):
 			arg_type = arg_type + Keys.INS_DELIM
@@ -95,6 +101,7 @@ func _set_function_data():
 			pass
 		arguments[arg] = {
 			Keys.TYPE: arg_type, 
+			Keys.HAS_STATIC_TYPE: has_static_type,
 			Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_FUNC_ARG,
 			Keys.LINE_INDEX: declaration_line
 			}
@@ -102,11 +109,15 @@ func _set_function_data():
 	var ret_str = result.get(Keys.FUNC_RETURN, "")
 	if ret_str != "":
 		ret_str = Utils.type_path_add_ins(ret_str)
+	else:
+		_has_static_types = false
 	_return_type_raw = ret_str
 	
 	#print("SET FUNC DATA: ", result)
 
-
+func has_static_types():
+	_set_function_data()
+	return _has_static_types
 
 
 
@@ -148,7 +159,12 @@ func map_variables() -> void:
 		if var_data != null:
 			var var_name = var_data[0]
 			var type_hint = var_data[1]
+			var has_static_type = true
 			if type_hint.is_empty():
+				if is_for:
+					has_static_type = false
+				else:
+					has_static_type = var_data[3] # implicit type check
 				type_hint = var_data[2]
 			
 			var data:= {
@@ -156,6 +172,7 @@ func map_variables() -> void:
 				Keys.LINE_INDEX: i,
 				Keys.MEMBER_TYPE: member_type,
 				Keys.TYPE: type_hint,
+				Keys.HAS_STATIC_TYPE: has_static_type,
 			}
 			local_vars[i] = data
 			found_for_local_vars[_get_cache_string(var_name, type_hint)] = true
@@ -168,11 +185,23 @@ func map_variables() -> void:
 		if not found_for_local_vars.has(key):
 			_cache.erase(key)
 
+func get_local_var_member_data(member_name:String, line_idx:int):
+	if local_vars.has(line_idx):
+		return local_vars.get(line_idx)
+	elif arguments.has(member_name):
+		return arguments.get(member_name)
+
 func get_local_var_type(line_idx:int, member_name:String) -> String:
+	var type_rich = get_local_var_type_rich(line_idx, member_name)
+	if type_rich:
+		return type_rich.type
+	return ""
+
+func get_local_var_type_rich(line_idx:int, member_name:String):
 	var is_arg = arguments.has(member_name)
 	var std_local = local_vars.has(line_idx)
 	if not std_local and not is_arg:
-		return ""
+		return GDScriptParser.TypeLookup.get_empty_type_rich()
 	
 	var parser = Utils.ParserRef.get_parser(self)
 	var dec_line:int
@@ -186,10 +215,12 @@ func get_local_var_type(line_idx:int, member_name:String) -> String:
 	
 	var type_hint = var_data.get(Keys.TYPE, "")
 	if type_hint == "":
-		return ""
+		return GDScriptParser.TypeLookup.get_empty_type_rich()
 	
 	var cache_string = _get_cache_string(member_name, type_hint)
 	for i in range(1): # single loop for early break
+		if not GDScriptParser.CACHE_TYPES:
+			break
 		if not _cache.has(cache_string):
 			break
 		var cache_data = _cache[cache_string]
@@ -208,8 +239,21 @@ func get_local_var_type(line_idx:int, member_name:String) -> String:
 	var type_rich = parser.resolve_expression_to_type_rich(member_name, dec_line)
 	
 	cached_data[Keys.CLASS_CACHE_DEPENDENCIES] = GDScriptParser.InferenceContext.get_dependencies_from_member_stack(type_rich)
-	cached_data[Keys.CLASS_CACHE_TYPE] = type_rich.type
-	return type_rich.type
+	cached_data[Keys.CLASS_CACHE_TYPE] = type_rich
+	return type_rich
+
+func is_local_var_static_typed(line_idx:int, member_name:String):
+	var is_arg = arguments.has(member_name)
+	var std_local = local_vars.has(line_idx)
+	if not std_local and not is_arg:
+		return false
+	
+	var var_data:Dictionary
+	if is_arg:
+		var_data = arguments.get(member_name)
+	else:
+		var_data = local_vars.get(line_idx)
+	return var_data.get(Keys.HAS_STATIC_TYPE, false)
 
 
 func get_in_scope_local_vars(line:int):

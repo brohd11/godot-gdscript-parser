@@ -39,9 +39,9 @@ var members:= {}
 var functions:={}
 
 var _check_inherited_debounce:=false
-var inherited_members :Dictionary = {}
-var inherited_scripts := []
-var _inherited_script_mod_cache := {}
+var inherited_members:Dictionary = {}
+var inherited_scripts:= []
+var _inherited_script_mod_cache:= {}
 
 func queue_refresh(): # need to figure out a cache for this
 	#print("REFRESH")
@@ -260,52 +260,59 @@ func get_constant_or_class(identifier:String):
 	elif inner_classes.has(identifier):
 		return inner_classes[identifier]
 
-func get_member_type(identifier:String) -> StringName:
+func get_member_type(identifier:String) -> String:
+	var type_rich = get_member_type_rich(identifier)
+	return type_rich.get("type", "")
+
+func get_member_type_rich(identifier:String):
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET MEMBER::" + identifier)
 	var member_data = get_member(identifier)
 	if member_data == null:
-		return &""
+		return GDScriptParser.TypeLookup.get_empty_type_rich()
 	
 	var parser = Utils.ParserRef.get_parser(self)
 	
 	var cache_valid = cached_resolve_valid_for_member(identifier)
 	var cached = _resolve_cache.get_or_add(identifier, {})
-	var type:StringName
+	var type_rich:Dictionary
 	if not cache_valid:
 		#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET TYPE")
 		if member_data is ParserFunc:
-			#type = member_data.get_return_type(true)
 			cached[Keys.CLASS_CACHE_DEC] = member_data.get_return_type_raw()
 			
-			var type_rich = member_data.get_return_type_rich()
-			type = type_rich.type
+			type_rich = member_data.get_return_type_rich()
 			cached["deps"] = GDScriptParser.InferenceContext.get_dependencies_from_member_stack(type_rich)
 		elif member_data.get(Keys.MEMBER_TYPE) == Keys.MEMBER_TYPE_CLASS:
 			cached[Keys.CLASS_CACHE_DEC] = parser.get_type_lookup().get_class_obj_member_type(identifier, self, {})
 			
-			type = parser.get_type_lookup().resolve_inner_class_at_line(identifier, declaration_line)
+			var class_type = parser.get_type_lookup().resolve_inner_class_at_line(identifier, declaration_line)
+			type_rich = GDScriptParser.TypeLookup.get_empty_type_rich()
+			type_rich.origin = class_type
+			type_rich.type = class_type # should this be different?
+			
 		else:
 			cached[Keys.CLASS_CACHE_DEC] = parser.get_type_lookup().get_class_obj_member_type(identifier, self, {})
 			
-			var type_rich = parser.resolve_expression_to_type_rich(identifier, declaration_line)
-			type = type_rich.type
+			type_rich = parser.resolve_expression_to_type_rich(identifier, declaration_line)
 			cached["deps"] = GDScriptParser.InferenceContext.get_dependencies_from_member_stack(type_rich)
 			# ALERT unsure about this. Do I want the type to evaluate to the explicit type or the origin
 			# i think this way, it ensures the most recent explicit type or inference, then you can get origin if needed
 			# this will set the find_origin to false, then back to it's original setting
 			#type = parser.get_type_lookup().resolve_expression_to_type_at_line(identifier, declaration_line)
-		cached[Keys.CLASS_CACHE_TYPE] = StringName(type)
+		cached[Keys.CLASS_CACHE_TYPE] = type_rich
 		#t.stop()
 	else:
-		type = cached.get(Keys.CLASS_CACHE_TYPE, &"")
+		type_rich = cached.get(Keys.CLASS_CACHE_TYPE, &"")
 	
 	
 	_resolve_cache[identifier] = cached
 	#t.stop("GET MEMBER::WAS_VALID::" + str(cache_valid) + "::" + identifier + " -> " + type)
-	return type
+	return type_rich
 
 func cached_resolve_valid_for_member(identifier:String):
-	return false
+	if not GDScriptParser.CACHE_TYPES:
+		return false
+
 	var member_data = get_member(identifier)
 	if member_data == null:
 		return false
@@ -337,6 +344,34 @@ func cached_resolve_valid_for_member(identifier:String):
 
 func get_cached_resolve_for_member(identifier:String):
 	return _resolve_cache.get(identifier, {}).get(Keys.CLASS_CACHE_TYPE, &"")
+
+func is_member_static_typed(identifier:String):
+	var member_data = get_member(identifier)
+	if member_data == null:
+		return false
+	
+	if member_data is ParserFunc:
+		return member_data.has_static_types()
+	
+	var member_type = member_data.get(Keys.MEMBER_TYPE)
+	if Utils.member_is_const_class_enum(member_type) or member_type == Keys.MEMBER_TYPE_SIGNAL:
+		return true # these don't really need anything, maybe signal?
+	
+	var code_edit_parser = Utils.ParserRef.get_code_edit_parser(self)
+	
+	var line_index = member_data.get(Keys.LINE_INDEX)
+	var column = member_data.get(Keys.COLUMN_INDEX, 0)
+	var type_data = code_edit_parser.get_type_from_line(line_index, column)
+	var result = type_data.get("result")
+	if result == null:
+		return false
+	
+	if result is Array:
+		return result[1] != "" or result[3]
+	else:
+		print("NOT AN ARRAY IN MEMBER STATIC TYPED")
+		print(result)
+	return true
 
 func has_preload(path:String) -> Variant: # doesnt handle inherited, should cache this somehow
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET PRELOAD")

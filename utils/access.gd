@@ -595,7 +595,11 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass):
 	return ""
 
 func class_has_const(symbol:String, class_obj:ParserClass):
-	var front_arg_dec = UString.get_member_access_front(symbol)
+	
+	var front_arg_dec = Utils.type_path_get_member(symbol)
+	push_warning("TEST ACCESS::", symbol)
+	#var front_arg_dec = UString.get_member_access_front(symbol)
+	
 	var member_data = class_obj.get_member(front_arg_dec)
 	if member_data == null:
 		member_data = class_obj.get_inherited_member(front_arg_dec)

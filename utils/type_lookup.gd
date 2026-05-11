@@ -1,6 +1,6 @@
 
 const PLUGIN_EXPORTED = false
-const PRINT_DEBUG = true # not PLUGIN_EXPORTED
+const PRINT_DEBUG = false # not PLUGIN_EXPORTED
 
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 
@@ -9,6 +9,7 @@ const VarInsertType = preload("res://addons/addon_lib/brohd/alib_runtime/utils/g
 const UString = GDScriptParser.UString
 const UFile = GDScriptParser.UFile
 const UClassDetail = GDScriptParser.UClassDetail
+const UResource = GDScriptParser.UResource
 
 const ParserClass = GDScriptParser.ParserClass
 const ParserFunc = GDScriptParser.ParserFunc
@@ -39,9 +40,13 @@ static var _bitwise_op_regex:RegEx
 static var _bool_op_regex:RegEx
 static var _compar_op_regex:RegEx
 
+static var autoload_cache:= {}
+
 
 var _parser:WeakRef
 var code_edit:CodeEdit
+
+
 
 var create_non_script_parsers:=true
 
@@ -156,6 +161,8 @@ func _resolve_expression_to_var_data_at_line_simple(expression:String, line:int)
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET VAR DATA")
 	
 	var class_data = get_class_data_at_line(line)
+	if not class_data.valid_data:
+		return get_empty_type_rich()
 	
 	var inf_context = _get_or_instance_inf_context()
 	inf_context.find_origin = true
@@ -163,7 +170,9 @@ func _resolve_expression_to_var_data_at_line_simple(expression:String, line:int)
 	var inf_check = _check_inf_expression(inf_context, inf_expression)
 	if inf_check != null:
 		_check_inf_on_exit()
-		return {"origin": "", "type": inf_check, "member_stack":[]}
+		var empty = get_empty_type_rich()
+		empty.type = inf_check
+		return empty
 	
 	
 	var origin = _resolve_expression_to_val(expression, class_data)
@@ -179,25 +188,36 @@ func _resolve_expression_to_var_data_at_line_simple(expression:String, line:int)
 	
 	# just check the type again rather than tracking the stack
 	var type = _resolve_expression_to_type(expression, class_data, true)
-	if type == "" and origin != "": # if this fails, can try a back up on the origin, not likely to ever happen
+	
+	var is_instance = type.ends_with(Keys.INS_DELIM)
+	
+	var type_check = Utils.type_path_get_type(type, true)
+	if type_check != "":
+		if type_check != "Enum":
+			type = type_check
+	elif type == "" and origin != "": # if this fails, can try a back up on the origin, not likely to ever happen
 		printerr("Failed type, but not origin::", expression, " -> ", origin)
-		var type_check = Utils.type_path_get_type(origin, false)
-		if type_check != "":
+		type_check = Utils.type_path_get_type(origin, true)
+		if type_check != "" and type_check != "Enum":
 			type = type_check
 		else:
 			type = origin
 	
-	var var_data = {
-		"origin": origin,
-		"type": type,
-		"member_stack": member_stack
-	}
+	# i think this should not be here, but for now it can. Instead use the is_instance key
+	if type != "" and is_instance and not type.ends_with(Keys.INS_DELIM):
+		type = Utils.type_path_add_ins(type)
+	
+	var data = get_empty_type_rich()
+	data.origin = origin
+	data.type = type
+	data.member_stack = member_stack
+	data.is_instance = is_instance
 	
 	#t.stop()
 	#print(expression," -> ",origin)
 	#InferenceContext.print_member_stack(member_stack)
 	#print(var_data)
-	return var_data
+	return data
 
 
 func _resolve_expression_to_origin(expression: String, class_data:ClassData) -> String:
@@ -218,6 +238,8 @@ func _resolve_expression_to_origin(expression: String, class_data:ClassData) -> 
 	var result = _resolve_expression_to_val(expression, class_data)
 	inf_context.finish_expression(inf_expression, result)
 	
+	
+	
 	inf_context.find_origin = current_find_setting
 	inf_context=null
 	_check_inf_on_exit()
@@ -228,6 +250,9 @@ func _resolve_expression_to_type(expression: String, class_data:ClassData, set_f
 	if class_resolution == true:
 		printerr("CLASS RES TRUE")
 	class_resolution = false
+	
+	if not class_data.valid_data:
+		return ""
 	
 	var inf_context = _get_or_instance_inf_context()
 	var inf_expression = _get_inf_expression(class_data, expression)
@@ -273,7 +298,8 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		#return expression
 	
 	if expression == "self": # if self, we can just return the path to the class
-		return UString.dot_join(main_script_path, initial_class_obj.access_path)
+		var class_path = UString.dot_join(main_script_path, initial_class_obj.access_path)
+		return Utils.type_path_add_ins(class_path)
 	elif expression.begins_with("self."):
 		expression = expression.trim_prefix("self.")
 	
@@ -338,6 +364,8 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		var current_t_is_ins = current_type_path.ends_with(Keys.INS_DELIM)# or is_initial_class
 		if current_t_is_ins:
 			current_type_path = current_type_path.trim_suffix(Keys.INS_DELIM)
+		
+		
 		
 		var add_to_inf_context:=true
 		
@@ -432,6 +460,8 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		
 		var preload_resolved:=false
 		var class_member_resolved:=false
+		var current_type_has_member = _class_has_member(current_type_path, identifier)
+		var current_type_base_has_member = _class_has_member(current_class_obj.script_base_type, identifier)
 		if resolved_type != "":
 			pass # this seems ok as a guard for all 
 		if identifier == "preload" and is_func: # this may be not needed anymore? is in in_script_process
@@ -473,7 +503,18 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 				
 				queued_callable = ""
 			print_deb(T.RESOLVE, "CALLABLE BRANCH", "RES", resolved_type)
-		elif current_type_path != "null" and (_class_has_member(current_type_path, identifier) or BuiltInChecker.is_global_method(identifier)):
+		elif current_type_path != "null" and (current_type_has_member or current_type_base_has_member or BuiltInChecker.is_global_method(identifier)):
+			# TEST ALERT this may be a bit jank, need further testing
+			
+			# if id is get or in call, process them via the custom methods
+			if identifier != "get" and not identifier in CALL_METHODS:
+				if current_type_has_member:
+					pass # if current type has member, continue as usual
+				elif current_type_base_has_member:
+					# not in current but is in base, switch types
+					current_type_path = current_class_obj.script_base_type
+			# TEST ALERT
+			
 			if not BuiltInChecker.is_global_method(identifier) and not BuiltInChecker.is_variant_type(current_type_path):
 				if not current_t_is_ins and not BuiltInChecker.is_member_const(current_type_path, identifier):
 					print_deb(T.RESOLVE, "NOT A CONST", current_type_path, identifier)
@@ -485,6 +526,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 				queued_callable = Utils.type_path_add_member(current_type_path, identifier) + CALLABLE_SUFFIX
 				if current_type_path == "":
 					current_type_path = GLOBAL_CALLABLE_QUEUED
+				
 				resolved_type = current_type_path
 				class_member_resolved = true # set it here in case a global method is called and type path doesn't change
 				
@@ -496,6 +538,9 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 					#queued_signal = Utils.type_path_add_member(current_type_path, identifier) + SIGNAL_SUFFIX
 					resolved_type = current_type_path
 					resolved_type = Utils.type_path_add_member(current_type_path, identifier) + SIGNAL_SUFFIX
+			elif BuiltInChecker.class_has_enum(current_type_path, identifier):
+				resolved_type = get_class_member_type(current_type_path, identifier)
+				resolved_type = Utils.type_path_add_member(current_type_path, identifier) + ENUM_SUFFIX
 			elif current_t_is_dict and (identifier == "get" or identifier == "get_or_add"):
 				resolved_type = _resolve_builtin_class_member(current_part, current_type_path, current_class_obj, local_vars)
 				pass # skip for now, this is handled below, maybe move here
@@ -512,10 +557,10 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 			print_deb(T.RESOLVE, "NO BRANCH", "RES", resolved_type)
 		
 		
+		## this was originally just on the class member branch, will this cause issues to apply to all?
+		#if not preload_resolved and resolved_type != "" and current_t_is_ins:
+			#resolved_type = Utils.type_path_add_ins(resolved_type)
 		
-		# this was originally just on the class member branch, will this cause issues to apply to all?
-		if not preload_resolved and resolved_type != "" and current_t_is_ins:
-			resolved_type = Utils.type_path_add_ins(resolved_type)
 		
 		if resolved_type == "": 
 			if current_class_obj.class_has_member(identifier):
@@ -547,6 +592,9 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 				if resolved_type != "":
 					print_deb_err(T.RESOLVE, "SECOND CLASS HAS MEMBER --- DID RESOLVE::", current_part, "::", current_type_path, "::", resolved_type)
 		
+		# this was originally just on the class member branch, will this cause issues to apply to all?
+		if not preload_resolved and resolved_type != "" and current_t_is_ins:
+			resolved_type = Utils.type_path_add_ins(resolved_type)
 		
 		
 		var resolved_member = false
@@ -636,7 +684,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		
 		if resolved_type == "":
 			print_deb(T.RESOLVE, "ATTEMPT GLOBAL", identifier)
-			resolved_type = UClassDetail.get_global_class_path(identifier)
+			resolved_type = check_global_or_autoload(identifier)
 		
 		print_deb(T.RESOLVE, "BASE ID", resolved_type)
 		
@@ -649,7 +697,8 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		#^ --- HANDLE THE RESULT ---
 		
 		if resolved_type is not String and resolved_type is not StringName:
-			resolved_type = ""
+			print_deb(T.RESOLVE, "RETURN FAIL", expression)
+			return ""
 		if resolved_type == "": # If we hit a dead end (untyped var, unknown function)
 			print_deb(T.RESOLVE, "RETURN FAIL", expression)
 			return ""
@@ -667,9 +716,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 			resolved_type = pre_recurse_var_check
 		
 		
-		# RECURSION CHECK: Did the variable return a literal expression instead of a parsed type?
-		# e.g., local_vars["my_var"] resulted in the string "SomeClass.get_instance()"
-		# We must resolve that expression into a true path before continuing!
+		# RECURSION CHECK: if not a valid type or path, resolve further
 		if _is_unresolved_expression(resolved_type):# and not resolved_member:
 			add_to_inf_context = false
 			print_deb(T.RESOLVE, "UNRESOLVED RECURSING", resolved_type)
@@ -698,6 +745,21 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		var variant_check = _variant_type_check(resolved_type, false)
 		if variant_check != "":
 			resolved_type = variant_check
+		
+		# TEST ALERT this may be a bit jank, need further testing, not sure if this is where it should go..
+		
+		# convert resource path to it's gdscript base
+		if Utils.is_absolute_path(resolved_type) and resolved_type.trim_suffix(Keys.INS_DELIM).get_extension() == "tres":
+			var trimmed_path = resolved_type.trim_suffix(Keys.INS_DELIM)
+			var script_path = UResource.get_resource_script_class(trimmed_path)
+			#push_warning("RESOLVED TRES::", script_path)
+			resolved_type = script_path
+			var global_check = check_global_or_autoload(resolved_type)
+			if global_check != "":
+				#push_warning("RESOLVED GLOBAL::", global_check)
+				resolved_type = global_check
+			resolved_type = Utils.type_path_add_ins(resolved_type)
+		# TEST ALERT
 		
 		print_deb(T.RESOLVE ,"PRE NMEW RESMEM",resolved_member,"PRE::",identifier, " -> ", resolved_type, " ->:", current_type_path, ":")
 		var non_member_part = Utils.type_path_get_non_member(resolved_type)
@@ -818,6 +880,7 @@ func _is_unresolved_expression(identifier:String):
 		if Utils.is_absolute_path(identifier) or BuiltInChecker.is_builtin_class(identifier):
 			return false
 		#return true
+	
 	if _variant_type_check(identifier) != "":
 		return false
 	if Utils.is_absolute_path(identifier):
@@ -834,16 +897,23 @@ func _is_unresolved_expression(identifier:String):
 		return false
 	elif identifier.ends_with(SIGNAL_SUFFIX):
 		return false
-	elif identifier.find(".") > -1:
-		var sm = Utils.ParserRef.get_parser(self).get_string_map(identifier)
-		var front = UString.get_member_access_front(identifier, sm)
-		var back = UString.trim_member_access_front(identifier, sm)
-		if ClassDB.class_exists(front):
-			if ClassDB.class_has_enum(front, back):
-				return false
+	
+	# TEST forces 'Node.ProccessMode' down a level and returns with 'Node.ProccessMode##Enum'
+	#elif identifier.find(".") > -1:
+		#var sm = Utils.ParserRef.get_parser(self).get_string_map(identifier)
+		#var front = UString.get_member_access_front(identifier, sm)
+		#var back = UString.trim_member_access_front(identifier, sm)
+		#if ClassDB.class_exists(front):
+			#if ClassDB.class_has_enum(front, back):
+				#return false
+			# not sure about this
+			#if ClassDB.class_has_integer_constant(front, back):
+				#return false
+		
 		#if _class_has_member(front, back):
 			#return false
-		return true
+		#return true
+	
 	return true
 
 
@@ -1447,9 +1517,9 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 				if type_declaration.contains(Keys.MEMBER_ASSIGN_DELIM):
 					collection_text = type_declaration.get_slice(Keys.MEMBER_ASSIGN_DELIM, 0)
 					collection_type_dec = type_declaration.get_slice(Keys.MEMBER_ASSIGN_DELIM, 1)
-				print_deb(T.RESOLVE, "FOR LOOP TYPE::COLLECTION::", collection_text, "::TYPEHINT::",collection_type_dec)
+				print_deb(T.RESOLVE, "FOR LOOP TYPE::COLLECTION", collection_text, "TYPEHINT",collection_type_dec)
 				 # if this defined and we arent doing origin search, then we don't need to go further
-				if collection_type_dec != "" and _check_inf_find_origin():
+				if collection_type_dec != "" and not _check_inf_find_origin():
 					type_declaration = collection_type_dec
 				elif collection_text.ends_with("values()") or collection_text.ends_with("keys()"):
 					# these 2 resolve expression do not respect origin, so they are faster
@@ -1472,6 +1542,7 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 		var p_check = resolve_preload(type_declaration, class_obj)
 		if p_check != "": # adding this check here allows a non resolved preload to be resolved to path and have ins tag added if appropriate
 			type_declaration = p_check # does the one in the main body still apply?, I am thinking no
+			
 	
 	
 	if type_declaration != "":
@@ -1503,9 +1574,13 @@ func _is_class_name_valid(identifier:String):
 		return true
 	var current_script = _get_parser_main_script()
 	var base = current_script.get_instance_base_type()
-	if (ClassDB.class_has_enum(base, identifier) or ClassDB.class_has_integer_constant(base, identifier) or 
-	ClassDB.class_has_method(base, identifier) or ClassDB.class_has_signal(base, identifier)):
-		return true
+	#if (
+		##ClassDB.class_has_enum(base, identifier) or
+		##ClassDB.class_has_integer_constant(base, identifier) or
+		#ClassDB.class_has_method(base, identifier) or
+		#ClassDB.class_has_signal(base, identifier)
+		#):
+		#return true
 	return false
 
 
@@ -1552,11 +1627,20 @@ static func get_class_member_type(base_type:String, identifier:String, resolve_c
 	# this is special for these, can either handle 'enum::SomeEnum' or keep these
 	if ClassDB.class_has_enum(base_type, identifier):
 		if resolve_const:
+			return Utils.type_path_add_type(Utils.type_path_add_member(base_type, identifier), "Enum")
 			return "Enum"
+		return Utils.type_path_add_type(Utils.type_path_add_member(base_type, identifier), "Enum")
 		return UString.dot_join(base_type, identifier)
 	elif ClassDB.class_has_integer_constant(base_type, identifier):
+		var int_enum = ClassDB.class_get_integer_constant_enum(base_type, identifier)
+		if int_enum != "":
+			if resolve_const:
+				return "Enum"
+			return Utils.type_path_add_type(Utils.type_path_add_member(base_type, int_enum), "Enum")
+			return UString.dot_join(base_type, int_enum)
 		if resolve_const:
 			return "int"
+		return Utils.type_path_add_type(Utils.type_path_add_member(base_type, identifier), "int")
 		return UString.dot_join(base_type, identifier)
 	
 	var result = BuiltInChecker.get_member_type(base_type, identifier)
@@ -1600,7 +1684,7 @@ func _variant_type_check(type_hint:String, type_cast_check:=true):
 	elif Utils.token_is_string(type_hint):
 		return "String"
 	elif type_hint.begins_with("typedarray::"):
-		return "Array[%s]" % type_hint.get_slice("::", 1)
+		return "Array[%s]" % type_hint.get_slice("::", 1).trim_suffix(Keys.INS_DELIM)
 	elif type_hint.begins_with("Array"): # for Array[SomeType]
 		var arr_hint = type_hint.substr(5).strip_edges()
 		if arr_hint.begins_with("["):
@@ -1616,11 +1700,18 @@ func _variant_type_check(type_hint:String, type_cast_check:=true):
 	
 	if ClassDB.class_exists(type_hint):
 		return type_hint
-	var current_script = _get_parser_main_script()
-	var base = current_script.get_instance_base_type()
-	if (ClassDB.class_has_enum(base, type_hint) or ClassDB.class_has_integer_constant(base, type_hint) or 
-	ClassDB.class_has_method(base, type_hint) or ClassDB.class_has_signal(base, type_hint)):
-		return UString.dot_join(base, type_hint)
+	
+	# TEST this would force these to be handled via recursion and give a fully typed path
+	#var current_script = _get_parser_main_script()
+	#var base = current_script.get_instance_base_type()
+	#if (
+		##ClassDB.class_has_enum(base, type_hint) or
+		##ClassDB.class_has_integer_constant(base, type_hint) or 
+		#ClassDB.class_has_method(base, type_hint) or 
+		#ClassDB.class_has_signal(base, type_hint)
+		#):
+		#return UString.dot_join(base, type_hint)
+	# TEST
 	
 	return ""
 
@@ -1783,7 +1874,12 @@ func _get_script_member_type(line:int, column:int=0): # thjs could be a bit more
 	if dec_type == Keys.MEMBER_TYPE_FOR:
 		return Utils.get_type_from_for_info(result)
 	elif dec_type == Keys.MEMBER_TYPE_CONST:
-		return result[2] # assigned text
+		var assignment = result[2]
+		if Utils.is_absolute_path(assignment):
+			var ext = assignment.get_extension()
+			if ext == "tres" or ext == "res":
+				assignment = Utils.type_path_add_ins(assignment)
+		return assignment # assigned text
 	elif dec_type == Keys.MEMBER_TYPE_VAR or dec_type == Keys.MEMBER_TYPE_STATIC_VAR:
 		return Utils.get_type_from_var_info(result)
 	elif dec_type == Keys.MEMBER_TYPE_ENUM:
@@ -1807,7 +1903,12 @@ func _get_script_member_type(line:int, column:int=0): # thjs could be a bit more
 
 func resolve_preload(preload_call:String, class_obj:ParserClass):
 	# at this point, this should not be a path, that would have been handled already
-	var preload_string = preload_call.get_slice("preload", 1).strip_edges().trim_prefix("(").trim_suffix(")").strip_edges()
+	var preload_string = preload_call.get_slice("preload", 1).strip_edges()
+	if not preload_string.begins_with("("):
+		return ""
+	#preload_string = preload_string.trim_prefix("(").trim_suffix(")").strip_edges()
+	preload_string = preload_string.trim_prefix("(").substr(0, preload_string.find(")")).strip_edges()
+	
 	var path = Utils.run_expression(preload_string, class_obj.script_resource)
 	if path == "":
 		return ""
@@ -1815,12 +1916,54 @@ func resolve_preload(preload_call:String, class_obj:ParserClass):
 		path = Utils.ensure_absolute_path(path, class_obj.main_script_path)
 	else:
 		path = UFile.uid_to_path(path)
+	
+	if path.get_extension() == "tres" or path.get_extension() == "res":
+		path = Utils.type_path_add_ins(path)
 	return path
 
 
 func member_in_class_or_local_vars(identifier:String, class_obj:ParserClass, local_vars:Dictionary):
 	var in_members = class_obj.has_script_member(identifier) or local_vars.has(identifier)
 	return in_members
+
+func check_global_or_autoload(identifier:String) -> String:
+	var global = UClassDetail.get_global_class_path(identifier)
+	if not global.is_empty():
+		return global
+	return autoload_cache.get(identifier, "")
+
+func set_autoload_cache():
+	if autoload_cache == null:
+		autoload_cache = {}
+	
+	var valid_scripts = {}
+	for data:Dictionary in ProjectSettings.get_property_list():
+		if not data.name.begins_with("autoload/"):
+			continue
+		var autoload_name = data.name
+		var autoload_path = ProjectSettings.get_setting(autoload_name)
+		if not autoload_path.begins_with("*"):
+			continue
+		
+		autoload_name = autoload_name.trim_prefix("autoload/")
+		autoload_path = UFile.uid_to_path(autoload_path.trim_prefix("*"))
+		
+		if autoload_cache.has(autoload_name) and autoload_path == autoload_cache[autoload_name]:
+			valid_scripts[autoload_name] = autoload_path
+			continue
+		
+		if autoload_path.get_extension() == "gd":
+			pass
+		elif autoload_path.get_extension() == "cs":
+			continue
+		else:
+			autoload_path = ALibRuntime.Utils.UResource.UPackedScene.ReadFile.get_root_script_path(autoload_path)
+			if autoload_path == "":
+				continue
+		
+		valid_scripts[autoload_name] = autoload_path
+	
+	autoload_cache = valid_scripts
 
 
 func _get_parser_for_script(script_path:String):
@@ -1839,6 +1982,8 @@ func get_class_data_at_line(line:int) -> ClassData:
 	var parser = Utils.ParserRef.get_parser(self)
 	var class_data = ClassData.new(parser, line)
 	return class_data
+
+
 
 
 #endregion
@@ -1909,6 +2054,8 @@ func _initialize_op_regexes():
 
 
 class ClassData:
+	var valid_data:=true
+	
 	var initial_type_path:String = ""
 	var initial_line:int
 	var class_obj:ParserClass
@@ -1919,6 +2066,9 @@ class ClassData:
 	func _init(parser:GDScriptParser, line:int) -> void:
 		initial_line = line
 		class_obj = parser.get_class_object(parser.get_class_at_line(initial_line))
+		if not is_instance_valid(class_obj):
+			valid_data = false
+			return
 		var function_name = class_obj.get_function_at_line(initial_line)
 		if function_name != Keys.CLASS_BODY:
 			func_name = function_name
@@ -1932,6 +2082,10 @@ class ClassData:
 			return func_obj.is_static()
 		return false
 
+
+#! keys type:String origin:String  member_stack:Array is_instance:bool
+static func get_empty_type_rich():
+	return {"type": "", "origin": "", "member_stack": [], "is_instance": false}
 
 #! arg_location section:T
 static func print_deb(section:String, ...msg:Array):
@@ -1952,7 +2106,7 @@ const _PRINT = [
 	#T.BUILTIN,
 	#T.INHERITED,
 	#T.VAR_TO_CONST,
-	#T.RESOLVE,
+	T.RESOLVE,
 	#T.ACCESS_PATH
 	]
 
@@ -2035,7 +2189,7 @@ func _simple_type_check(type_hint:String, exit_check:=false):
 	elif Utils.token_is_string(type_hint):
 		return "String"
 	elif type_hint.begins_with("typedarray::"):
-		return "Array[%s]" % type_hint.get_slice("::", 1)
+		return "Array[%s]" % type_hint.get_slice("::", 1).trim_suffix(Keys.INS_DELIM)
 	elif type_hint.begins_with("Array"): # for Array[SomeType]
 		var arr_hint = type_hint.get_slice("Array", 1).strip_edges()
 		if arr_hint.begins_with("["):

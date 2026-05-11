@@ -38,8 +38,10 @@ static func file_path_to_type(file_path:String):
 		return &"PackedScene"
 	elif ext in _TEXTURE_EXTS:
 		return &"Texture2D"
-	var resource = load(file_path) as Resource
-	return resource.get_class()
+	if FileAccess.file_exists(file_path):
+		var resource = load(file_path) as Resource
+		return resource.get_class()
+	return ""
 
 static func join_delim(part_1:String, part_2:String, delim:StringName) -> String:
 	if part_1 != "" and part_2 != "":
@@ -312,7 +314,7 @@ static func run_expression(expression:String, script:GDScript) -> String:
 	var expr = Expression.new()
 	var err = expr.parse(expression)
 	var result = null
-	if err == OK:
+	if err == OK: # first bool is to show errors, these should probably be turned off
 		result = expr.execute([], script, true, true)
 	if result == null:
 		result = ""

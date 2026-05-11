@@ -2,10 +2,12 @@
 #! import_p Keys,
 
 const PLUGIN_EXPORTED = false
+const CACHE_TYPES = false
 
 const UString = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_string.gd")
 const UClassDetail = preload("res://addons/addon_lib/brohd/alib_editor/utils/src/u_class_detail.gd")
 const UFile = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_file.gd")
+const UResource = preload("uid://72uu8yngsoht") #! resolve ALibRuntime.Utils.UResource
 
 const CacheHelper = preload("res://addons/addon_lib/brohd/alib_runtime/cache_helper/cache_helper.gd")
 
@@ -22,6 +24,7 @@ const InferenceContext = preload("res://addons/addon_lib/brohd/alib_runtime/util
 
 const Utils = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/utils.gd")
 const Keys = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/keys.gd")
+
 
 
 static var _static_parser_cache:= {}
@@ -55,6 +58,10 @@ func _init() -> void:
 		Utils.ParserRef.set_refs(object, self)
 	
 	_parser_cache = _static_parser_cache
+
+
+func set_autoload_cache():
+	_type_lookup.set_autoload_cache()
 
 #region ParserCache
 func set_parser_cache(cache_dict:Dictionary):
@@ -139,8 +146,11 @@ func set_code_edit(new_code_edit:CodeEdit, free_existing:=false):
 ## Set script path and load
 func set_script_path(new_path:String):
 	_script_path = new_path
-	_script_resource = load(_script_path)
-	set_source_code(_script_resource.source_code)
+	if FileAccess.file_exists(_script_path):
+		_script_resource = load(_script_path)
+		set_source_code(_script_resource.source_code)
+	else:
+		set_source_code("")
 
 func get_script_path():
 	return _script_path
@@ -234,7 +244,7 @@ func resolve_expression_to_type(identifier_name:String, line:int=-1) -> String:
 	#ALibRuntime.DebugPrint.print_deb(self, "GET ID TYPE", identifier_name, result)
 	return result
 
-#! keys origin:String type:String member_stack:Array
+#! keys i-TypeLookup.get_empty_type_rich;
 func resolve_expression_to_type_rich(identifier_name:String, line:int=-1) -> Dictionary:
 	if line == -1:
 		line = code_edit.get_caret_line()
@@ -331,6 +341,9 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 	if not Utils.is_gdscript_path(script_path):
 		print("NOT A GDSCRIPT FILE::", full_script_path)
 		return
+	if not FileAccess.file_exists(script_path):
+		_parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {}).erase(script_path)
+		return
 	
 	if is_instance_valid(active_parser) and not force_cache:
 		if script_path == active_parser.get_script_path():
@@ -426,13 +439,17 @@ func get_parser_and_class_obj_for_script(script_path:String):
 	var script_data = Utils.type_path_get_script_data(script_path)
 	var script_main_path = script_data[0]
 	var class_path = script_data[1]
+	var parser = self
+	var class_obj:ParserClass
 	if script_main_path == _script_path:
-		var class_obj = _class_access.get(class_path) as ParserClass
-		return {Keys.GET_PARSER: self, Keys.GET_CLASS_OBJ:class_obj}
+		class_obj = _class_access.get(class_path) as ParserClass
 	else:
-		var parser = get_parser_for_path(script_main_path)
-		var class_obj = parser.get_class_object(class_path)
-		return {Keys.GET_PARSER: parser, Keys.GET_CLASS_OBJ:class_obj}
+		parser = get_parser_for_path(script_main_path)
+		if not parser:
+			return {}
+		class_obj = parser.get_class_object(class_path)
+	
+	return {Keys.GET_PARSER: parser, Keys.GET_CLASS_OBJ:class_obj}
 
 
 func get_parser_and_class_obj(script_path:String, class_path:String):

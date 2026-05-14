@@ -188,7 +188,7 @@ func _resolve_expression_to_var_data_at_line_simple(expression:String, line:int)
 	
 	# just check the type again rather than tracking the stack
 	var type = _resolve_expression_to_type(expression, class_data, true)
-	
+	#print("RESULT::", origin, "::", type)
 	var is_instance = type.ends_with(Keys.INS_DELIM)
 	#print("GET TYPE RICH::", expression, " -> ", origin)
 	var type_check = Utils.type_path_get_type(type, true)
@@ -275,7 +275,6 @@ func _resolve_expression_to_type(expression: String, class_data:ClassData, set_f
 	return result
 
 
-#^ consider passing the class data object instead this will allow better local var shadow checking and clean up the arguments
 # resolves expression to value
 func _resolve_expression_to_val(expression: String, class_data:ClassData, recursions=0) -> String:
 	if recursions >= 10:
@@ -345,17 +344,10 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		count += 1
 		var current_part: String = parts.pop_front()
 		
-		# clean this up
-		var is_initial_class = current_type_path.trim_suffix(Keys.INS_DELIM) == "" or current_type_path.trim_suffix(Keys.INS_DELIM) == (initial_class_obj.get_script_class_path())
-
-		#if current_class_obj == initial_class_obj:
-		if is_initial_class:
-			local_vars = class_data.local_vars
-		else: # out of initial class, local vars no longer valid
-			local_vars = {}
-		
 		print_deb(T.RESOLVE, "         ----------------------            ")
 		print_deb(T.RESOLVE, "NEXT PART", current_part, "CURRENT TYPE PATH", current_type_path)
+		
+		var add_to_inf_context:=true
 		
 		var is_func = current_part.find("(") != -1
 		var identifier = current_part.split("(", false, 1)[0] if is_func else current_part
@@ -365,13 +357,14 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		if current_t_is_ins:
 			current_type_path = current_type_path.trim_suffix(Keys.INS_DELIM)
 		
-		
-		
-		var add_to_inf_context:=true
+		var is_initial_class = current_type_path == "" or current_type_path == (initial_class_obj.get_script_class_path())
+		if is_initial_class: # originally right after current_part
+			local_vars = class_data.local_vars
+		else: # out of initial class, local vars no longer valid
+			local_vars = {}
 		
 		var id_is_ins = identifier.ends_with(Keys.INS_DELIM)
 		if id_is_ins:
-			print_deb(T.RESOLVE, "ID IS INS", identifier)
 			identifier = identifier.get_slice(Keys.INS_DELIM, 0)
 		
 		if identifier in RESOLVE_FLAGS:
@@ -392,6 +385,8 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 					current_part_in_script = false
 				elif type == "Callable":
 					pass
+				elif type == "Variant": # if we are at variant, don't think any thing can be inferred further
+					return "Variant"
 				else:
 					# signal was also being treated specially, but may not need it
 					# can any signal specific information be taken from it? if so, can do the queue
@@ -410,10 +405,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 			#current_part = current_part.get_slice("await ", 1).strip_edges()
 			identifier = current_part.get_slice("await ", 1).strip_edges()
 		
-		#var is_callable = current_type_path.ends_with(CALLABLE_SUFFIX)
 		var callable_is_queued = queued_callable != ""
-		var signal_is_queued = queued_signal != ""
-		#var is_signal = current_type_path.ends_with(SIGNAL_SUFFIX)
 		var current_t_is_dict = current_type_path == "Dictionary" or current_type_path.begins_with("Dictionary[")
 		var current_t_is_arr = current_type_path == "Array" or current_type_path.begins_with("Array[")
 		var current_t_is_collection = current_t_is_dict or current_t_is_arr
@@ -458,32 +450,17 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		print_deb(T.RESOLVE, "CYCLE ----------")
 		print_deb(T.RESOLVE, "CHECK", identifier, "CURRENT TYPE", current_type_path, "RAW", current_part, "RES", resolved_type)
 		
-		var preload_resolved:=false
-		var class_member_resolved:=false
-		var current_type_has_member = _class_has_member(current_type_path, identifier)
-		var current_type_base_has_member = _class_has_member(current_class_obj.script_base_type, identifier)
-		var is_global_method = BuiltInChecker.is_global_method(identifier)
-		var is_global_enum = BuiltInChecker.is_global_enum(identifier)
+		# new order of operations for no shadowing issues
+		# - resolve queued callable
+		# - check for script or inherited member
+		# - check global, class, or current type for member
+		# - check global class name or autoload
+		# - variant check on resolved value
+		# - recurse if necessary
+		# - switch class context
+		# - queue signal if awaited
 		
-		if resolved_type != "":
-			pass # this seems ok as a guard for all 
-		if identifier == "preload" and is_func: # this may be not needed anymore? is in in_script_process
-			print_deb(T.RESOLVE, "PRELOAD BRANCH")
-			preload_resolved = true
-			resolved_type = resolve_preload(current_part, current_class_obj)
-			#if id_is_ins:
-				#resolved_type += Keys.INS_DELIM
-			print_deb(T.RESOLVE, "PRELOAD BRANCH", "RES", resolved_type)
-		elif BuiltInChecker.is_builtin_class(identifier):
-			resolved_type = identifier
-			print_deb(T.RESOLVE, "BUILTIN IDENTIFIER BRANCH", "RES", resolved_type)
-		#elif local_vars.has(identifier):
-		elif is_initial_class and member_in_class_or_local_vars(identifier, current_class_obj, local_vars):
-			print_deb(T.RESOLVE, "INITIAL CLASS BRANCH", "RES", resolved_type)
-			pass # if the identifier is a local var it may shadow a built in
-		#elif external_script_path != "": # this needs refinement
-			#pass
-		elif callable_is_queued:
+		if callable_is_queued:
 			if not identifier in CALL_METHODS: # bind, is_valid, etc
 				resolved_type = get_class_member_type("Callable", identifier)
 				if resolved_type == "Callable":
@@ -505,134 +482,20 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 						builtin = trimmed_callable_path.get_slice(Keys.MEMBER_DELIM, 0)
 						method_name = trimmed_callable_path.get_slice(Keys.MEMBER_DELIM, 1)
 					resolved_type = get_class_member_type(builtin, method_name)
-				
 				queued_callable = ""
-			print_deb(T.RESOLVE, "CALLABLE BRANCH", "RES", resolved_type)
-		elif current_type_path != "null" and (current_type_has_member or current_type_base_has_member or is_global_method or is_global_enum):
-			# TEST ALERT this may be a bit jank, need further testing
 			
-			# if id is get or in call, process them via the custom methods
-			if identifier != "get" and not identifier in CALL_METHODS:
-				if current_type_has_member:
-					pass # if current type has member, continue as usual
-				elif current_type_base_has_member:
-					# not in current but is in base, switch types
-					current_type_path = current_class_obj.script_base_type
-			# TEST ALERT
-			
-			if not is_global_method and not is_global_enum and not BuiltInChecker.is_variant_type(current_type_path):
-				if not current_t_is_ins and not BuiltInChecker.is_member_const(current_type_path, identifier):
-					print_deb(T.RESOLVE, "NOT A CONST", current_type_path, identifier)
-					return ""
-			
-			# not sure why this is checking for 'null' string
-			print_deb(T.RESOLVE, "class has member")
-			if BuiltInChecker.class_has_method(current_type_path, identifier) and not is_func:
-				queued_callable = Utils.type_path_add_member(current_type_path, identifier) + CALLABLE_SUFFIX
-				if current_type_path == "":
-					current_type_path = GLOBAL_CALLABLE_QUEUED
-				
-				resolved_type = current_type_path
-				class_member_resolved = true # set it here in case a global method is called and type path doesn't change
-				
-			elif BuiltInChecker.class_has_signal(current_type_path, identifier):
-				if is_awaited: # signal arguments
-					resolved_type = get_class_member_type(current_type_path, identifier)
-					print_deb(T.RESOLVE, "SIG GET RES", current_type_path, identifier, "->", resolved_type)
-				else: # signal object
-					#queued_signal = Utils.type_path_add_member(current_type_path, identifier) + SIGNAL_SUFFIX
-					resolved_type = current_type_path
-					resolved_type = Utils.type_path_add_member(current_type_path, identifier) + SIGNAL_SUFFIX
-			elif is_global_enum:
-				resolved_type = BuiltInChecker.get_global_member_type(identifier)
-			elif BuiltInChecker.class_has_enum(current_type_path, identifier):
-				resolved_type = get_class_member_type(current_type_path, identifier)
-				resolved_type = Utils.type_path_add_member(current_type_path, identifier) + ENUM_SUFFIX
-			elif current_t_is_dict and (identifier == "get" or identifier == "get_or_add"):
-				resolved_type = _resolve_builtin_class_member(current_part, current_type_path, current_class_obj, local_vars)
-				pass # skip for now, this is handled below, maybe move here
-			else:
-				
-				resolved_type = get_class_member_type(current_type_path, identifier)
-				print_deb(T.RESOLVE, "get_class_member_type::", current_type_path, "::", identifier)
-			
-			if resolved_type != "":
-				class_member_resolved = true
-				if resolved_type.begins_with("enum::"): # handle returns from functions
-					
-					var enum_name = resolved_type.trim_prefix("enum::")
-					if not enum_name.contains("."):
-						resolved_type = enum_name
-					else:
-						var split = enum_name.split(".", false)
-						resolved_type = Utils.type_path_add_member(split[0], split[1])
-					if not resolved_type.ends_with(ENUM_SUFFIX):
-						resolved_type = resolved_type + ENUM_SUFFIX
-					print("ID::", identifier, "::enum -- ", resolved_type)
-					
-				
-			
-			print_deb(T.RESOLVE, "BUILT IN RESOLVE BRANCH", "RES", resolved_type)
-		else:
-			print_deb(T.RESOLVE, "NO BRANCH", "RES", resolved_type)
+			if resolved_type != "" and current_t_is_ins:
+				resolved_type = Utils.type_path_add_ins(resolved_type)
 		
 		
-		## this was originally just on the class member branch, will this cause issues to apply to all?
-		#if not preload_resolved and resolved_type != "" and current_t_is_ins:
-			#resolved_type = Utils.type_path_add_ins(resolved_type)
-		
-		
-		if resolved_type == "": 
-			if current_class_obj.class_has_member(identifier):
-				print_deb_err(T.RESOLVE, "IS THIS USED SECOND CLASS HAS MEMBER --- START::", current_part, "::", current_type_path)
-				# handles 'call', 'get' in classes and Dictionary.get() inferring
-				if is_func and identifier in CALL_METHODS:
-					var meth_str = Utils.get_string_inside_brackets(current_part)
-					if meth_str != "":
-						print_deb_err(T.RESOLVE, "SETTING ID METHOD::", current_part, " -> ", identifier)
-						identifier = meth_str
-						is_func = true
-						
-				elif identifier != "get" and identifier != "get_or_add": # all after this are 'get'
-					resolved_type = get_class_member_type(current_class_obj.script_base_type, identifier)
-					if resolved_type != "":
-						class_member_resolved = true
-					print_deb_err(T.RESOLVE, "IS THIS USED ---- ::", identifier, " -> ", resolved_type) 
-				elif is_func and Utils.is_absolute_path(current_type_path):
-					var prop_str = Utils.get_string_inside_brackets(current_part)
-					if prop_str != "":
-						print_deb_err(T.RESOLVE, "SETTING ID PROP::", identifier, " -> ", prop_str)
-						identifier = prop_str
-						is_func = false
-				else: # get can be tricky, the built in returns Nil, but we can attempt to infer more. Maybe limit to Dictionary?
-					resolved_type = _resolve_builtin_class_member(current_part, current_type_path, current_class_obj, local_vars)
-					if resolved_type != "":
-						print_deb_err(T.RESOLVE, "IS THIS USED SECOND CLASS HAS MEMBER::TYPE SUCCESSFULLY RESOLVED::", current_part, "::", current_type_path, "::", resolved_type)
-				
-				if resolved_type != "":
-					print_deb_err(T.RESOLVE, "SECOND CLASS HAS MEMBER --- DID RESOLVE::", current_part, "::", current_type_path, "::", resolved_type)
-		
-		# this was originally just on the class member branch, will this cause issues to apply to all?
-		if not preload_resolved and resolved_type != "" and current_t_is_ins:
-			resolved_type = Utils.type_path_add_ins(resolved_type)
-		
-		
+		var valid_class_identifier:=false
 		var resolved_member = false
 		if resolved_type == "":
 			if current_part_in_script: #^ --- IN SCRIPT ---
 				print_deb(T.RESOLVE, "IN_SCRIPT", identifier, "IN", main_script_path, "CLASS", current_class_obj.access_path)
-				
-				
-				if not member_in_class_or_local_vars(identifier, current_class_obj, local_vars):
-					# should this have the same adding await and what not as process external to this?
-					var id_to_send = identifier
-					if is_awaited:
-						id_to_send = "await " + id_to_send
-					if is_func:
-						id_to_send = id_to_send + "()"
-					resolved_type = _get_inherited_member_type(identifier, id_to_send, current_class_obj)
-					print_deb(T.RESOLVE,"INHERITED", resolved_type)
-				else:
+				# i think we want script first, in case of func overide
+				if member_in_class_or_local_vars(identifier, current_class_obj, local_vars):
+					valid_class_identifier = true
 					print_deb(T.RESOLVE, "CLASS OR LOCAL")
 					if is_func:
 						resolved_type = _resolve_process_in_script_data(identifier, current_class_obj, local_vars)
@@ -643,23 +506,18 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 						else:
 							var class_path = Utils.get_or_add_current_type_path(current_type_path, current_class_obj)
 							resolved_type = Utils.type_path_add_member(class_path, identifier + SIGNAL_SUFFIX)
-							#queued_signal = Utils.type_path_add_member(class_path, identifier + SIGNAL_SUFFIX)
-							#resolved_type = class_path
-							#if current_t_is_ins:
-								#resolved_type = Utils.type_path_add_ins(resolved_type)
 					
 						# check local vars too, they can shadow func names
 					elif not current_class_obj.has_function(identifier) or local_vars.has(identifier):
 						resolved_type = _resolve_process_in_script_data(identifier, current_class_obj, local_vars)
 						print_deb(T.RESOLVE, "RESOLVE IN SCRIPT", identifier, resolved_type)
-					else:
-						if current_class_obj.has_function(identifier):
-							var class_path = Utils.get_or_add_current_type_path(current_type_path, current_class_obj)
-							#resolved_type = Utils.type_path_add_member(class_path, identifier + CALLABLE_SUFFIX)
-							queued_callable = Utils.type_path_add_member(class_path, identifier + CALLABLE_SUFFIX)
-							resolved_type = class_path
-							if current_t_is_ins:
-								resolved_type = Utils.type_path_add_ins(resolved_type)
+					#else:
+					elif current_class_obj.has_function(identifier):
+						var class_path = Utils.get_or_add_current_type_path(current_type_path, current_class_obj)
+						queued_callable = Utils.type_path_add_member(class_path, identifier + CALLABLE_SUFFIX)
+						resolved_type = class_path
+						if current_t_is_ins:
+							resolved_type = Utils.type_path_add_ins(resolved_type)
 					
 					if resolved_type.contains(Keys.MEMBER_INFER_DELIM):
 						identifier = resolved_type.get_slice(Keys.MEMBER_INFER_DELIM, 0)
@@ -672,70 +530,155 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 							resolved_type = ""
 						elif not Utils.member_is_valid_static(member_data.get(Keys.MEMBER_TYPE)):
 							resolved_type = ""
+							return "" # this should be fine to just return here, accessing a non static from static
 						
 					if resolved_type != "":
 						resolved_member = true
+				elif member_in_inherited(identifier, current_class_obj):
+					valid_class_identifier = true
+					var id_to_send = _get_external_script_id_to_send(identifier, is_awaited, is_func)
+					resolved_type = _get_inherited_member_type(identifier, id_to_send, current_class_obj)
+					print_deb(T.RESOLVE,"INHERITED", resolved_type)
+				
 				
 				if resolved_type != "":
 					add_to_inf_context = false
-				
-			else: #^ --- OUTSIDE SCRIPT ---
+			else:
 				if Utils.is_absolute_path(current_type_path):
-					 # these need to be the same as how it was sent, essentially this is just doing the current thing in the inherited script
-					var id_to_send = identifier
-					#id_to_send.
-					if is_awaited:
-						id_to_send = "await " + id_to_send
-					if is_func:
-						id_to_send = id_to_send + "()"
+					# these need to be the same as how it was sent, essentially this is just doing the current thing in the inherited script
+					var id_to_send = _get_external_script_id_to_send(identifier, is_awaited, is_func)
 					resolved_type = _process_external_identifier(id_to_send, external_script_path, external_script_class_access)
 					print_deb(T.RESOLVE, "EXTERNAL", "%s -> %s" % [id_to_send, resolved_type])
-					
 					if resolved_type != "":
 						add_to_inf_context = false
 		
+		if current_type_path == "null": # if this never calls, can remove it from the check below
+			printerr("TYPE PATH IS NULL")
 		
-		if resolved_type == "" and not Utils.is_absolute_path(current_type_path):# pass through current part so that you can get full context
-			print_deb(T.RESOLVE, "OUTSIDE BUILT IN", identifier)
-			if queued_callable == "":
-				resolved_type = _resolve_builtin_class_member(current_part, current_type_path, current_class_obj, local_vars) # ie. Dictionary.get(), can infer default
-				if resolved_type != "":
-					printerr("IS THIS USED -- Outside built in ", current_part, " -> ", resolved_type)
+		var class_member_resolved:=false
+		if not valid_class_identifier:
+			var preload_resolved:=false
+			if resolved_type == "":
+				var current_type_has_member = _class_has_member(current_type_path, identifier)
+				var current_type_base_has_member = _class_has_member(current_class_obj.script_base_type, identifier)
+				var is_global_method = BuiltInChecker.is_global_method(identifier)
+				var is_global_enum = BuiltInChecker.is_global_enum(identifier)
+				
+				if identifier == "preload" and is_func: # this may be not needed anymore? is in in_script_process
+					preload_resolved = true
+					resolved_type = resolve_preload(current_part, current_class_obj)
+					print_deb(T.RESOLVE, "PRELOAD BRANCH", "RES", resolved_type)
+				elif BuiltInChecker.is_builtin_class(identifier):
+					resolved_type = identifier
+					print_deb(T.RESOLVE, "BUILTIN IDENTIFIER BRANCH", "RES", resolved_type)
+				elif current_type_path != "null" and (current_type_has_member or current_type_base_has_member or is_global_method or is_global_enum):
+					# not sure why this is checking for 'null' string lol
+					
+					# TEST ALERT this may be a bit jank, need further testing
+					# if id is get or in call, process them via the custom methods
+					if identifier != "get" and not identifier in CALL_METHODS:
+						if current_type_has_member:
+							pass # if current type has member, continue as usual
+						elif current_type_base_has_member:
+							# not in current but is in base, switch types
+							current_type_path = current_class_obj.script_base_type
+					# TEST ALERT
+					
+					if not is_global_method and not is_global_enum and not BuiltInChecker.is_variant_type(current_type_path):
+						if not current_t_is_ins and not BuiltInChecker.is_member_const(current_type_path, identifier):
+							print_deb(T.RESOLVE, "NOT A CONST", current_type_path, identifier)
+							return ""
+					
+					
+					print_deb(T.RESOLVE, "class has member")
+					if BuiltInChecker.class_has_method(current_type_path, identifier) and not is_func:
+						queued_callable = Utils.type_path_add_member(current_type_path, identifier) + CALLABLE_SUFFIX
+						if current_type_path == "":
+							current_type_path = GLOBAL_CALLABLE_QUEUED
+						
+						resolved_type = current_type_path
+						# is this needed? may have been for callables with void return?
+						class_member_resolved = true # set it here in case a global method is called and type path doesn't change
+					elif BuiltInChecker.class_has_signal(current_type_path, identifier):
+						if is_awaited: # signal arguments
+							resolved_type = get_class_member_type(current_type_path, identifier)
+							print_deb(T.RESOLVE, "SIG GET RES", current_type_path, identifier, "->", resolved_type)
+						else: # signal object
+							resolved_type = Utils.type_path_add_member(current_type_path, identifier) + SIGNAL_SUFFIX
+					elif is_global_enum:
+						resolved_type = BuiltInChecker.get_global_member_type(identifier)
+					elif BuiltInChecker.class_has_enum(current_type_path, identifier):
+						resolved_type = get_class_member_type(current_type_path, identifier)
+						resolved_type = Utils.type_path_add_member(current_type_path, identifier) + ENUM_SUFFIX
+					elif current_t_is_dict and (identifier == "get" or identifier == "get_or_add"):
+						resolved_type = _resolve_builtin_class_member(current_part, current_type_path, current_class_obj, local_vars)
+					elif is_func and identifier in CALL_METHODS:
+						var meth_str = Utils.get_string_inside_brackets(current_part)
+						if meth_str != "":
+							print_deb_err(T.RESOLVE, "SETTING ID METHOD::", current_part, " -> ", identifier)
+							resolved_type = current_type_path
+							parts.push_front(meth_str + "()")
+						
+					elif is_func and identifier == "get": # if current is dict, it has already failed above, this will give a false result if a string
+						var prop_str = Utils.get_string_inside_brackets(current_part)
+						if prop_str != "":
+							print_deb_err(T.RESOLVE, "SETTING ID PROP::", identifier, " -> ", prop_str)
+							resolved_type = current_type_path
+							parts.push_front(prop_str)
+					else:
+						resolved_type = get_class_member_type(current_type_path, identifier)
+						print_deb(T.RESOLVE, "get_class_member_type::", current_type_path, "::", identifier)
+					
+					if resolved_type != "":
+						class_member_resolved = true
+						if resolved_type.begins_with("enum::"): # handle returns from functions
+							var enum_name = resolved_type.trim_prefix("enum::")
+							if not enum_name.contains("."):
+								resolved_type = enum_name
+							else:
+								var split = enum_name.split(".", false)
+								resolved_type = Utils.type_path_add_member(split[0], split[1])
+							if not resolved_type.ends_with(ENUM_SUFFIX):
+								resolved_type = resolved_type + ENUM_SUFFIX
+							
+							print("ID::", identifier, "::enum -- ", resolved_type)
+					
+					print_deb(T.RESOLVE, "BUILT IN RESOLVE BRANCH", "RES", resolved_type)
+				else:
+					print_deb(T.RESOLVE, "NO BRANCH", "RES", resolved_type)
+			
+			# applies to all in the non class member branch
+			if not preload_resolved and resolved_type != "" and current_t_is_ins:
+				resolved_type = Utils.type_path_add_ins(resolved_type)
+		
 		
 		if resolved_type == "":
 			print_deb(T.RESOLVE, "ATTEMPT GLOBAL", identifier)
 			resolved_type = check_global_or_autoload(identifier)
 		
-		print_deb(T.RESOLVE, "BASE ID", resolved_type)
-		
 		if resolved_type == "":
+			#push_warning("VARIANT CHECK::", current_part)
 			var part_simple_check = _variant_type_check(current_part)
 			if part_simple_check != "":
 				print_deb(T.RESOLVE, "VARIANT CHECK", resolved_type,"->" ,part_simple_check)
 				resolved_type = part_simple_check
+		else:
+			var pre_recurse_var_check = _variant_type_check(resolved_type)
+			if pre_recurse_var_check != "":
+				print_deb(T.RESOLVE, "PRE REC VAR", resolved_type, "->", pre_recurse_var_check)
+				resolved_type = pre_recurse_var_check
 		
-		#^ --- HANDLE THE RESULT ---
+		print_deb(T.RESOLVE, "BASE ID", resolved_type)
+		
 		
 		if resolved_type is not String and resolved_type is not StringName:
-			print_deb(T.RESOLVE, "RETURN FAIL", expression)
+			printerr(T.RESOLVE, "::RETURN FAIL--IS NOT STRING::", expression) #^r if this doesn't call, is obsolete
 			return ""
 		if resolved_type == "": # If we hit a dead end (untyped var, unknown function)
 			print_deb(T.RESOLVE, "RETURN FAIL", expression)
 			return ""
 		
-		
-		#^ not sure about this, this is included in the variant check, is variant check overkill? also checked above...
-		#var as_check = _check_for_type_cast(resolved_type)
-		#if as_check != "":
-			#print_deb(T.RESOLVE, "AS CHECK", resolved_type,"->" ,as_check)
-			#resolved_type = as_check
-		
-		var pre_recurse_var_check = _variant_type_check(resolved_type)
-		if pre_recurse_var_check != "":
-			print_deb(T.RESOLVE, "PRE REC VAR", resolved_type, "->", pre_recurse_var_check)
-			resolved_type = pre_recurse_var_check
-		
-		
+		#^ --- HANDLE THE RESULT ---
 		# RECURSION CHECK: if not a valid type or path, resolve further
 		if _is_unresolved_expression(resolved_type):# and not resolved_member:
 			add_to_inf_context = false
@@ -773,7 +716,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 			var trimmed_path = resolved_type.trim_suffix(Keys.INS_DELIM)
 			var script_path = UResource.get_resource_script_class(trimmed_path)
 			#push_warning("RESOLVED TRES::", script_path)
-			resolved_type = script_path
+			resolved_type = script_path # this could be a class_name or a path
 			var global_check = check_global_or_autoload(resolved_type)
 			if global_check != "":
 				#push_warning("RESOLVED GLOBAL::", global_check)
@@ -887,12 +830,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 	return current_type_path
 
 
-
-
 func _is_unresolved_expression(identifier:String):
-	#if identifier.begins_with("res://"):
-	#if _simple_type_check(identifier) != "":
-		#return false
 	if identifier.trim_suffix(Keys.INS_DELIM) in RESOLVE_FLAGS:
 		#print("THIS SHOULD FINE::")
 		return false
@@ -919,22 +857,6 @@ func _is_unresolved_expression(identifier:String):
 	elif identifier.ends_with(SIGNAL_SUFFIX):
 		return false
 	
-	# TEST forces 'Node.ProccessMode' down a level and returns with 'Node.ProccessMode##Enum'
-	#elif identifier.find(".") > -1:
-		#var sm = Utils.ParserRef.get_parser(self).get_string_map(identifier)
-		#var front = UString.get_member_access_front(identifier, sm)
-		#var back = UString.trim_member_access_front(identifier, sm)
-		#if ClassDB.class_exists(front):
-			#if ClassDB.class_has_enum(front, back):
-				#return false
-			# not sure about this
-			#if ClassDB.class_has_integer_constant(front, back):
-				#return false
-		
-		#if _class_has_member(front, back):
-			#return false
-		#return true
-	
 	return true
 
 
@@ -943,9 +865,7 @@ func _resolve_process_in_script_data(member_name:String, class_obj:ParserClass, 
 		#print("IN TYPE LOOKUP::GET MEMBER::", member_name)
 		#return class_obj.get_cached_resolve_for_member(member_name)
 	
-	
 	var inf_context = get_inference_context()
-	
 	
 	var count = 0
 	var last_result = ""
@@ -958,7 +878,6 @@ func _resolve_process_in_script_data(member_name:String, class_obj:ParserClass, 
 		if count > 50:
 			#print("COUNTED OUT")
 			break
-		
 		
 		# the idea with this was to keep this level before any recursive entries
 		#var next_inf_index = inf_context.member_stack.size() if inf_context else 0
@@ -1001,9 +920,8 @@ func _resolve_process_in_script_data(member_name:String, class_obj:ParserClass, 
 			#inf_context.member_stack.insert(next_inf_index, stack_string)
 			inf_context.add_to_member_stack(stack_string)
 			#inf_context.add_to_member_stack("PROC - " + stack_string) # just a debug tag
-		else:
+		elif PRINT_DEBUG:
 			push_warning("NO INF CONTEXT")
-			pass
 		
 		
 		if result.ends_with(Keys.INS_DELIM):
@@ -1012,7 +930,6 @@ func _resolve_process_in_script_data(member_name:String, class_obj:ParserClass, 
 		
 		if class_obj.has_function(result) and not local_vars.has(result):
 			break # if the result is a raw function call, break and process it
-		
 	
 	if is_ins:
 		result = Utils.type_path_add_ins(result)
@@ -1090,8 +1007,8 @@ func _get_inherited_member_type(identifier:String, full_part:String, class_obj:P
 	elif UClassDetail.get_global_class_path(stripped_identifer) != "":
 		return ""
 	
-	if class_obj.class_has_member(stripped_identifer):
-		return stripped_identifer
+	#if class_obj.class_has_member(stripped_identifer):
+		#return stripped_identifer
 	
 	if class_resolution and class_obj == class_resolution_obj:
 		#^r IMPLEMENT OUTER SCRIPT CONSTANTS HERE
@@ -1604,6 +1521,12 @@ func _is_class_name_valid(identifier:String):
 		#return true
 	return false
 
+func _get_external_script_id_to_send(identifier:String, is_awaited:bool, is_func:bool) -> String:
+	if is_awaited:
+		identifier = "await " + identifier
+	if is_func:
+		identifier = identifier + "()"
+	return identifier
 
 # Can I combine this with get_class member? or maybe just add a bool check to builtin checker
 ## Check that ClassDB class contains member.
@@ -1951,6 +1874,12 @@ func member_in_class_or_local_vars(identifier:String, class_obj:ParserClass, loc
 	var in_members = class_obj.has_script_member(identifier) or local_vars.has(identifier)
 	return in_members
 
+func member_in_inherited(identifier:String, class_obj:ParserClass):
+	if class_resolution and class_obj == class_resolution_obj:
+		return false
+	var member_data = class_obj.get_inherited_member(identifier)
+	return member_data != null
+
 func check_global_or_autoload(identifier:String) -> String:
 	var global = UClassDetail.get_global_class_path(identifier)
 	if not global.is_empty():
@@ -2034,11 +1963,11 @@ func _check_inf_expression(inf_context:InferenceContext, inf_expression:String):
 	else:
 		inf_context.start_expression(inf_expression)
 
-func _check_inf_on_exit():
+func _check_inf_on_exit() -> void:
 	if is_instance_valid(inference_context):
 		inference_context = null
 
-func _check_inf_find_origin():
+func _check_inf_find_origin() -> bool:
 	var inf_context = get_inference_context()
 	if not inf_context:
 		return false
@@ -2047,7 +1976,7 @@ func _check_inf_find_origin():
 #endregion
 
 
-func _initialize_op_regexes():
+func _initialize_op_regexes() -> void:
 	if not is_instance_valid(_ternary_if_regex):
 		_ternary_if_regex = RegEx.new()
 		_ternary_if_regex.compile("\\bif\\b")
@@ -2102,14 +2031,14 @@ class ClassData:
 				func_obj.parse()
 				local_vars = func_obj.get_in_scope_local_vars(initial_line)
 	
-	func in_static_function():
+	func in_static_function() -> bool:
 		if is_instance_valid(func_obj):
 			return func_obj.is_static()
 		return false
 
 
 #! keys type:String origin:String  member_stack:Array is_instance:bool
-static func get_empty_type_rich():
+static func get_empty_type_rich() -> Dictionary:
 	return {"type": "", "origin": "", "member_stack": [], "is_instance": false}
 
 #! arg_location section:T

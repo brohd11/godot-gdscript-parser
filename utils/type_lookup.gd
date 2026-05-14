@@ -190,7 +190,7 @@ func _resolve_expression_to_var_data_at_line_simple(expression:String, line:int)
 	var type = _resolve_expression_to_type(expression, class_data, true)
 	
 	var is_instance = type.ends_with(Keys.INS_DELIM)
-	
+	#print("GET TYPE RICH::", expression, " -> ", origin)
 	var type_check = Utils.type_path_get_type(type, true)
 	if type_check != "":
 		if type_check != "Enum":
@@ -464,6 +464,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		var current_type_base_has_member = _class_has_member(current_class_obj.script_base_type, identifier)
 		var is_global_method = BuiltInChecker.is_global_method(identifier)
 		var is_global_enum = BuiltInChecker.is_global_enum(identifier)
+		
 		if resolved_type != "":
 			pass # this seems ok as a guard for all 
 		if identifier == "preload" and is_func: # this may be not needed anymore? is in in_script_process
@@ -480,6 +481,8 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		elif is_initial_class and member_in_class_or_local_vars(identifier, current_class_obj, local_vars):
 			print_deb(T.RESOLVE, "INITIAL CLASS BRANCH", "RES", resolved_type)
 			pass # if the identifier is a local var it may shadow a built in
+		#elif external_script_path != "": # this needs refinement
+			#pass
 		elif callable_is_queued:
 			if not identifier in CALL_METHODS: # bind, is_valid, etc
 				resolved_type = get_class_member_type("Callable", identifier)
@@ -843,7 +846,8 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 				current_class_obj = new_class_obj
 				if new_class_obj == null:
 					print_deb(T.RESOLVE, "UNHANDLED CLASS OBJECT", current_type_path)
-					pass
+				
+				external_script_path = ""
 			else:
 				external_script_path = current_script_path
 				external_script_class_access = access_path

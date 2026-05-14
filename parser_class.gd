@@ -142,6 +142,7 @@ func has_script_member(identifier:String):
 		return true
 	elif inner_classes.has(identifier):
 		return true
+	return false
 
 func get_member_data(member_name:String):
 	if members.has(member_name):

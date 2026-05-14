@@ -368,7 +368,7 @@ func get_function_call_data() -> FunctionCallData:
 	
 	var parser = Utils.ParserRef.get_parser(self)
 	var expression = _active_function_call.expression
-	
+	print("FUNC EXPR::", expression)
 	_active_function_call.symbol_data = get_symbol_data(expression, get_current_class_object(), caret_line, local_vars)
 	_active_function_call.function_data = parser.get_function_data(expression, caret_line)
 	#_active_function_call.function_data = #^ this needs to operate on function object, it will be faster and ensure proper return
@@ -853,6 +853,7 @@ class FunctionCallData:
 	
 	func _func_get_current_arg_data():
 		var arg_data = function_data.get(Keys.FUNC_ARGS, {})
+		print("FUNC DATA:: ARGS::", arg_data)
 		return arg_data.get(_func_get_current_arg_name())
 		
 	

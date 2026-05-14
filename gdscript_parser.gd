@@ -313,6 +313,19 @@ func get_member_info_from_script(full_script_path:String):
 	if is_instance_valid(class_obj):
 		return class_obj.get_member_data(member_name)
 
+## Takes a type path in this format: "res://my_class.gd.InnerClass::member##Type"
+func get_member_data_from_origin(origin_type_path:String):
+	if not Utils.is_absolute_path(origin_type_path):
+		return
+	
+	var non_member_part = Utils.type_path_get_non_member(origin_type_path)
+	var member = Utils.type_path_get_member(origin_type_path)
+	var parser_data = get_parser_and_class_obj_for_script(non_member_part)
+	if not parser_data:
+		return
+	var member_data = parser_data.class_obj.get_member_data(member)
+	return member_data
+	
 
 func get_line_context(line:int, column:int=0, insert_caret:=false):
 	return code_edit_parser.get_line_context(line, column, insert_caret).get(Keys.CONTEXT_TEXT)

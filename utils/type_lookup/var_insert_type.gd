@@ -189,7 +189,7 @@ static func _insert_types(parser:GDScriptParser, script_editor:CodeEdit, untyped
 static func get_type_access_path(parser:GDScriptParser, expression:String, line:int): # preserve comments
 	var type_rich:Dictionary = parser.resolve_expression_to_type_rich(expression, line)
 	var inferred_type:String = type_rich.type
-	print("HERER::",inferred_type)
+	print("HERE::",inferred_type)
 	
 	# these ones operate on the member line dec itself, not the next up
 	var type_data:Dictionary = parser.get_code_edit_parser().get_type_from_line(line - 1)
@@ -207,7 +207,7 @@ static func get_type_access_path(parser:GDScriptParser, expression:String, line:
 				inferred_type = parser.resolve_expression_to_type(adjusted_string, line - 1)
 				print("ADJ STRING::TYPE", "::", adjusted_string, " -> ", inferred_type)
 	
-	#print("HERER::",inferred_type)
+	print("HERE::",inferred_type)
 	
 	
 	if inferred_type == "":
@@ -216,6 +216,8 @@ static func get_type_access_path(parser:GDScriptParser, expression:String, line:
 	inferred_type = inferred_type.trim_suffix(GDScriptParser.Keys.INS_DELIM)
 	
 	if not GDScriptParse.is_absolute_path(inferred_type):
+		if inferred_type.ends_with(GDScriptParser.Keys.ENUM_PATH_SUFFIX): # these are handled
+			return inferred_type.trim_suffix(GDScriptParser.Keys.ENUM_PATH_SUFFIX)
 		
 		var member_name = GDScriptParser.Utils.type_path_get_member(inferred_type)
 		if member_name == "":
@@ -247,7 +249,7 @@ static func get_type_access_path(parser:GDScriptParser, expression:String, line:
 				inferred_type = access_options.global
 			else:
 				return ""
-			return inferred_type
+		return inferred_type
 	
 	
 	return ""

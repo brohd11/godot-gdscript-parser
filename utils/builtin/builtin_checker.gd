@@ -124,6 +124,17 @@ static func _load_extension_api() -> void:
 		dict[MEMBER_TYPE] = METHODS
 		_extension_api[""][dict.get("name")] = dict
 	
+	for dict in data.get("global_enums", []):
+		dict[MEMBER_TYPE] = ENUMS
+		var enum_name = dict.get("name")
+		_extension_api[""][enum_name] = dict
+		for v in dict.get("values"):
+			_extension_api[""][v.get("name")] = {
+				MEMBER_TYPE: ENUMS,
+				"type": "enum::" + enum_name
+			}
+			pass
+	
 	var built_in_classes = data.get("builtin_classes", [])
 	for class_dict in built_in_classes:
 		var class_nm = class_dict.get("name")
@@ -182,7 +193,20 @@ static func is_global_method(identifier:String) -> bool:
 	if _extension_api.is_empty():
 		_load_extension_api()
 	var class_data = _extension_api.get("", {})
-	return class_data.has(identifier)
+	if not class_data.has(identifier):
+		return false
+	return class_data.get(identifier).get(MEMBER_TYPE) == METHODS
+
+static func is_global_enum(identifier:String) -> bool:
+	if _extension_api.is_empty():
+		_load_extension_api()
+	var class_data = _extension_api.get("", {})
+	if not class_data.has(identifier):
+		return false
+	return class_data.get(identifier).get(MEMBER_TYPE) == ENUMS
+
+static func get_global_member_type(identifier:String) -> String:
+	return get_member_type("", identifier, false)
 
 static func get_global_func_data(func_name:String) -> Dictionary:
 	return get_func_data("", func_name)

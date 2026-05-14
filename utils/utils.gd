@@ -108,7 +108,7 @@ static func type_path_get_local_var(string:String):
 	var line_number = member_data_str.get_slice("-", 1)
 	return {
 		"class_path": non_member_part,
-		"line": line_number,
+		"line": int(line_number),
 		"member_name": member_name,
 	}
 	pass
@@ -318,7 +318,7 @@ static func run_expression(expression:String, script:GDScript) -> String:
 		result = expr.execute([], script, true, true)
 	if result == null:
 		result = ""
-	return result
+	return str(result)
 
 class Keywords: # this also exists in UString.GDScriptParse, move it?
 	const DECLARATIONS = [VAR, STATIC_VAR, FUNC, STATIC_FUNC, CONST, SIGNAL, ENUM, CLASS]

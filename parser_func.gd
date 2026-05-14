@@ -23,19 +23,21 @@ var class_indent:int = 0
 var name:String
 var member_data:={}
 
+var empty_return_as_variant:=false # where to set this?
 var _return_type_raw:= ""
 var _return_type_raw_line:= -1
 var _return_type:= "" # done
 var arguments = {} # done
 
-var _has_static_types:bool=false
+var _has_static_return:bool=false
 
 ## All mapped local vars in function.
 var local_vars:= {}
+var _local_vars_mapped:=false
 
 ## In scope local vars, set during type look up.
 var in_scope_local_vars:= {}
-var _local_vars_set:=false
+var _in_scope_local_vars_set:=false
 
 
 func is_static():
@@ -43,14 +45,16 @@ func is_static():
 
 func queue_refresh():
 	_cache_dirty = true
-	_local_vars_set = false
+	
+	_in_scope_local_vars_set = false
 	in_scope_local_vars.clear() # not sure how this will interact with parse
 	
 	# these are not related to type lookup local vars
+	_local_vars_mapped = false
 	local_vars.clear()
 
 func set_in_scope_local_vars(new_vars:Dictionary):
-	_local_vars_set = true
+	_in_scope_local_vars_set = true
 	end_line = func_lines[func_lines.size() - 1]
 	_set_function_data()
 	in_scope_local_vars = new_vars
@@ -60,6 +64,7 @@ func parse():
 	end_line = func_lines[func_lines.size() - 1]
 	_set_function_data()
 	map_variables()
+
 
 
 
@@ -73,7 +78,7 @@ func _set_function_data():
 		print("FUNCTION DATA: NOT VALID")
 		return
 	
-	_has_static_types = true
+	_has_static_return = true
 	
 	var func_data = code_edit_parser.get_type_from_line(declaration_line, column)
 	
@@ -110,20 +115,20 @@ func _set_function_data():
 	if ret_str != "":
 		ret_str = Utils.type_path_add_ins(ret_str)
 	else:
-		_has_static_types = false
+		_has_static_return = false
 	_return_type_raw = ret_str
 	
 	#print("SET FUNC DATA: ", result)
 
-func has_static_types():
+func has_static_return():
 	_set_function_data()
-	return _has_static_types
+	return _has_static_return
 
 
 
 ## Scan current func for local vars and func data.
 func map_variables() -> void:
-	if not _cache_dirty:
+	if _local_vars_mapped:
 		return
 	var found_for_local_vars = {}
 	
@@ -184,6 +189,8 @@ func map_variables() -> void:
 	for key in _cache.keys():
 		if not found_for_local_vars.has(key):
 			_cache.erase(key)
+	
+	_local_vars_mapped = true
 
 func get_local_var_member_data(member_name:String, line_idx:int):
 	if local_vars.has(line_idx):
@@ -257,7 +264,7 @@ func is_local_var_static_typed(line_idx:int, member_name:String):
 
 
 func get_in_scope_local_vars(line:int):
-	if _local_vars_set:
+	if _in_scope_local_vars_set:
 		return in_scope_local_vars
 	
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)
@@ -362,7 +369,9 @@ func _infer_return_type() -> String:
 	_return_type_raw_line = i
 	var raw_result = potential_return.strip_edges().trim_prefix("return").strip_edges()
 	if raw_result == "":
-		return "Variant"
+		if empty_return_as_variant:
+			return "Variant"
+		return "void"
 	
 	#var parser = Utils.ParserRef.get_parser(self)
 	#

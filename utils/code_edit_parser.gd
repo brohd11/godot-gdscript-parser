@@ -69,15 +69,15 @@ func ensure_first_parse():
 	parse_text()
 
 func parse_text(force:=false):
-	if not is_instance_valid(_map_regex):
-		_map_regex = RegEx.new()
-		_map_regex.compile("^(?:(static)\\s+)?(var|func|enum|const|signal|class_name|class)\\s+([a-zA-Z_]\\w*)")
+	_initialize_regex_map()
 	_initialize_regex_annotation()
 	
 	var parser = _get_parser()
+	if not is_instance_valid(parser.code_edit):
+		#print("CALLED PARSE NO CODE EDIT")
+		return
 	
-	
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("S::" + parser.get_script_path())
+	#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("S::" + parser.get_script_path())
 	
 	_set_code_edit(parser.code_edit)
 	indent_size = code_edit.get_tab_size()
@@ -711,7 +711,7 @@ func get_string_map(text:String):
 func get_line(line:int, strip_comment:=false, strip_left:=false):
 	var line_text = code_edit.get_line(line)
 	if not strip_comment: #^r this should also account for strip left?
-		return line_text
+		return line_text.strip_edges(strip_left, true)
 	else:
 		var com_idx = line_text.find("#")
 		while com_idx != -1:
@@ -816,6 +816,18 @@ func get_type_from_line_text(stripped_line_text:String):
 			return data
 	return {}
 
+func get_member_name_from_line(line:int):
+	_initialize_regex_map()
+	var text = get_line(line).strip_edges()
+	var result = _map_regex.search(text)
+	if result:
+		var keyword:String = result.get_string(2)
+		if result.get_string(1) != "":
+			if result.get_string(1) != "static":
+				printerr("REGEX MISTAKE SHOULD BE STATIC ", result.get_string(1))
+			keyword = "static " + keyword
+		return result.get_string(3)
+	return ""
 
 
 static func get_line_declaration(stripped_line:String) -> StringName:
@@ -918,3 +930,8 @@ func _initialize_regex_annotation():
 	if not is_instance_valid(_annotation_regex):
 		_annotation_regex = RegEx.new()
 		_annotation_regex.compile("^@[A-Za-z0-9_]+(?:\\([^)]*\\))?\\s*")
+
+func _initialize_regex_map():
+	if not is_instance_valid(_map_regex):
+		_map_regex = RegEx.new()
+		_map_regex.compile("^(?:(static)\\s+)?(var|func|enum|const|signal|class_name|class)\\s+([a-zA-Z_]\\w*)")

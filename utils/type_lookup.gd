@@ -462,6 +462,8 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		var class_member_resolved:=false
 		var current_type_has_member = _class_has_member(current_type_path, identifier)
 		var current_type_base_has_member = _class_has_member(current_class_obj.script_base_type, identifier)
+		var is_global_method = BuiltInChecker.is_global_method(identifier)
+		var is_global_enum = BuiltInChecker.is_global_enum(identifier)
 		if resolved_type != "":
 			pass # this seems ok as a guard for all 
 		if identifier == "preload" and is_func: # this may be not needed anymore? is in in_script_process
@@ -503,7 +505,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 				
 				queued_callable = ""
 			print_deb(T.RESOLVE, "CALLABLE BRANCH", "RES", resolved_type)
-		elif current_type_path != "null" and (current_type_has_member or current_type_base_has_member or BuiltInChecker.is_global_method(identifier)):
+		elif current_type_path != "null" and (current_type_has_member or current_type_base_has_member or is_global_method or is_global_enum):
 			# TEST ALERT this may be a bit jank, need further testing
 			
 			# if id is get or in call, process them via the custom methods
@@ -515,7 +517,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 					current_type_path = current_class_obj.script_base_type
 			# TEST ALERT
 			
-			if not BuiltInChecker.is_global_method(identifier) and not BuiltInChecker.is_variant_type(current_type_path):
+			if not is_global_method and not is_global_enum and not BuiltInChecker.is_variant_type(current_type_path):
 				if not current_t_is_ins and not BuiltInChecker.is_member_const(current_type_path, identifier):
 					print_deb(T.RESOLVE, "NOT A CONST", current_type_path, identifier)
 					return ""
@@ -538,6 +540,8 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 					#queued_signal = Utils.type_path_add_member(current_type_path, identifier) + SIGNAL_SUFFIX
 					resolved_type = current_type_path
 					resolved_type = Utils.type_path_add_member(current_type_path, identifier) + SIGNAL_SUFFIX
+			elif is_global_enum:
+				resolved_type = BuiltInChecker.get_global_member_type(identifier)
 			elif BuiltInChecker.class_has_enum(current_type_path, identifier):
 				resolved_type = get_class_member_type(current_type_path, identifier)
 				resolved_type = Utils.type_path_add_member(current_type_path, identifier) + ENUM_SUFFIX
@@ -551,6 +555,19 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 			
 			if resolved_type != "":
 				class_member_resolved = true
+				if resolved_type.begins_with("enum::"): # handle returns from functions
+					
+					var enum_name = resolved_type.trim_prefix("enum::")
+					if not enum_name.contains("."):
+						resolved_type = enum_name
+					else:
+						var split = enum_name.split(".", false)
+						resolved_type = Utils.type_path_add_member(split[0], split[1])
+					if not resolved_type.ends_with(ENUM_SUFFIX):
+						resolved_type = resolved_type + ENUM_SUFFIX
+					print("ID::", identifier, "::enum -- ", resolved_type)
+					
+				
 			
 			print_deb(T.RESOLVE, "BUILT IN RESOLVE BRANCH", "RES", resolved_type)
 		else:
@@ -1592,6 +1609,10 @@ func _class_has_member(base_type:String, identifier:String):
 	elif base_type.begins_with("Dictionary["):
 		base_type = "Dictionary"
 	
+	if ClassDB.class_has_enum(base_type, identifier):
+		return true
+	elif ClassDB.class_has_integer_constant(base_type, identifier):
+		return true # handles loose enum members
 	# this should be sufficient for this check
 	return BuiltInChecker.class_has_member(base_type, identifier)
 

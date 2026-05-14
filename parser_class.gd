@@ -351,7 +351,7 @@ func is_member_static_typed(identifier:String):
 		return false
 	
 	if member_data is ParserFunc:
-		return member_data.has_static_types()
+		return member_data.has_static_return()
 	
 	var member_type = member_data.get(Keys.MEMBER_TYPE)
 	if Utils.member_is_const_class_enum(member_type) or member_type == Keys.MEMBER_TYPE_SIGNAL:

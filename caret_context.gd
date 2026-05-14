@@ -228,12 +228,14 @@ func parse():
 
 func _get_char_before_caret():
 	var text_to_process = current_line_text
+	var text_length = text_to_process.length()
 	var i = caret_column - 1
 	var _char = ""
 	while i >= 0:
-		_char = text_to_process[i]
-		if _char != " ":
-			break
+		if i < text_length:
+			_char = text_to_process[i]
+			if _char != " ":
+				break
 		i -= 1
 	return _char
 
@@ -598,8 +600,16 @@ func is_in_array():
 	return closest_bracket_type == "[" and _index_access_identifier == ""
 
 func is_in_dictionary_access():
-	printerr("is_in_dictionary_access is not implemented yet")
-	pass
+	var index_id = get_index_access_identifier()
+	if index_id == "":
+		return false
+	var index_id_type = resolve_expression_to_type(index_id)
+	var type_check = Utils.type_path_get_type(index_id_type)
+	if type_check != "":
+		index_id_type = type_check
+	if index_id_type == "Dictionary" or index_id_type.begins_with("Dictionary["):
+		return true
+	return false
 
 func get_type_hint_text():
 	return _type_hint
@@ -765,7 +775,7 @@ class FunctionCallData:
 	
 	## Get script path of the function object. Includes inner classes in the path.
 	func get_function_script():
-		return symbol_data.symbol_script_path
+		return symbol_data.symbol_script_path.trim_suffix(Keys.INS_DELIM)
 	
 	func get_text_current_arg() -> String:
 		if current_arg_index == -1:

@@ -1,6 +1,6 @@
 
 const PLUGIN_EXPORTED = false
-const PRINT_DEBUG = false # not PLUGIN_EXPORTED
+const PRINT_DEBUG = true # not PLUGIN_EXPORTED
 
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 
@@ -1121,6 +1121,7 @@ func resolve_expression_to_access_object(expression: String, class_data:ClassDat
 		dec_symbol = expression
 		#dec_symbol = _validate_const_chain(expression, initial_class_obj) # this is for type hints var:SomeClass.Type, returns the whole string
 	# ALERT
+	
 	print_deb(T.VAR_TO_CONST, "DECLARATION RAW", dec_symbol)
 	#if dec_symbol.begins_with("res://"):
 	if Utils.is_absolute_path(dec_symbol):
@@ -1169,6 +1170,8 @@ func resolve_expression_to_access_object(expression: String, class_data:ClassDat
 func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_vars:Dictionary, first_const:=false):
 	if parts[0] == "self": # if self, we can just return the path to the class
 		return "self"
+	
+	var parser = Utils.ParserRef.get_parser(self)
 	
 	var current_class_obj:ParserClass = initial_class_obj
 	print_deb(T.VAR_TO_CONST, "&&&& START: %s ----------" % [parts])
@@ -1226,10 +1229,10 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 			var inh_script_path = member_data.get(Keys.SCRIPT_PATH, &"")
 			if inh_script_path == "":
 				return ""
-			var parser_data = _get_parser_and_class_for_script(inh_script_path)
-			var parser = parser_data.get(Keys.GET_PARSER)
-			var inh_class_obj = parser_data.get(Keys.GET_CLASS_OBJ)
-			var type_lookup = parser.get_type_lookup()
+			var parser_data = parser.get_parser_and_class_obj_for_script(inh_script_path)
+			var inh_parser = parser_data.parser
+			var inh_class_obj = parser_data.class_obj
+			var type_lookup = inh_parser.get_type_lookup()
 			
 			var resolved = type_lookup._resolve_access_object([identifier], inh_class_obj, {}, first_const)
 			print_deb(T.VAR_TO_CONST, "INHERITED", identifier, "RESOLVED", resolved) # should this return self? func could return something else
@@ -1578,18 +1581,16 @@ static func get_class_member_type(base_type:String, identifier:String, resolve_c
 			return Utils.type_path_add_type(Utils.type_path_add_member(base_type, identifier), "Enum")
 			return "Enum"
 		return Utils.type_path_add_type(Utils.type_path_add_member(base_type, identifier), "Enum")
-		return UString.dot_join(base_type, identifier)
 	elif ClassDB.class_has_integer_constant(base_type, identifier):
 		var int_enum = ClassDB.class_get_integer_constant_enum(base_type, identifier)
 		if int_enum != "":
 			if resolve_const:
 				return "Enum"
 			return Utils.type_path_add_type(Utils.type_path_add_member(base_type, int_enum), "Enum")
-			return UString.dot_join(base_type, int_enum)
 		if resolve_const:
 			return "int"
 		return Utils.type_path_add_type(Utils.type_path_add_member(base_type, identifier), "int")
-		return UString.dot_join(base_type, identifier)
+		
 	
 	var result = BuiltInChecker.get_member_type(base_type, identifier)
 	return result
@@ -2059,8 +2060,8 @@ static func print_deb_err(section:String, ...msg:Array):
 const _PRINT = [
 	#T.BUILTIN,
 	#T.INHERITED,
-	#T.VAR_TO_CONST,
-	T.RESOLVE,
+	T.VAR_TO_CONST,
+	#T.RESOLVE,
 	#T.ACCESS_PATH
 	]
 

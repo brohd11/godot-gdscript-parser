@@ -2,7 +2,7 @@
 #! import_p Keys,
 
 const PLUGIN_EXPORTED = false
-const CACHE_TYPES = false
+const CACHE_TYPES = true
 
 const UString = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_string.gd")
 const UClassDetail = preload("res://addons/addon_lib/brohd/alib_editor/utils/src/u_class_detail.gd")

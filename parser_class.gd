@@ -144,13 +144,18 @@ func has_script_member(identifier:String):
 		return true
 	return false
 
-func get_member_data(member_name:String):
+func get_member_data(member_name:String, include_inherited:=false):
 	if members.has(member_name):
 		return members[member_name]
 	elif constants.has(member_name):
 		return constants[member_name]
 	elif inner_classes.has(member_name):
 		return inner_classes[member_name]
+	if not include_inherited:
+		return
+	var inh_members = get_inherited_members()
+	if inh_members.has(member_name):
+		return inh_members[member_name]
 
 func get_member(member_name:String):
 	if functions.has(member_name):
@@ -261,9 +266,21 @@ func get_constant_or_class(identifier:String):
 	elif inner_classes.has(identifier):
 		return inner_classes[identifier]
 
-func get_member_type(identifier:String) -> String:
-	var type_rich = get_member_type_rich(identifier)
-	return type_rich.get("type", "")
+func get_member_type(identifier:String, include_inherited:=false) -> String:
+	if has_script_member(identifier):
+		var type_rich = get_member_type_rich(identifier)
+		return type_rich.get("type", "")
+	if not include_inherited:
+		return ""
+	if has_inherited_member(identifier):
+		var member_data = get_inherited_member(identifier)
+		var script_path = member_data.get(Keys.SCRIPT_PATH)
+		script_path = UString.dot_join(script_path, member_data.get(Keys.ACCESS_PATH, &""))
+		var parser = Utils.ParserRef.get_parser(self)
+		var parser_data = parser.get_parser_and_class_obj_for_script(script_path)
+		var next_class = parser_data.class_obj as GDScriptParser.ParserClass
+		return next_class.get_member_type(identifier)
+	return ""
 
 func get_member_type_rich(identifier:String):
 	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET MEMBER::" + identifier)
@@ -338,8 +355,8 @@ func cached_resolve_valid_for_member(identifier:String):
 	
 	# this seems to be working now that this can use the member stack to determine deps
 	# everything seems to be updating properly so far...
-	var cached_type = cached.get(Keys.CLASS_CACHE_TYPE, &"")
-	var cache_valid = cached.get(Keys.CLASS_CACHE_DEC, "") == declaration and cached_type != &""
+	var cached_type = cached.get(Keys.CLASS_CACHE_TYPE, {})
+	var cache_valid = cached.get(Keys.CLASS_CACHE_DEC, "") == declaration and cached_type.get("type") != &""
 	
 	return cache_valid
 
@@ -480,21 +497,24 @@ func get_outer_script_constants():
 	return valid
 
 
-func get_gdscript_constants():
-	var valid = []
+func get_gdscript_constants(as_dict:=false):
+	var valid = {}
 	for c in constants.keys():
 		var member_data = constants[c] as Dictionary
 		if member_data[Keys.MEMBER_TYPE] == Keys.MEMBER_TYPE_ENUM:
-			valid.append(c)
+			var path = Utils.get_class_access_path_from_member_data(member_data)
+			path = Utils.type_path_add_member(path, c) + Keys.ENUM_PATH_SUFFIX
+			valid[c] = path
 			continue
 		elif member_data[Keys.MEMBER_TYPE] != Keys.MEMBER_TYPE_CONST:
 			continue
 		var type = get_member_type(c)
 		if Utils.is_absolute_path(type) and (not type.contains(Keys.MEMBER_DELIM) or Utils.type_path_get_type(type, true) == "Enum"):
-			valid.append(c)
+			valid[c] = type
 		
 	for ic in inner_classes.keys():
-		valid.append(ic)
+		var member_data = inner_classes[ic] as Dictionary
+		valid[ic] = member_data.get(Keys.TYPE)
 	
 	var main_parser = Utils.ParserRef.get_parser(self)
 	var inher = get_inherited_members()
@@ -509,13 +529,17 @@ func get_gdscript_constants():
 				target_class_obj = inh_parser.class_obj
 			var type = target_class_obj.get_member_type(member)
 			if Utils.is_absolute_path(type) and (not type.contains(Keys.MEMBER_DELIM) or Utils.type_path_get_type(type, true) == "Enum"):
-				valid.append(member)
+				valid[member] = type
 		elif member_data[Keys.MEMBER_TYPE] == Keys.MEMBER_TYPE_CLASS:
-			valid.append(member)
+			valid[member] = member_data.get(Keys.TYPE)
 		elif member_data[Keys.MEMBER_TYPE] == Keys.MEMBER_TYPE_ENUM:
-			valid.append(member)
+			var path = Utils.get_class_access_path_from_member_data(member_data)
+			path = Utils.type_path_add_member(path, member) + Keys.ENUM_PATH_SUFFIX
+			valid[member] = path
 	
-	return valid
+	if as_dict:
+		return valid
+	return valid.keys()
 
 
 func class_has_member(identifier:String):

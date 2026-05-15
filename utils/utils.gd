@@ -274,6 +274,8 @@ static func add_var_to_dict(stripped_line:String, line:int, dict:Dictionary, mem
 			}
 	return var_data
 
+static func get_class_access_path_from_member_data(dict:Dictionary):
+	return UString.dot_join(dict.get(Keys.SCRIPT_PATH, ""), dict.get(Keys.ACCESS_PATH, ""))
 
 static func token_is_string(text:String): # should this account for StringName and NodePath?
 	if text.begins_with('"') or text.begins_with("'"):

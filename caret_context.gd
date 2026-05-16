@@ -486,7 +486,8 @@ func get_symbol_data(chain_text:String, class_obj:GDScriptParser.ParserClass, li
 	symbol_data.name = back.substr(0, back.find("("))
 	
 	# get the access symbol of the front object
-	symbol_data.current_script_access_object = type_lookup.resolve_expression_to_access_object(front, class_data)
+	#symbol_data.current_script_access_object = type_lookup.resolve_expression_to_access_object(front, class_data)
+	symbol_data.current_script_access_object = type_lookup.resolve_expression_to_access_object(chain_text, class_data)
 	var resolved_symbol_script:String
 	if front == chain_text:
 		if GDScriptParser.TypeLookup.BuiltInChecker.is_global_method(chain_text):
@@ -810,7 +811,6 @@ class FunctionCallData:
 		else:
 			var arg_access_obj = AccessObject.new()
 			arg_access_obj.declaration_type = arg.type
-			arg_access_obj.access_symbol = "self"
 			arg_access_obj.declaration_symbol = "self"
 			arg.access_object = arg_access_obj
 		

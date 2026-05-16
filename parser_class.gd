@@ -560,7 +560,7 @@ func class_has_member(identifier:String):
 	return false
 
 func get_class_member_type(identifier:String, resolve_const:=false):
-	return GDScriptParser.TypeLookup.get_class_member_type(script_base_type, identifier, resolve_const)
+	return GDScriptParser.TypeLookup.get_class_member_type(script_base_type, identifier)
 
 
 func get_class_base_script():

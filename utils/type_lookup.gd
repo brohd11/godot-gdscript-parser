@@ -840,9 +840,10 @@ func _is_unresolved_expression(identifier:String):
 			return false
 		#return true
 	
-	if _variant_type_check(identifier) != "":
-		return false
+	
 	if Utils.is_absolute_path(identifier):
+		return false
+	elif _variant_type_check(identifier) != "":
 		return false
 	elif _valid_identifier(identifier):
 		return false
@@ -1099,31 +1100,19 @@ func resolve_expression_to_access_object(expression: String, class_data:ClassDat
 	var initial_class_obj = class_data.class_obj
 	var local_vars = class_data.local_vars
 	
-	#^ should this ever really be called? returns string instead of access_object, doesn't make sense to me..
-	#if Utils.is_absolute_path(expression) and not expression.begins_with("preload"):
-		#print_deb(T.VAR_TO_CONST, "EARLY EXIT", "BEGIN WITH RES", expression)
-		#return expression
-	
-	var string_map = parser.get_string_map(expression)
-	var front = UString.get_member_access_front(expression, string_map)
-	var back = UString.get_member_access_back(expression, string_map)
-	
 	print_deb(T.VAR_TO_CONST, "ACCESS OBJECT START", expression)
 	
 	var access_object = AccessObject.new()
 	
-	# ALERT testing with back, was front before
-	var dec_symbol = _resolve_access_object([front], initial_class_obj, local_vars, true)
-	if dec_symbol == front:
-		var new = expression
-		#new = _validate_const_chain(expression, initial_class_obj)
-		print_deb(T.VAR_TO_CONST, "DECLARATION RAW SWITCH", dec_symbol, " -> ", new)
-		dec_symbol = expression
-		#dec_symbol = _validate_const_chain(expression, initial_class_obj) # this is for type hints var:SomeClass.Type, returns the whole string
-	# ALERT
+	var string_map = parser.get_string_map(expression)
+	var parts = UString.split_member_access(expression, string_map)
+	if parts.is_empty():
+		return access_object
+	
+	var dec_symbol = _resolve_access_object(parts, initial_class_obj, local_vars)
 	
 	print_deb(T.VAR_TO_CONST, "DECLARATION RAW", dec_symbol)
-	#if dec_symbol.begins_with("res://"):
+	
 	if Utils.is_absolute_path(dec_symbol):
 		var script_data = UString.get_script_path_and_suffix(dec_symbol)
 		if script_data[0] == main_script_path:
@@ -1133,132 +1122,105 @@ func resolve_expression_to_access_object(expression: String, class_data:ClassDat
 			dec_symbol = access
 	elif dec_symbol == "":
 		dec_symbol = "self"
-	#else: # TEST NEW #^r causes issues, but this makes sense, cannot declare as self..., can access from self
-		#dec_symbol = "self"
 	
 	access_object.declaration_symbol = dec_symbol
-	
-	var access_symbol = _resolve_access_object([front], initial_class_obj, local_vars)
-	print_deb(T.VAR_TO_CONST, "ACCESS RAW", access_symbol)
-	#if access_symbol.begins_with("res://"):
-	if Utils.is_absolute_path(access_symbol):
-		var script_data = UString.get_script_path_and_suffix(access_symbol)
-		if script_data[0] == main_script_path:
-			var access = script_data[1]
-			if access == "":
-				access = "self" #^r what purpose does this even serve? don't seem to use it anywhere?
-			access_symbol = access
-	elif access_symbol == "":
-		access_symbol = "self"
-	#else: # TEST NEW #^r this is causing some to not work right, NewScript with the renamed time funcs
-		#access_symbol = "self" #^r this was for when base types were here? EditorInterface, String etc.. where was it an issue though?
-	access_object.access_symbol = access_symbol
-	
 	access_object.declaration_type = _resolve_expression_to_type(dec_symbol, class_data)
-	#if access_object.declaration_type.begins_with("res://"):
-	if Utils.is_absolute_path(access_object.declaration_type):
-		var member_data = parser.get_member_info_from_script(access_object.declaration_type)
-		if member_data != null:
-			access_object.declaration_access_path = member_data.get(Keys.ACCESS_PATH)
 	
-	access_object.access_type = _resolve_expression_to_type(access_symbol, class_data)
-	
-	print_deb(T.VAR_TO_CONST, "TYPE", access_object.declaration_type, "DEC",access_object.declaration_symbol, "ACCESS" ,access_object.access_symbol)
+	print_deb(T.VAR_TO_CONST, "TYPE", access_object.declaration_type, "DEC",access_object.declaration_symbol)
 	return access_object
 
 
-func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_vars:Dictionary, first_const:=false):
-	if parts[0] == "self": # if self, we can just return the path to the class
-		return "self"
-	
+func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_vars:Dictionary):
 	var parser = Utils.ParserRef.get_parser(self)
 	
 	var current_class_obj:ParserClass = initial_class_obj
 	print_deb(T.VAR_TO_CONST, "&&&& START: %s ----------" % [parts])
-	
+	var global_class_found = ""
+	var resolved_parts = []
 	var count = 0
 	while parts.size() > 0 and count < 10:
 		count += 1
 		
 		var current_part: String = parts.pop_front()
+		if current_part == "self":
+			continue
+		
 		var is_func = current_part.find("(") != -1
 		var identifier = current_part.split("(", false, 1)[0] if is_func else current_part
-		
 		identifier = identifier.trim_suffix(Keys.INS_DELIM)
 		
 		if is_func and identifier == "new":
-			return current_class_obj.get_script_class_path()
+			continue
 		
 		print_deb(T.VAR_TO_CONST, "")
 		print_deb(T.VAR_TO_CONST, "CYCLE ----------")
-		print_deb(T.VAR_TO_CONST, "CHECK", identifier)
+		print_deb(T.VAR_TO_CONST, "RESOLVED PARTS", resolved_parts)
+		print_deb(T.VAR_TO_CONST, "CHECK", identifier, current_class_obj.get_script_class_path())
 		
-		var resolved_type = ""
-		if member_in_class_or_local_vars(identifier, current_class_obj, local_vars):
-			print_deb(T.VAR_TO_CONST, "IN CLASS", identifier)
-			if current_class_obj.has_constant_or_class(identifier):
-				if first_const:
-					return identifier
-				else:
-					var const_path = _resolve_const_path(identifier, current_class_obj)
-					print(const_path)
-					return const_path
-			
-			#resolved_type = _var_to_const(identifier, current_class_obj, local_vars, first_const)
-			var res = _var_to_const(identifier, current_class_obj, local_vars, first_const)
-			if res.contains(Keys.MEMBER_INFER_DELIM):
-				resolved_type = res.get_slice(Keys.MEMBER_INFER_DELIM, 1)
-			else:
-				resolved_type = res
-			print_deb(T.VAR_TO_CONST, "IN CLASS RESOLVED", resolved_type)
-			var front = UString.get_member_access_front(resolved_type)
-			
-			if current_class_obj.has_constant_or_class(front):
-				if resolved_type.contains("."):
-					resolved_type = _validate_const_chain(resolved_type, current_class_obj)
-				return resolved_type
-			if resolved_type != identifier:
-				parts.push_front(front)
+		var member_data
+		if current_class_obj == initial_class_obj:
+			member_data = local_vars.get(identifier)
+		
+		var is_local = true
+		if not member_data:
+			is_local = false
+			member_data = current_class_obj.get_member_data(identifier, true)
+		
+		if member_data:
+			var member_type = member_data.get(Keys.MEMBER_TYPE)
+			if Utils.member_is_const_class_enum(member_type):
+				resolved_parts.append(identifier)
+				var type = current_class_obj.get_member_type(identifier, true)
+				if Utils.type_path_get_type(type, true) == "Enum":
+					return ".".join(resolved_parts)
+				
+				#resolved_parts.append(identifier)
+				print("MEMBER IS CONST TYPE::", identifier, "::", type)
+				var next_parser = parser.get_parser_and_class_obj_for_script(type)
+				current_class_obj = next_parser.class_obj
 				continue
+				#return UString.dot_join(identifier, ".".join(parts))
 			else:
-				return resolved_type
-		elif current_class_obj.has_inherited_member(identifier):
-			#return ""
-			var member_data = current_class_obj.get_inherited_member(identifier)
-			#^c Unsure about this, technically, if it is inherited, the access is self? Not sure what this should resolve to.
-			var inh_script_path = member_data.get(Keys.SCRIPT_PATH, &"")
-			if inh_script_path == "":
-				return ""
-			var parser_data = parser.get_parser_and_class_obj_for_script(inh_script_path)
-			var inh_parser = parser_data.parser
-			var inh_class_obj = parser_data.class_obj
-			var type_lookup = inh_parser.get_type_lookup()
-			
-			var resolved = type_lookup._resolve_access_object([identifier], inh_class_obj, {}, first_const)
-			print_deb(T.VAR_TO_CONST, "INHERITED", identifier, "RESOLVED", resolved) # should this return self? func could return something else
-			if resolved != identifier:
-				parts.push_front(UString.get_member_access_front(resolved))
+				var target_class = current_class_obj
+				var local = local_vars
+				
+				if not is_local:
+					var script_path = Utils.get_class_access_path_from_member_data(member_data)
+					var target_parser_data = parser.get_parser_and_class_obj_for_script(script_path)
+					target_class = target_parser_data.class_obj
+					local = {}
+				
+				
+				var var_to_const = _var_to_const(identifier, target_class, local)
+				print_deb(T.VAR_TO_CONST, "_var_to_const result::", var_to_const)
+				if var_to_const.contains(Keys.MEMBER_INFER_DELIM):
+					var_to_const = var_to_const.get_slice(Keys.MEMBER_INFER_DELIM, 1)
+				if var_to_const.contains(Keys.MEMBER_ASSIGN_DELIM):
+					var_to_const = var_to_const.get_slice(Keys.MEMBER_ASSIGN_DELIM, 1)
+				var split = UString.split_member_access(var_to_const)
+				split.reverse()
+				for s in split:
+					if not s.begins_with("new("):
+						s = s.trim_suffix(Keys.INS_DELIM)
+						parts.push_front(s)
 				continue
-			else:
-				return resolved
 		
 		if BuiltInChecker.is_builtin_class(identifier):
-			return identifier
+			return identifier # not a valid thing really, it would be direct access..
 		elif UClassDetail.get_global_class_path(identifier) != "":
-			return identifier
-		elif _is_class_name_valid(identifier):
-			return identifier
+			if global_class_found != "":
+				resolved_parts.clear() # if we find another global for some reason, restart the chain
+			
+			resolved_parts.append(identifier)
+			global_class_found = identifier
+			var global_parser_data = parser.get_parser_and_class_obj_for_script(UClassDetail.get_global_class_path(identifier))
+			current_class_obj = global_parser_data.class_obj
+			continue
 		
-		#if resolved_type == "":# pass through current part so that you can get full context
-			#print_deb(T.VAR_TO_CONST, "OUTSIDE BUILT IN", identifier)
-			#resolved_type = _resolve_builtin_class_member(current_part, current_type_path, current_class_obj, local_vars) # ie. Dictionary.get(), can infer default
-		
-		print_deb(T.VAR_TO_CONST, "NONE", identifier, "RES", resolved_type)
-		
-		#^ --- HANDLE THE RESULT ---
-		if resolved_type is not String or resolved_type == "":
-			return ""
-	return ""
+		print_deb_err(T.VAR_TO_CONST, "COULD NOT RESOLVE", identifier)
+	
+	return ".".join(resolved_parts)
+
 
 func _var_to_const(member_name:String, class_obj:ParserClass, local_vars:Dictionary, first_const:=false):
 	var count = 0
@@ -1301,102 +1263,13 @@ func _var_to_const(member_name:String, class_obj:ParserClass, local_vars:Diction
 	return result
 
 
-
-
-
-
-func _resolve_const_path(member_name:String, class_obj:ParserClass):
-	var full_chain_parts:= []
-	var count = 0
-	var result = member_name
-	while member_in_class_or_local_vars(result, class_obj, {}):
-		count += 1
-		if count > 50:
-			print_deb(T.VAR_TO_CONST, "COUNTED OUT")
-			break
-		var next_result = _check_class_obj_member_data(result, class_obj, {})
-		if next_result.contains(Keys.MEMBER_INFER_DELIM):
-			next_result = next_result.get_slice(Keys.MEMBER_INFER_DELIM, 1)
-		next_result = next_result.trim_suffix(Keys.INS_DELIM)
-		
-		#next_result = next_result.trim_suffix(Keys.INS_DELIM)
-		#var not_valid = next_result == null or result == next_result or next_result.begins_with("res://")
-		var not_valid = next_result == null or result == next_result or Utils.is_absolute_path(next_result)
-		if not_valid:
-			break
-		var parts = next_result.split(".", false)
-		parts.reverse()
-		var p_sz = parts.size()
-		for i in range(p_sz):
-			var part = parts[i]
-			if i == p_sz - 1:
-				result = part
-			else:
-				full_chain_parts.push_front(part)
-	
-	
-	full_chain_parts.push_front(result)
-	print("RESOLVE CONST PATH::", ".".join(full_chain_parts))
-	return ".".join(full_chain_parts)
-
-
-func _validate_const_chain(chain_text:String, class_obj:ParserClass):
-	var parser = _get_parser()
-	
-	#if chain_text.begins_with("res://"):
-	if Utils.is_absolute_path(chain_text):
-		print_deb(T.VAR_TO_CONST, "EARLY EXIT", "BEGIN WITH RES", chain_text)
-		return chain_text
-	
-	var string_map = parser.get_string_map(chain_text)
-	var parts = UString.split_member_access(chain_text, string_map)
-	
-	var working_path = ""
-	for i in range(parts.size()):
-		var part = parts[i]
-		var type = ""
-		if UClassDetail.get_global_class_path(part) != "":
-			type = UClassDetail.get_global_class_path(part)
-		else:
-			var member_data = class_obj.get_member(part)
-			if member_data == null or member_data is ParserFunc:
-				break
-			var member_type = member_data.get(Keys.MEMBER_TYPE)
-			if member_type == Keys.MEMBER_TYPE_ENUM:
-				working_path = UString.dot_join(working_path, part)
-				break
-			if not (member_type == Keys.MEMBER_TYPE_CLASS or member_type == Keys.MEMBER_TYPE_CONST):
-				break
-			
-			type = class_obj.get_member_type(part)
-			#if not type.begins_with("res://"):
-			if not Utils.is_absolute_path(type):
-				break
-		working_path = UString.dot_join(working_path, part)
-		var next_parser_data = parser.get_parser_and_class_obj_for_script(type)
-		if not next_parser_data:
-			break
-		parser = next_parser_data.parser
-		class_obj = next_parser_data.class_obj
-		#var result = next_parser.
-	
-	return working_path
-
 #endregion
 
 
 #region Utils
 
-func path_has_suffix(string:String) -> StringName:
-	if string.ends_with(ENUM_SUFFIX):
-		return ENUM_SUFFIX
-	if string.ends_with(CALLABLE_SUFFIX):
-		return CALLABLE_SUFFIX
-	if string.ends_with(SIGNAL_SUFFIX):
-		return SIGNAL_SUFFIX
-	return &""
 
-## Get member type in class obj. Returns declaration or converted to type if it is a simple check [method _simple_type_check].
+## Get member type in class obj. Returns declaration
 ## Allow rebuild param will determine if the script will reparse if not found at it's line index.
 func get_class_obj_member_type(member_name:String, class_obj:ParserClass, local_vars:Dictionary={}, allow_rebuild:=true):
 	var result = _check_class_obj_member_data(member_name, class_obj, local_vars, allow_rebuild)
@@ -1494,10 +1367,8 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 
 
 
-
-
 func _valid_identifier(identifier:String):
-	if _is_class_name_valid(identifier): # don't allow global so they are resolved to script.
+	if ClassDB.class_exists(identifier):
 		return true
 	#if BuiltInChecker.is_global_method(identifier):
 		#return true
@@ -1507,22 +1378,6 @@ func _valid_identifier(identifier:String):
 		return true
 	return false
 
-## Check that class name is Godot Native or member of the class. A valid user global class will also return true.
-func _is_class_name_valid(identifier:String):
-	#if identifier.find(".") > -1:
-		#identifier = identifier.substr(0, identifier.find("."))
-	if ClassDB.class_exists(identifier):
-		return true
-	var current_script = _get_parser_main_script()
-	var base = current_script.get_instance_base_type()
-	#if (
-		##ClassDB.class_has_enum(base, identifier) or
-		##ClassDB.class_has_integer_constant(base, identifier) or
-		#ClassDB.class_has_method(base, identifier) or
-		#ClassDB.class_has_signal(base, identifier)
-		#):
-		#return true
-	return false
 
 func _get_external_script_id_to_send(identifier:String, is_awaited:bool, is_func:bool) -> String:
 	if is_awaited:
@@ -1547,7 +1402,7 @@ func _class_has_member(base_type:String, identifier:String):
 	return BuiltInChecker.class_has_member(base_type, identifier)
 
 
-static func get_class_member_type(base_type:String, identifier:String, resolve_const:=false):
+static func get_class_member_type(base_type:String, identifier:String):
 	var original_base = base_type
 	var collection_base = false
 	if base_type.contains("["):
@@ -1577,20 +1432,12 @@ static func get_class_member_type(base_type:String, identifier:String, resolve_c
 	
 	# this is special for these, can either handle 'enum::SomeEnum' or keep these
 	if ClassDB.class_has_enum(base_type, identifier):
-		if resolve_const:
-			return Utils.type_path_add_type(Utils.type_path_add_member(base_type, identifier), "Enum")
-			return "Enum"
 		return Utils.type_path_add_type(Utils.type_path_add_member(base_type, identifier), "Enum")
 	elif ClassDB.class_has_integer_constant(base_type, identifier):
 		var int_enum = ClassDB.class_get_integer_constant_enum(base_type, identifier)
 		if int_enum != "":
-			if resolve_const:
-				return "Enum"
 			return Utils.type_path_add_type(Utils.type_path_add_member(base_type, int_enum), "Enum")
-		if resolve_const:
-			return "int"
 		return Utils.type_path_add_type(Utils.type_path_add_member(base_type, identifier), "int")
-		
 	
 	var result = BuiltInChecker.get_member_type(base_type, identifier)
 	return result
@@ -2036,6 +1883,7 @@ class ClassData:
 		if is_instance_valid(func_obj):
 			return func_obj.is_static()
 		return false
+	
 
 
 #! keys type:String origin:String  member_stack:Array is_instance:bool
@@ -2050,6 +1898,7 @@ static func print_deb(section:String, ...msg:Array):
 		msg.push_front(section)
 		ALibEditor.PrintDebug.print(msg)
 
+#! arg_location section:T
 static func print_deb_err(section:String, ...msg:Array):
 	if not PRINT_DEBUG:
 		return

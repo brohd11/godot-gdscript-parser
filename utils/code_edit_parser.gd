@@ -602,7 +602,7 @@ func parse_expression_at_position(text_to_process: String, start_pos: int, strin
 	var last_was_ident = false
 	
 	while current_pos >= 0:
-		# 1. Safely walk backward through strings
+		# Safely walk backward through strings
 		if string_map.string_mask[current_pos] == 1:
 			name_start_pos = current_pos
 			current_pos -= 1
@@ -611,7 +611,7 @@ func parse_expression_at_position(text_to_process: String, start_pos: int, strin
 		
 		var _char = text_to_process[current_pos]
 		
-		# 2. Handle Whitespace boundaries safely
+		# Handle Whitespace boundaries safely
 		if _char == " " or _char == "\t" or _char == "\n":
 			if last_was_ident:
 				# If we read a word, and hit a space, the ONLY valid thing 
@@ -620,7 +620,7 @@ func parse_expression_at_position(text_to_process: String, start_pos: int, strin
 			current_pos -= 1
 			continue
 			
-		# 3. Handle Brackets (Method calls AND Index access)
+		# Handle Brackets (Method calls AND Index access)
 		if _char == ")" or _char == "]" or _char == "}":
 			current_pos = string_map.bracket_map.get(current_pos, current_pos)
 			last_was_ident = true
@@ -629,7 +629,7 @@ func parse_expression_at_position(text_to_process: String, start_pos: int, strin
 			current_pos -= 1
 			continue
 			
-		# 4. Handle Member Access (.)
+		# Handle Member Access (.)
 		if _char == ".":
 			expecting_operator = false
 			last_was_ident = false
@@ -637,13 +637,13 @@ func parse_expression_at_position(text_to_process: String, start_pos: int, strin
 			current_pos -= 1
 			continue
 			
-		# 5. Handle Node Path Terminals ($ and %)
+		# Handle Node Path Terminals ($ and %)
 		if _char == "$" or _char == "%":
 			# These characters exclusively mark the BEGINNING of an expression.
 			name_start_pos = current_pos
 			break # Stop scanning entirely
 			
-		# 6. Check for Valid Expression Characters
+		# Check for Valid Expression Characters
 		# We include '/' specifically so NodePaths parse seamlessly
 		var is_ident = (_char >= 'a' and _char <= 'z') or \
 					   (_char >= 'A' and _char <= 'Z') or \
@@ -662,7 +662,7 @@ func parse_expression_at_position(text_to_process: String, start_pos: int, strin
 			current_pos -= 1
 			continue
 			
-		# 7. If it's a comma, plus, minus, equals, etc... we reached the edge!
+		# If it's a comma, plus, minus, equals, etc... we reached the edge!
 		break
 		
 	var final_expr = text_to_process.substr(name_start_pos, start_pos - name_start_pos + 1)

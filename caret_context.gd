@@ -190,13 +190,10 @@ func parse():
 	elif expression_before_caret.begins_with("%"):
 		var expr_index = code_context_rfind(expression_before_caret, code_context_caret_pos)
 		var id_before = code_edit_parser.parse_expression_at_position(code_context, expr_index - 1 , code_context_string_map)
-		print("before::", id_before)
 		if id_before.begins_with("'") or id_before.begins_with('"'):
-			#print("FORMAT STRING")
-			pass
+			pass # checking if it's a format string ("" % some_var), but there are other situations this could be, such as a math op
 		else:
 			token_state = TokenState.GET_NODE_UNIQUE
-	
 	
 	expression_state = ExpressionState.NONE
 	if _is_in_type_hint():
@@ -222,8 +219,7 @@ func parse():
 	else:
 		scope_state = ScopeState.FUNCTION_BODY
 	
-	t.stop()
-
+	#t.stop()
 
 
 func _get_char_before_caret():
@@ -509,7 +505,7 @@ func get_symbol_data(chain_text:String, class_obj:GDScriptParser.ParserClass, li
 # was just being used to make sure this was being freed
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:
-		print("FREE CC")
+		#print("FREE CC")
 		pass
 
 # API
@@ -867,15 +863,11 @@ class FunctionCallData:
 	func get_type_access_path(type_path:String="", argument_object:AccessObject=null):
 		
 		if type_path == "":
+			print("GETTTING ARG ACCESS")
 			var arg = func_get_current_arg()
 			argument_object = arg.access_object
 			type_path = arg.type
 		
-		
-		#if type_path != "":
-			#argument_object = 
-		
-		#if not type_path.begins_with("res://"):
 		if not Utils.is_absolute_path(type_path):
 			return type_path
 		
@@ -883,7 +875,6 @@ class FunctionCallData:
 		var access = parser.get_access()
 		
 		var current_access = symbol_data.current_script_access_object
-		
 		var symbol_script = symbol_data.symbol_script_path
 		
 		#var exteneral_access = symbol_data.symbol_script_access_object

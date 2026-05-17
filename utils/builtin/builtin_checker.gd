@@ -66,7 +66,7 @@ const _VARIANTS: Dictionary = {
 	"RID": true,
 	
 	# Core Objects
-	#"Object": true,
+	#"Object": true, # want to handle this custom, since it's a little different than the other variants
 	"Callable": true,
 	"Signal": true,
 	"Dictionary": true,
@@ -91,14 +91,14 @@ static var _extension_api:Dictionary = {}
 static func _load_extension_api() -> void:
 	var target_path:String = EXTENSION_API_PATH.path_join("extension_api.json")
 	if not FileAccess.file_exists(target_path):
-		var exe_path = OS.get_executable_path()
-		var args = ["--headless", "--dump-extension-api"]
-		var exit = OS.execute(exe_path, args)
+		var exe_path:String = OS.get_executable_path()
+		var args:Array = ["--headless", "--dump-extension-api"]
+		var exit:int = OS.execute(exe_path, args)
 		if exit != 0:
 			printerr("Failed to generate extension_api.json: ", exit)
 		else:
 			DirAccess.make_dir_recursive_absolute(target_path.get_base_dir())
-			var err = DirAccess.rename_absolute("res://extension_api.json", target_path)
+			var err:Error = DirAccess.rename_absolute("res://extension_api.json", target_path)
 			if err != OK:
 				printerr("Could not move extension_api.json to: ", target_path)
 				return
@@ -106,12 +106,12 @@ static func _load_extension_api() -> void:
 	if not FileAccess.file_exists(target_path):
 		printerr("Failed to generate extension_api.json")
 		return
-	var data = UFile.read_from_json(target_path)
+	var data:Dictionary = UFile.read_from_json(target_path)
 	
 	_extension_api.clear()
 	_extension_api[""] = {}
 	
-	for key in _GDSCRIPT_FUNCS.keys():
+	for key:String in _GDSCRIPT_FUNCS.keys():
 		_extension_api[""][key] = {
 			MEMBER_TYPE: METHODS,
 			"return_value":{
@@ -120,32 +120,32 @@ static func _load_extension_api() -> void:
 			}
 	
 	# break it down into dict[class][method] = method_data, empty class = global func
-	for dict in data.get("utility_functions", []):
+	for dict:Dictionary in data.get("utility_functions", []):
 		dict[MEMBER_TYPE] = METHODS
 		_extension_api[""][dict.get("name")] = dict
 	
-	for dict in data.get("global_enums", []):
+	for dict:Dictionary in data.get("global_enums", []):
 		dict[MEMBER_TYPE] = ENUMS
-		var enum_name = dict.get("name")
+		var enum_name:String = dict.get("name")
 		_extension_api[""][enum_name] = dict
-		for v in dict.get("values"):
+		for v:Dictionary in dict.get("values"):
 			_extension_api[""][v.get("name")] = {
 				MEMBER_TYPE: ENUMS,
 				"type": "enum::" + enum_name
 			}
 			pass
 	
-	var built_in_classes = data.get("builtin_classes", [])
-	for class_dict in built_in_classes:
-		var class_nm = class_dict.get("name")
+	var built_in_classes:Array = data.get("builtin_classes", [])
+	for class_dict:Dictionary in built_in_classes:
+		var class_nm:String = class_dict.get("name")
 		_extension_api[class_nm] = {CLASS_NAME: class_nm}
 		_add_to_dict(class_nm, METHODS, class_dict)
 		_add_to_dict(class_nm, CONSTANTS, class_dict)
 		_add_to_dict(class_nm, MEMBERS, class_dict)
 	
-	var classes = data.get("classes", [])
-	for class_dict in classes:
-		var class_nm = class_dict.get("name")
+	var classes:Array = data.get("classes", [])
+	for class_dict:Dictionary in classes:
+		var class_nm:String = class_dict.get("name")
 		_extension_api[class_nm] = {CLASS_NAME: class_nm}
 		_add_to_dict(class_nm, METHODS, class_dict)
 		_add_to_dict(class_nm, CONSTANTS, class_dict)
@@ -154,10 +154,10 @@ static func _load_extension_api() -> void:
 		_add_to_dict(class_nm, SIGNALS, class_dict)
 		_add_to_dict(class_nm, PROPERTIES, class_dict)
 
-static func _add_to_dict(class_nm, member_string:String, class_dict:Dictionary):
-	var member_dict_array = class_dict.get(member_string, [])
-	var member_string_name = StringName(member_string)
-	for member_dict in member_dict_array:
+static func _add_to_dict(class_nm:String, member_string:String, class_dict:Dictionary) -> void:
+	var member_dict_array:Array = class_dict.get(member_string, [])
+	var member_string_name:StringName = StringName(member_string)
+	for member_dict:Dictionary in member_dict_array:
 		member_dict[MEMBER_TYPE] = member_string_name
 		_extension_api[StringName(class_nm)][member_dict.get("name")] = member_dict
 
@@ -174,16 +174,21 @@ static func get_func_data(class_nm:String, func_name:String) -> Dictionary:
 	if _extension_api.is_empty():
 		_load_extension_api()
 	
-	var class_data = _extension_api.get(class_nm, {})
-	var api_data = class_data.get(func_name, {})
-	if not api_data.is_empty():
-		var data = {Keys.FUNC_ARGS:{}, Keys.FUNC_RETURN: api_data.get("return_type", "void")}
-		for arg in api_data.get("arguments", []):
-			data[Keys.FUNC_ARGS][arg.get("name")] = {
-				Keys.TYPE: arg.get("type", ""),
-				Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_FUNC_ARG
-			}
-		return data
+	var all_class_data:Array[Dictionary] = get_class_data(class_nm)
+	for class_data:Dictionary in all_class_data:
+		var api_data:Dictionary = class_data.get(func_name, {})
+		if not api_data.is_empty():
+			var data:Dictionary = {Keys.FUNC_ARGS:{}, Keys.FUNC_RETURN: "void"}
+			for arg:Dictionary in api_data.get("arguments", []):
+				data[Keys.FUNC_ARGS][arg.get("name")] = {
+					Keys.TYPE: arg.get("type", ""),
+					Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_FUNC_ARG
+				}
+			if api_data.has("return_type"):
+				data[Keys.FUNC_RETURN] = api_data["return_type"]
+			elif api_data.has("return_value"):
+				data[Keys.FUNC_RETURN] = api_data["return_value"].get("type")
+			return data
 	return {}
 
 static func get_func_return(class_nm:String, func_name:String) -> String:
@@ -192,7 +197,7 @@ static func get_func_return(class_nm:String, func_name:String) -> String:
 static func is_global_method(identifier:String) -> bool:
 	if _extension_api.is_empty():
 		_load_extension_api()
-	var class_data = _extension_api.get("", {})
+	var class_data:Dictionary = _extension_api.get("", {})
 	if not class_data.has(identifier):
 		return false
 	return class_data.get(identifier).get(MEMBER_TYPE) == METHODS
@@ -200,7 +205,7 @@ static func is_global_method(identifier:String) -> bool:
 static func is_global_enum(identifier:String) -> bool:
 	if _extension_api.is_empty():
 		_load_extension_api()
-	var class_data = _extension_api.get("", {})
+	var class_data:Dictionary = _extension_api.get("", {})
 	if not class_data.has(identifier):
 		return false
 	return class_data.get(identifier).get(MEMBER_TYPE) == ENUMS
@@ -217,21 +222,21 @@ static func get_global_func_return(func_name:String) -> String:
 static func class_has_method(class_nm:String, member_name:String, include_inheritance:=true) -> bool:
 	if _extension_api.is_empty():
 		_load_extension_api()
-	var class_data = _extension_api.get(class_nm)
+	var class_data:Variant = _extension_api.get(class_nm)
 	if class_data == null:
 		return false
 	if class_data.has(member_name):
-		var member_data = class_data.get(member_name)
+		var member_data:Variant = class_data.get(member_name)
 		if member_data:
 			return member_data.get(MEMBER_TYPE) == METHODS
 			#return member_data.has("return_value") or member_data.has("return_type")
 	if not include_inheritance or not ClassDB.class_exists(class_nm):
 		return false
-	var inherited = ClassDB.get_parent_class(class_nm)
+	var inherited:StringName = ClassDB.get_parent_class(class_nm)
 	while inherited != "":
-		var inh_class_data = _extension_api.get(inherited)
+		var inh_class_data:Variant = _extension_api.get(inherited)
 		if inh_class_data and inh_class_data.has(member_name):
-			var member_data = class_data.get(member_name)
+			var member_data:Variant = class_data.get(member_name)
 			if member_data:
 				return member_data.get(MEMBER_TYPE) == METHODS
 				#return member_data.has("return_value") or member_data.has("return_type")
@@ -241,31 +246,31 @@ static func class_has_method(class_nm:String, member_name:String, include_inheri
 static func class_has_member(class_nm:String, member_name:String, include_inheritance:=true) -> bool:
 	if _extension_api.is_empty():
 		_load_extension_api()
-	var class_data = _extension_api.get(class_nm)
+	var class_data:Variant = _extension_api.get(class_nm)
 	if class_data == null:
 		return false
 	if class_data.has(member_name):
 		return true
 	if not include_inheritance or not ClassDB.class_exists(class_nm):
 		return false
-	var inherited = ClassDB.get_parent_class(class_nm)
+	var inherited:StringName = ClassDB.get_parent_class(class_nm)
 	while inherited != "":
-		var inh_class_data = _extension_api.get(inherited)
+		var inh_class_data:Variant = _extension_api.get(inherited)
 		if inh_class_data and inh_class_data.has(member_name):
 			return true
 		inherited = ClassDB.get_parent_class(inherited)
 	return false
 
 static func get_member_type(class_nm:String, member_name:String, include_inheritance:=true) -> String:
-	var direct_check = _get_member_type(class_nm, member_name)
+	var direct_check:String = _get_member_type(class_nm, member_name)
 	if not include_inheritance or not ClassDB.class_exists(class_nm):
 		return direct_check
 	if direct_check != "":
 		return direct_check
 	
-	var inherited = ClassDB.get_parent_class(class_nm)
+	var inherited:StringName = ClassDB.get_parent_class(class_nm)
 	while inherited != "":
-		var inh_check = _get_member_type(inherited, member_name)
+		var inh_check:String = _get_member_type(inherited, member_name)
 		if inh_check != "":
 			return inh_check
 		inherited = ClassDB.get_parent_class(inherited)
@@ -275,8 +280,8 @@ static func get_member_type(class_nm:String, member_name:String, include_inherit
 static func _get_member_type(class_nm:String, member_name:String) -> String:
 	if _extension_api.is_empty():
 		_load_extension_api()
-	var class_data = _extension_api.get(class_nm, {})
-	var api_data = class_data.get(member_name, {})
+	var class_data:Dictionary = _extension_api.get(class_nm, {})
+	var api_data:Dictionary = class_data.get(member_name, {})
 	if not api_data.is_empty():
 		if api_data.has("return_type"):
 			return api_data.get("return_type", "void")
@@ -290,7 +295,7 @@ static func _get_member_type(class_nm:String, member_name:String) -> String:
 			#return api_data.get("value")
 			return "enum" # not sure about this
 		elif api_data.has("arguments"):
-			var signal_args = api_data.get("arguments",[])
+			var signal_args:Array = api_data.get("arguments",[])
 			if signal_args.size() == 1:
 				return signal_args[0].get("type")
 			else:
@@ -304,7 +309,7 @@ static func _get_member_type(class_nm:String, member_name:String) -> String:
 
 
 
-static func is_variant_type(type:String):
+static func is_variant_type(type:String) -> bool:
 	if type.begins_with("D"):
 		if type.begins_with("Dictionary") and type.contains("["):
 			type = "Dictionary"
@@ -313,7 +318,7 @@ static func is_variant_type(type:String):
 			type = "Array"
 	return _VARIANTS.has(type)
 
-static func get_variant_index_access_type(type:String):
+static func get_variant_index_access_type(type:String) -> String:
 	match type:
 		"PackedByteArray", "PackedInt32Array", "PackedInt64Array", "Vector2i", "Vector3i", "Vector4i":
 			return "int"
@@ -330,10 +335,10 @@ static func get_variant_index_access_type(type:String):
 		_:
 			return "Variant" # Not a known primitive index
 
-static func get_class_names():
+static func get_class_names() -> Array:
 	if _extension_api.is_empty():
 		_load_extension_api()
-	var names = _extension_api.keys()
+	var names:Array = _extension_api.keys()
 	names.erase("")
 	return names
 
@@ -343,22 +348,22 @@ static func get_class_data(class_nm:StringName, include_inherited:=true) -> Arra
 	var class_data_array:Array[Dictionary] = [_extension_api.get(class_nm, {})]
 	if not include_inherited or not ClassDB.class_exists(class_nm):
 		return class_data_array
-	var inherited = ClassDB.get_parent_class(class_nm)
+	var inherited:StringName = ClassDB.get_parent_class(class_nm)
 	while inherited != "":
 		class_data_array.append(_extension_api.get(inherited, {}))
 		inherited = ClassDB.get_parent_class(inherited)
 	return class_data_array
 
-static func get_member_data(class_nm:StringName, member_name:String, include_inherited:=true):
-	var class_data_array = get_class_data(class_nm, include_inherited)
-	for dict in class_data_array:
+static func get_member_data(class_nm:StringName, member_name:String, include_inherited:=true) -> Dictionary:
+	var class_data_array:Array[Dictionary] = get_class_data(class_nm, include_inherited)
+	for dict:Dictionary in class_data_array:
 		if dict.has(member_name):
 			return dict.get(member_name, {})
 	return {}
 
-static func is_member_const(class_nm:StringName, member_name:String, include_inherited:=true):
-	var member_data = get_member_data(class_nm, member_name, include_inherited)
-	var member_type = member_data.get(MEMBER_TYPE)
+static func is_member_const(class_nm:StringName, member_name:String, include_inherited:=true) -> bool:
+	var member_data:Dictionary = get_member_data(class_nm, member_name, include_inherited)
+	var member_type:Variant = member_data.get(MEMBER_TYPE)
 	if member_type == MEMBERS or member_type == SIGNALS:
 		return false
 	if member_type == CONSTANTS or member_type == ENUMS:
@@ -369,13 +374,13 @@ static func is_member_const(class_nm:StringName, member_name:String, include_inh
 
 # these methods are easier but slower
 static func class_has_method_test(class_nm:String, member_name:String, include_inheritance:=true) -> bool:
-	var meth_check = func(data) -> bool:
+	var meth_check:Callable = func(data) -> bool:
 		return data.get(MEMBER_TYPE) == &"methods"
 	return _class_has(meth_check, class_nm, member_name, include_inheritance)
 
 static func class_has_signal(class_nm:String, member_name:String, include_inheritance:=true) -> bool:
 	
-	var signal_check:= func(data) -> bool:
+	var signal_check:Callable = func(data) -> bool:
 		if data == null:
 			return false
 		return data.get(MEMBER_TYPE, &"") == &"signals"
@@ -384,7 +389,7 @@ static func class_has_signal(class_nm:String, member_name:String, include_inheri
 
 static func class_has_enum(class_nm:String, member_name:String, include_inheritance:=true) -> bool:
 	
-	var signal_check:= func(data) -> bool:
+	var signal_check:Callable = func(data) -> bool:
 		if data == null:
 			return false
 		return data.get(MEMBER_TYPE, &"") == ENUMS
@@ -395,20 +400,20 @@ static func class_has_enum(class_nm:String, member_name:String, include_inherita
 static func _class_has(check_callable:Callable, class_nm:String, member_name:String, include_inheritance:=true) -> bool:
 	if _extension_api.is_empty():
 		_load_extension_api()
-	var class_data = _extension_api.get(class_nm)
+	var class_data:Variant = _extension_api.get(class_nm)
 	if class_data == null:
 		return false
 	if class_data.has(member_name):
-		var mem_data = class_data.get(member_name)
+		var mem_data:Variant = class_data.get(member_name)
 		if mem_data and check_callable.call(mem_data):
 			return true
 	if not include_inheritance or not ClassDB.class_exists(class_nm):
 		return false
-	var inherited = ClassDB.get_parent_class(class_nm)
+	var inherited:StringName = ClassDB.get_parent_class(class_nm)
 	while inherited != "":
-		var inh_class_data = _extension_api.get(inherited)
+		var inh_class_data:Variant = _extension_api.get(inherited)
 		if inh_class_data and inh_class_data.has(member_name):
-			var inh_mem_data = inh_class_data.get(member_name)
+			var inh_mem_data:Variant = inh_class_data.get(member_name)
 			if inh_mem_data and check_callable.call(inh_mem_data):
 				return true
 		inherited = ClassDB.get_parent_class(inherited)

@@ -208,11 +208,20 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 		access_options.standard = access_object.declaration_symbol
 		return access_options
 	
+	var to_find_is_current_script = class_obj.main_script_path == to_find_script_path
+	
+	if dec_front == "self":
+		if to_find_is_current_script:
+			access_options.standard = to_find.trim_prefix(class_obj.get_script_class_path())
+			return access_options
+	
 	if class_obj.inherits_script(UString.dot_join(to_find_script_path, to_find_class_path)):
 		if class_obj.get_member_data(dec_front, true) != null:
 			print("INH EXIT")
 			access_options.standard = access_object.declaration_symbol
 			return access_options
+		
+		print("INHERITED")
 	
 	#var declaration_script_data = Utils.type_path_get_script_data(access_object.declaration_type) # same logic as above
 	#var declaration_script_path = declaration_script_data[0]
@@ -227,7 +236,10 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 	for c_obj in class_obj_to_check:
 		var dec_front_member_data = c_obj.get_member_data(dec_front, true)
 		if dec_front_member_data != null:
+			var type = c_obj.get_member_type(dec_front)
 			var access_path = dec_front_member_data.get(Keys.ACCESS_PATH)
+			if to_find_is_current_script:
+				access_path = access_path.trim_prefix(class_obj.access_path)
 			var full_access_path = UString.dot_joinv([access_path, access_object.declaration_symbol])
 			print_deb_err(T.ACCESS_PATH, "IN MY FIRST CHECK::", full_access_path)
 			access_options.standard = full_access_path

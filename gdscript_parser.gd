@@ -30,7 +30,7 @@ const Keys = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/p
 static var _static_parser_cache:= {}
 var _parser_cache:= {}
 var _get_cached_parser_callable:Callable
-var _max_cache_size = 10
+var _max_cache_size:int = 10
 
 var code_edit_parser:CodeEditParser
 var _caret_context:CaretContext
@@ -53,36 +53,36 @@ func _init() -> void:
 	_type_lookup = TypeLookup.new()
 	_access = Access.new()
 	
-	var ref_objs = [code_edit_parser, _type_lookup, _access]
-	for object in ref_objs:
+	var ref_objs:Array = [code_edit_parser, _type_lookup, _access]
+	for object:Object in ref_objs:
 		Utils.ParserRef.set_refs(object, self)
 	
 	_parser_cache = _static_parser_cache
 
 
-func set_autoload_cache():
+func set_autoload_cache() -> void:
 	_type_lookup.set_autoload_cache()
 
 #region ParserCache
-func set_parser_cache(cache_dict:Dictionary):
+func set_parser_cache(cache_dict:Dictionary) -> void:
 	_parser_cache = cache_dict
 
-func set_parser_cache_size(size:int):
+func set_parser_cache_size(size:int) -> void:
 	_max_cache_size = size
 
-func set_get_parser_callable(callable:Callable):
+func set_get_parser_callable(callable:Callable) -> void:
 	_get_cached_parser_callable = callable
 
-func clean_parser_cache():
-	var active_parser_cache = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
+func clean_parser_cache() -> void:
+	var active_parser_cache:Dictionary = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
 	if _max_cache_size == -1 or active_parser_cache.size() <= _max_cache_size:
 		return
-	var inactive = _parser_cache.get_or_add(Keys.CACHE_INACTIVE_PARSERS, {})
-	var paths = active_parser_cache.keys()
-	var current_size = paths.size()
-	var erased = 0
-	for path in paths:
-		var parser = active_parser_cache[path].get(Keys.CACHE_PARSER)
+	var inactive:Dictionary = _parser_cache.get_or_add(Keys.CACHE_INACTIVE_PARSERS, {})
+	var paths:Array = active_parser_cache.keys()
+	var current_size:int = paths.size()
+	var erased:int = 0
+	for path:String in paths:
+		var parser:GDScriptParser = active_parser_cache[path].get(Keys.CACHE_PARSER)
 		if is_instance_valid(parser):
 			clean_resolve_cache(parser._class_access)
 		_deactivate_parser(active_parser_cache, inactive, path)
@@ -93,39 +93,39 @@ func clean_parser_cache():
 	#print("CACHE SIZE::", current_size, " -> ", active_parser_cache.size())
 
 
-func clean_resolve_cache(class_dict:Dictionary):
+func clean_resolve_cache(class_dict:Dictionary) -> void:
 	for access_name:String in class_dict.keys():
-		var class_obj = class_dict[access_name]
-		for key in class_obj._resolve_cache.keys():
+		var class_obj:ParserClass = class_dict[access_name]
+		for key:String in class_obj._resolve_cache.keys():
 			if not class_obj.has_script_member(key):
 				class_obj._resolve_cache.erase(key)
 
 
-func deactivate_parser(path:String):
-	var active_parser_cache = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
-	var inactive = _parser_cache.get_or_add(Keys.CACHE_INACTIVE_PARSERS, {})
+func deactivate_parser(path:String) -> void:
+	var active_parser_cache:Dictionary = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
+	var inactive:Dictionary = _parser_cache.get_or_add(Keys.CACHE_INACTIVE_PARSERS, {})
 	if active_parser_cache.has(path):
 		_deactivate_parser(active_parser_cache, inactive, path)
 
-func _deactivate_parser(active_cache:Dictionary, inactive_cache:Dictionary, path:String):
-	var data = active_cache[path]
+func _deactivate_parser(active_cache:Dictionary, inactive_cache:Dictionary, path:String) -> void:
+	var data:Dictionary = active_cache[path]
 	data.erase(Keys.CACHE_PARSER) # this should free the parser
 	inactive_cache[path] = data
 	active_cache.erase(path) # move from active to inactive, should they be removed from inactive below?
 
 
-func clear_parser_cache():
+func clear_parser_cache() -> void:
 	_parser_cache.clear()
 	_static_parser_cache.clear()
 #endregion
 
 #region ParserSetup
 
-func clear_current_class():
+func clear_current_class() -> void:
 	_class_access.clear()
 	code_edit_parser.string_map_cache.clear()
 
-func set_current_script(script:GDScript):
+func set_current_script(script:GDScript) -> void:
 	if script != _script_resource:
 		clear_current_class()
 	_script_resource = script
@@ -134,17 +134,17 @@ func set_current_script(script:GDScript):
 		return
 	_script_path = _script_resource.resource_path
 
-func get_current_script():
+func get_current_script() -> GDScript:
 	return _script_resource
 
-func set_code_edit(new_code_edit:CodeEdit, free_existing:=false):
+func set_code_edit(new_code_edit:CodeEdit, free_existing:=false) -> void:
 	if is_instance_valid(code_edit):
 		if free_existing:
 			_code_edit_dispose()
 	code_edit = new_code_edit
 
 ## Set script path and load
-func set_script_path(new_path:String):
+func set_script_path(new_path:String) -> void:
 	_script_path = new_path
 	if FileAccess.file_exists(_script_path):
 		_script_resource = load(_script_path)
@@ -152,34 +152,34 @@ func set_script_path(new_path:String):
 	else:
 		set_source_code("")
 
-func get_script_path():
+func get_script_path() -> String:
 	return _script_path
 
-func set_source_code(source:String): # need a version if the script editor is set externally, maybe just parse_source()
+func set_source_code(source:String) -> void: # need a version if the script editor is set externally, maybe just parse_source()
 	_create_buffer_code_edit()
 	code_edit.text = source
 
 #endregion
 
 
-func parse(force:=false):
+func parse(force:=false) -> void:
 	get_code_edit_parser().string_map_cache.clear() # clear this everytime so this doesn't get out of hand
 	
 	code_edit_parser.parse_text(force)
 	
 	#print_hierarchy()
 
-func get_global_class_name():
-	var root_class = get_class_object() as ParserClass
+func get_global_class_name() -> String:
+	var root_class:ParserClass = get_class_object() as ParserClass
 	return root_class.class_name_data.get(Keys.MEMBER_NAME, "")
 
-func get_code_edit_parser():
+func get_code_edit_parser() -> CodeEditParser:
 	return code_edit_parser
 
-func get_type_lookup():
+func get_type_lookup() -> TypeLookup:
 	return _type_lookup
 
-func get_access():
+func get_access() -> Access:
 	return _access
 
 func get_string_map(string:String) -> UString.StringMap:
@@ -190,48 +190,48 @@ func get_caret_context(parse_context:=true) -> CaretContext:
 		_caret_context = CaretContext.new(self, parse_context)
 	return _caret_context
 
-func reset_caret_context():
+func reset_caret_context() -> void:
 	_caret_context = null
 
-func get_members_hash():
-	var hashes = []
-	for access in _class_access.keys():
-		var obj = _class_access.get(access)
+func get_members_hash() -> int:
+	var hashes:Array = []
+	for access:String in _class_access.keys():
+		var obj:ParserClass = _class_access.get(access)
 		hashes.append(obj.get_members_hash())
 	return hashes.hash()
 
-func has_class(identifier:String):
+func has_class(identifier:String) -> bool:
 	return _class_access.has(identifier)
 
-func get_classes():
+func get_classes() -> Array:
 	return _class_access.keys()
 
-func get_class_object(identifier:String=""):
+func get_class_object(identifier:String="") -> Variant:
 	return _class_access.get(identifier)
 
-func get_class_at_line(line:int):
-	for access_path in _class_access.keys():
-		var _class = _class_access[access_path] as ParserClass
+func get_class_at_line(line:int) -> String:
+	for access_path:String in _class_access.keys():
+		var _class:ParserClass = _class_access[access_path] as ParserClass
 		if line in _class.line_indexes:
 			return access_path
 	#print("get_class_at_line - LINE NOT FOUND ", line)
 	return ""
 
-func get_function_at_line(line:int):
-	var access_path = get_class_at_line(line)
-	var class_obj = _class_access.get(access_path)
+func get_function_at_line(line:int) -> String:
+	var access_path:String = get_class_at_line(line)
+	var class_obj:Variant = _class_access.get(access_path)
 	if class_obj != null:
 		return class_obj.get_function_at_line(line)
 	return ""
 
-func set_inference_context(inf:InferenceContext):
+func set_inference_context(inf:InferenceContext) -> void:
 	get_type_lookup().set_inference_context(inf)
 
 func get_function_data(identifier_name:String, line:int=-1) -> Dictionary:
 	if line == -1:
 		line = code_edit.get_caret_line()
 	
-	var result = _type_lookup.get_function_data_at_line(identifier_name, line)
+	var result:Dictionary = _type_lookup.get_function_data_at_line(identifier_name, line)
 	#print("GET FUNCTION DATA::", result)
 	return result
 
@@ -239,7 +239,7 @@ func resolve_expression_to_type(identifier_name:String, line:int=-1) -> String:
 	if line == -1:
 		line = code_edit.get_caret_line()
 	
-	var result = _type_lookup.resolve_expression_to_type_at_line(identifier_name, line)
+	var result:String = _type_lookup.resolve_expression_to_type_at_line(identifier_name, line)
 	#print("GET IDENTIFIER::TO TYPE::", result)
 	#ALibRuntime.DebugPrint.print_deb(self, "GET ID TYPE", identifier_name, result)
 	return result
@@ -249,7 +249,7 @@ func resolve_expression_to_type_rich(identifier_name:String, line:int=-1) -> Dic
 	if line == -1:
 		line = code_edit.get_caret_line()
 	
-	var result = _type_lookup.resolve_expression_to_var_data_at_line(identifier_name, line)
+	var result:Dictionary = _type_lookup.resolve_expression_to_var_data_at_line(identifier_name, line)
 	#print("GET IDENTIFIER::TO TYPE::", result)
 	#ALibRuntime.DebugPrint.print_deb(self, "GET ID TYPE", identifier_name, result)
 	return result
@@ -263,7 +263,7 @@ func resolve_expression_to_type_rich(identifier_name:String, line:int=-1) -> Dic
 	#return result
 
 
-func resolve_to_access_object(identifier:String, line:int=-1):
+func resolve_to_access_object(identifier:String, line:int=-1) -> TypeLookup.AccessObject:
 	if line == -1:
 		line = code_edit.get_caret_line()
 	return _type_lookup.resolve_expression_to_access_object_at_line(identifier, line)
@@ -273,35 +273,35 @@ func _get_class_obj(line:int=-1) -> ParserClass:
 		line = code_edit.get_caret_line()
 	return _class_access.get(get_class_at_line(line)) as ParserClass
 
-func get_member_info(identifier:String, line:int=-1):
+func get_member_info(identifier:String, line:int=-1) -> Variant:
 	if line == -1:
 		line = code_edit.get_caret_line()
-	var _class = get_class_at_line(line)
+	var _class:String = get_class_at_line(line)
 	if _class == null:
 		return
-	var class_obj = get_class_object(_class)
-	var member = class_obj.get_member(identifier)
+	var class_obj:ParserClass = get_class_object(_class)
+	var member:Variant = class_obj.get_member(identifier)
 	return member
 
-func set_class_objs(classes_dict:Dictionary):
-	for access_name in classes_dict.keys():
+func set_class_objs(classes_dict:Dictionary) -> void:
+	for access_name:String in classes_dict.keys():
 		_set_class_obj(access_name, classes_dict[access_name])
 
-func _set_class_obj(access_name:String, class_obj:ParserClass):
+func _set_class_obj(access_name:String, class_obj:ParserClass) -> void:
 	Utils.ParserRef.set_refs(class_obj, self)
-	for f in class_obj.functions.values():
+	for f:ParserFunc in class_obj.functions.values():
 		Utils.ParserRef.set_refs(f, self, class_obj)
 	_class_access[access_name] = class_obj
 
-func get_member_info_from_script(full_script_path:String):
-	var script_data = Utils.type_path_get_script_data(full_script_path)
-	var script_path = script_data[0]
-	var parser = get_parser_for_path(script_path)
+func get_member_info_from_script(full_script_path:String) -> Variant:
+	var script_data:Array[String] = Utils.type_path_get_script_data(full_script_path)
+	var script_path:String = script_data[0]
+	var parser:GDScriptParser = get_parser_for_path(script_path)
 	#if not parser:
 		#return
-	var class_path = script_data[1]
-	var access_path = ""
-	var member_name = class_path
+	var class_path:String = script_data[1]
+	var access_path:String = ""
+	var member_name:String = class_path
 	if class_path.contains("."):
 		access_path = UString.trim_member_access_back(class_path)
 		member_name = UString.get_member_access_back(class_path)
@@ -309,37 +309,38 @@ func get_member_info_from_script(full_script_path:String):
 	if member_name.ends_with(Keys.ENUM_PATH_SUFFIX):
 		member_name = member_name.trim_suffix(Keys.ENUM_PATH_SUFFIX)
 	
-	var class_obj = parser.get_class_object(access_path) as ParserClass
+	var class_obj:Variant = parser.get_class_object(access_path)
 	if is_instance_valid(class_obj):
 		return class_obj.get_member_data(member_name)
+	return
 
 ## Takes a type path in this format: "res://my_class.gd.InnerClass::member##Type"
-func get_member_data_from_origin(origin_type_path:String):
+func get_member_data_from_origin(origin_type_path:String) -> Variant:
 	if not Utils.is_absolute_path(origin_type_path):
 		return
 	
-	var non_member_part = Utils.type_path_get_non_member(origin_type_path)
-	var member = Utils.type_path_get_member(origin_type_path)
-	var parser_data = get_parser_and_class_obj_for_script(non_member_part)
+	var non_member_part:String = Utils.type_path_get_non_member(origin_type_path)
+	var member:String = Utils.type_path_get_member(origin_type_path)
+	var parser_data:Dictionary = get_parser_and_class_obj_for_script(non_member_part)
 	if not parser_data:
 		return
-	var member_data = parser_data.class_obj.get_member_data(member)
+	var member_data:Dictionary = parser_data.class_obj.get_member_data(member)
 	return member_data
 	
 
-func get_line_context(line:int, column:int=0, insert_caret:=false):
-	return code_edit_parser.get_line_context(line, column, insert_caret).get(Keys.CONTEXT_TEXT)
+func get_line_context(line:int, column:int=0, insert_caret:=false) -> String:
+	return code_edit_parser.get_line_context(line, column, insert_caret).get(Keys.CONTEXT_TEXT, "")
 
-func resolve_expression_in_script(expression:String, script_path:String, class_path:String):
-	var target_parser = get_parser_and_class_obj(script_path, class_path)
+func resolve_expression_in_script(expression:String, script_path:String, class_path:String) -> String:
+	var target_parser:Dictionary = get_parser_and_class_obj(script_path, class_path)
 	if not target_parser or not target_parser.class_obj:
 		if not PLUGIN_EXPORTED:
 			printerr("Could not get parser for path::resolve_expression_in_script::", script_path, "::", class_path)
 		return ""
 	return target_parser.parser.resolve_expression_to_type(expression, target_parser.class_obj.line_indexes[0])
 
-func resolve_to_access_object_in_script(expression:String, script_path:String, class_path:String):
-	var target_parser = get_parser_and_class_obj(script_path, class_path)
+func resolve_to_access_object_in_script(expression:String, script_path:String, class_path:String) -> Variant:
+	var target_parser:Dictionary = get_parser_and_class_obj(script_path, class_path)
 	if not target_parser or not target_parser.class_obj:
 		if not PLUGIN_EXPORTED:
 			printerr("Could not get parser for path::resolve_to_access_object_in_script::", script_path, "::", class_path)
@@ -347,10 +348,10 @@ func resolve_to_access_object_in_script(expression:String, script_path:String, c
 	return target_parser.parser.resolve_to_access_object(expression, target_parser.class_obj.line_indexes[0])
 
 func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScriptParser:
-	var script_data = Utils.type_path_get_script_data(full_script_path)
+	var script_data:Array[String] = Utils.type_path_get_script_data(full_script_path)
 	if script_data.is_empty():
 		return
-	var script_path = script_data[0]
+	var script_path:String = script_data[0]
 	if not Utils.is_gdscript_path(script_path):
 		print("NOT A GDSCRIPT FILE::", full_script_path)
 		return
@@ -370,16 +371,16 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 		print("PARSER CACHE NULL::", _script_path)
 		pass
 	
-	var active_parsers_cache = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
-	var parser_data = get_cached_parser_data(script_path)
+	var active_parsers_cache:Dictionary = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
+	var parser_data:Variant = get_cached_parser_data(script_path)
 	
-	var cached_modified_time = parser_data.get(Keys.CACHE_MODIFIED, -1)
-	var modified_time = FileAccess.get_modified_time(script_path)
-	var file_changed = cached_modified_time != modified_time or cached_modified_time == -1
+	var cached_modified_time:int = parser_data.get(Keys.CACHE_MODIFIED, -1)
+	var modified_time:int = FileAccess.get_modified_time(script_path)
+	var file_changed:bool = cached_modified_time != modified_time or cached_modified_time == -1
 	parser_data[Keys.CACHE_MODIFIED] = modified_time
 	
-	var parser_valid = false
-	var parser = parser_data.get(Keys.CACHE_PARSER) as GDScriptParser
+	var parser_valid:bool = false
+	var parser:Variant = parser_data.get(Keys.CACHE_PARSER) as GDScriptParser
 	if is_instance_valid(parser):
 		parser_valid = true
 		#print("EXISTING PARSER::", script_path)
@@ -404,16 +405,16 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 		parser.set_current_script(script)
 		parser.set_source_code(script.source_code)
 		
-		var classes = parser_data.get(Keys.CACHE_CLASSES, {})
+		var classes:Dictionary = parser_data.get(Keys.CACHE_CLASSES, {})
 		if not classes.is_empty():
-			for access_name in classes.keys():
+			for access_name:String in classes.keys():
 				parser._set_class_obj(access_name, classes[access_name])
 	
-	var need_parse = not parser_valid or file_changed or force_cache
+	var need_parse:bool = not parser_valid or file_changed or force_cache
 	parser.parse(need_parse) # i think this should be last so that classes can be updated
 	
-	var tl = get_type_lookup()
-	var inf = tl.get_inference_context()
+	var tl:TypeLookup = get_type_lookup()
+	var inf:InferenceContext = tl.get_inference_context()
 	if is_instance_valid(inf):
 		parser.set_inference_context(inf)
 	
@@ -422,23 +423,25 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 	_parser_cache[Keys.CACHE_ACTIVE_PARSERS] = active_parsers_cache
 	return parser
 
-func activate_parser(path:String, parser:GDScriptParser):
-	var _cached_parser = get_parser_for_path(path, true)
+
+# Think this is not used, doesn't make a ton of sense either...
+func activate_parser(path:String, parser:GDScriptParser) -> void:
+	var _cached_parser:GDScriptParser = get_parser_for_path(path, true)
 	_parser_cache[Keys.CACHE_ACTIVE_PARSERS][path][Keys.CACHE_PARSER] = parser
 
-func get_cached_parser_data(script_path:String):
-	var active_parsers_cache = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
-	var parser_data = active_parsers_cache.get(script_path)
+func get_cached_parser_data(script_path:String) -> Dictionary:
+	var active_parsers_cache:Dictionary = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
+	var parser_data:Variant = active_parsers_cache.get(script_path)
 	if parser_data == null:
-		var inactive_parsers = _parser_cache.get_or_add(Keys.CACHE_INACTIVE_PARSERS, {})
+		var inactive_parsers:Dictionary = _parser_cache.get_or_add(Keys.CACHE_INACTIVE_PARSERS, {})
 		parser_data = inactive_parsers.get(script_path, {})
 	return parser_data
 
-func cached_data_valid(script_path:String, data:Dictionary):
-	var cached_modified_time = data.get(Keys.CACHE_MODIFIED, -1)
-	var modified_time = FileAccess.get_modified_time(script_path)
-	var file_changed = cached_modified_time != modified_time or cached_modified_time == -1
-	var classes = data.get(Keys.CACHE_CLASSES, {})
+func cached_data_valid(script_path:String, data:Dictionary) -> bool:
+	var cached_modified_time:int = data.get(Keys.CACHE_MODIFIED, -1)
+	var modified_time:int = FileAccess.get_modified_time(script_path)
+	var file_changed:bool = cached_modified_time != modified_time or cached_modified_time == -1
+	var classes:Dictionary = data.get(Keys.CACHE_CLASSES, {})
 	if classes.is_empty() or file_changed:
 		return false
 	return true
@@ -446,13 +449,13 @@ func cached_data_valid(script_path:String, data:Dictionary):
 
 
 #! keys parser:GDScriptParser class_obj:ParserClass
-func get_parser_and_class_obj_for_script(script_path:String):
+func get_parser_and_class_obj_for_script(script_path:String) -> Dictionary:
 	if not Utils.is_gdscript_path(script_path):
 		return {}
-	var script_data = Utils.type_path_get_script_data(script_path)
-	var script_main_path = script_data[0]
-	var class_path = script_data[1]
-	var parser = self
+	var script_data:Array[String] = Utils.type_path_get_script_data(script_path)
+	var script_main_path:String = script_data[0]
+	var class_path:String = script_data[1]
+	var parser:GDScriptParser = self
 	var class_obj:ParserClass
 	if script_main_path == _script_path:
 		class_obj = _class_access.get(class_path) as ParserClass
@@ -465,22 +468,22 @@ func get_parser_and_class_obj_for_script(script_path:String):
 	return {Keys.GET_PARSER: parser, Keys.GET_CLASS_OBJ:class_obj}
 
 
-func get_parser_and_class_obj(script_path:String, class_path:String):
+func get_parser_and_class_obj(script_path:String, class_path:String) -> Variant:
 	if script_path == _script_path:
-		var class_obj = _class_access.get(class_path) as ParserClass
+		var class_obj:ParserClass = _class_access.get(class_path) as ParserClass
 		return {Keys.GET_PARSER: self, Keys.GET_CLASS_OBJ:class_obj}
 	else:
-		var parser = get_parser_for_path(script_path)
+		var parser:GDScriptParser = get_parser_for_path(script_path)
 		if not parser:
 			if not PLUGIN_EXPORTED:
 				printerr("Could not get parser for path::", script_path, "::", class_path)
 			return
-		var class_obj = parser.get_class_object(class_path)
+		var class_obj:ParserClass = parser.get_class_object(class_path)
 		return {Keys.GET_PARSER: parser, Keys.GET_CLASS_OBJ:class_obj}
 
-func _create_buffer_code_edit():
+func _create_buffer_code_edit() -> void:
 	if not is_instance_valid(code_edit):
-		var code = CodeEdit.new()
+		var code:CodeEdit = CodeEdit.new()
 		code.add_comment_delimiter("#", "", true)
 		code.add_comment_delimiter("##", "", true)
 		code.add_string_delimiter('"""', '"""')
@@ -488,46 +491,47 @@ func _create_buffer_code_edit():
 		code.set_meta(Keys.PARSER_CODE_EDIT, true)
 		set_code_edit(code)
 
-func script_inherits(to_check:String, inherit_script:String):
+func script_inherits(to_check:String, inherit_script:String) -> bool:
 	if not Utils.is_gdscript_path(to_check):
 		return false
-	var parser = get_parser_and_class_obj_for_script(to_check)
-	var class_obj = parser.class_obj as ParserClass
+	var parser:Dictionary = get_parser_and_class_obj_for_script(to_check)
+	var class_obj:ParserClass = parser.class_obj as ParserClass
 	return class_obj.inherits_script(inherit_script)
 
-func _code_edit_dispose():
-	var meta = code_edit.get_meta(Keys.PARSER_CODE_EDIT, false)
+
+func _code_edit_dispose() -> void:
+	var meta:bool = code_edit.get_meta(Keys.PARSER_CODE_EDIT, false)
 	if meta:
 		code_edit.queue_free()
 
-
+# this can't use above due to a lifecycle issue
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:
 		#_code_edit_dispose()
 		if is_instance_valid(code_edit):
-			var meta = code_edit.get_meta(Keys.PARSER_CODE_EDIT, false)
+			var meta:bool = code_edit.get_meta(Keys.PARSER_CODE_EDIT, false)
 			if meta:
 				code_edit.queue_free()
 
 
-func print_hierarchy():
-	for key in _class_access.keys():
-		var name = key
-		var indent = 0
+func print_hierarchy() -> void:
+	for key:String in _class_access.keys():
+		var name:String = key
+		var indent:int = 0
 		if name == "":
 			name = "Script"
 		else:
 			indent = name.count(".") + 1
 			name = UString.get_member_access_back(name)
-		var base_indent_str = ""
-		for i in indent:
+		var base_indent_str:String = ""
+		for i:Variant in indent:
 			base_indent_str += "\t"
 		print(base_indent_str + name)
-		var member_indent_str = "\t" + base_indent_str
+		var member_indent_str:String = "\t" + base_indent_str
 		
-		var _class = _class_access.get(key) as ParserClass
+		var _class:ParserClass = _class_access.get(key) as ParserClass
 		print(base_indent_str + "Constants:")
-		for c in _class.constants.keys():
+		for c:String in _class.constants.keys():
 			print(member_indent_str + c)
 		print("")
 		#
@@ -537,6 +541,6 @@ func print_hierarchy():
 		#print("")
 		
 		print(base_indent_str + "Functions:")
-		for f in _class.functions.keys():
+		for f:String in _class.functions.keys():
 			print(member_indent_str + f)
 		print("")

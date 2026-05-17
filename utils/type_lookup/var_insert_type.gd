@@ -3,13 +3,15 @@ const GDScriptParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/
 const UString = GDScriptParser.UString
 const GDScriptParse = UString.GDScriptParse
 const Keywords = GDScriptParse.Keywords
+const TagParser = ALibEditor.Singleton.TagParser
+const EditorGDScriptParser = ALibEditor.Singleton.EditorGDScriptParser
 
 const UObject = preload("uid://b6w3produe5fn") #! resolve ALibRuntime.Utils.UObject
 
 static var type_hint_regex:RegEx
 
 static func tets_scrip() -> void:
-	var parser:GDScriptParser = ALibEditor.Singletons.EditorGDScriptParser.get_parser()
+	var parser:GDScriptParser = EditorGDScriptParser.get_parser()
 	format_script(parser, ScriptEditorRef.get_current_code_edit())
 
 
@@ -189,25 +191,24 @@ static func _insert_types(parser:GDScriptParser, script_editor:CodeEdit, untyped
 static func get_type_access_path(parser:GDScriptParser, expression:String, line:int): # preserve comments
 	var type_rich:Dictionary = parser.resolve_expression_to_type_rich(expression, line)
 	var inferred_type:String = type_rich.type
-	print("HERE::",inferred_type)
+	#print("HERE::",inferred_type)
 	
 	# these ones operate on the member line dec itself, not the next up
 	var type_data:Dictionary = parser.get_code_edit_parser().get_type_from_line(line - 1)
-	print(type_data)
+	#print(type_data)
 	if type_data and type_data.get(GDScriptParser.Keys.TYPE) == "var":
 		var type_array = type_data.get("result")
 		var assignment = type_array[2]
-		var tag_parser = ALibEditor.Singletons.TagParser.get_tag_parser("keys")
+		var tag_parser = TagParser.get_tag_parser("keys")
 		if not tag_parser:
 			printerr("CAN NOT GET TAG PARSER")
 		if tag_parser:
-			print(type_data)
 			var adjusted_string = tag_parser.resolve_tagged_expression(assignment, line - 1)
 			if adjusted_string:
 				inferred_type = parser.resolve_expression_to_type(adjusted_string, line - 1)
 				print("ADJ STRING::TYPE", "::", adjusted_string, " -> ", inferred_type)
 	
-	print("HERE::",inferred_type)
+	#print("HERE::",inferred_type)
 	
 	
 	if inferred_type == "":
@@ -237,7 +238,7 @@ static func get_type_access_path(parser:GDScriptParser, expression:String, line:
 		else:
 			var access_object:GDScriptParser.CaretContext.AccessObject = parser.resolve_to_access_object(expression)
 			var access_options:GDScriptParser.Access.AccessOptions = parser.get_access().find_path_to_type_simple(class_obj, access_object, inferred_type)
-			print("ACCESS::",access_object.access_symbol)
+			
 			print(access_options.standard)
 			print(access_options.script_alias)
 			print(access_options.global)

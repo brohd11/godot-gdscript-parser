@@ -1,6 +1,6 @@
 
 const PLUGIN_EXPORTED = false
-const PRINT_DEBUG = true # not PLUGIN_EXPORTED
+const PRINT_DEBUG = false # not PLUGIN_EXPORTED
 
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 
@@ -42,21 +42,15 @@ static var _compar_op_regex:RegEx
 
 static var autoload_cache:= {}
 
-
 var _parser:WeakRef
 var code_edit:CodeEdit
 
-
-
 var create_non_script_parsers:=true
-
 var use_parsers_for_outside_script:=true
 
 # for resolve inner class
 var class_resolution:=false
 var class_resolution_obj:ParserClass
-
-#var _resolve_to_script:=false
 
 var inference_context:InferenceContext
 var _inf_weakref:WeakRef
@@ -188,15 +182,16 @@ func _resolve_expression_to_var_data_at_line_simple(expression:String, line:int)
 	
 	# just check the type again rather than tracking the stack
 	var type = _resolve_expression_to_type(expression, class_data, true)
-	#print("RESULT::", origin, "::", type)
 	var is_instance = type.ends_with(Keys.INS_DELIM)
+	#print("RESULT::", origin, "::", type)
 	#print("GET TYPE RICH::", expression, " -> ", origin)
+	
 	var type_check = Utils.type_path_get_type(type, true)
 	if type_check != "":
 		if type_check != "Enum":
 			type = type_check
 	elif type == "" and origin != "": # if this fails, can try a back up on the origin, not likely to ever happen
-		printerr("Failed type, but not origin::", expression, " -> ", origin)
+		print_deb_err(T.RESOLVE, "Failed type, but not origin::", expression, " -> ", origin)
 		type_check = Utils.type_path_get_type(origin, true)
 		if type_check != "" and type_check != "Enum":
 			type = type_check
@@ -237,8 +232,6 @@ func _resolve_expression_to_origin(expression: String, class_data:ClassData) -> 
 	
 	var result = _resolve_expression_to_val(expression, class_data)
 	inf_context.finish_expression(inf_expression, result)
-	
-	
 	
 	inf_context.find_origin = current_find_setting
 	inf_context=null
@@ -641,7 +634,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 							if not resolved_type.ends_with(ENUM_SUFFIX):
 								resolved_type = resolved_type + ENUM_SUFFIX
 							
-							print("ID::", identifier, "::enum -- ", resolved_type)
+							print_deb(T.RESOLVE, "ID", identifier, " -- ::enum -- ", resolved_type)
 					
 					print_deb(T.RESOLVE, "BUILT IN RESOLVE BRANCH", "RES", resolved_type)
 				else:
@@ -921,8 +914,8 @@ func _resolve_process_in_script_data(member_name:String, class_obj:ParserClass, 
 			#inf_context.member_stack.insert(next_inf_index, stack_string)
 			inf_context.add_to_member_stack(stack_string)
 			#inf_context.add_to_member_stack("PROC - " + stack_string) # just a debug tag
-		elif PRINT_DEBUG:
-			push_warning("NO INF CONTEXT")
+		#elif PRINT_DEBUG:
+			#push_warning("NO INF CONTEXT")
 		
 		
 		if result.ends_with(Keys.INS_DELIM):
@@ -1088,11 +1081,11 @@ func _ensure_valid_type_path(full_script_path:String):
 
 #region Resolve Access Object
 
-func resolve_expression_to_access_object_at_line(expression:String, line:int):
+func resolve_expression_to_access_object_at_line(expression:String, line:int) -> AccessObject:
 	var class_data = get_class_data_at_line(line)
 	return resolve_expression_to_access_object(expression, class_data)
 
-func resolve_expression_to_access_object(expression: String, class_data:ClassData):
+func resolve_expression_to_access_object(expression: String, class_data:ClassData) -> AccessObject:
 	var parser = _get_parser()
 	var main_script = parser.get_current_script()
 	var main_script_path = main_script.resource_path
@@ -1130,7 +1123,7 @@ func resolve_expression_to_access_object(expression: String, class_data:ClassDat
 	return access_object
 
 
-func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_vars:Dictionary):
+func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_vars:Dictionary) -> String:
 	var parser = Utils.ParserRef.get_parser(self)
 	
 	var current_class_obj:ParserClass = initial_class_obj
@@ -1144,6 +1137,9 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 		var current_part: String = parts.pop_front()
 		if current_part == "self":
 			continue
+		
+		if not is_instance_valid(current_class_obj):
+			return ".".join(resolved_parts)
 		
 		var is_func = current_part.find("(") != -1
 		var identifier = current_part.split("(", false, 1)[0] if is_func else current_part
@@ -1177,6 +1173,8 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 				#resolved_parts.append(identifier)
 				print("MEMBER IS CONST TYPE::", identifier, "::", type)
 				var next_parser = parser.get_parser_and_class_obj_for_script(type)
+				if not next_parser:
+					return ".".join(resolved_parts)
 				current_class_obj = next_parser.class_obj
 				continue
 				#return UString.dot_join(identifier, ".".join(parts))

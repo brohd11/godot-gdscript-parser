@@ -113,7 +113,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 		var back = UString.get_member_access_back(symbol_access.declaration_symbol)
 		var member_data = current_access_class_obj.get_member_data(back, true)
 		if member_data:
-			push_error("CURRENT DEC == TO_FIND")
+			print_deb_err(T.ACCESS_PATH, "CURRENT DEC == TO_FIND")
 			var access_path = member_data.get(Keys.ACCESS_PATH)
 			access_options.standard = UString.dot_joinv([dec_trimmed, access_path, back])
 			return access_options
@@ -162,7 +162,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 			#^r haven't seen these firing either, may be covered above? This whole branch may be un-needed
 			var current_class_member_data = class_obj.get_member_data(symbol_front)
 			if current_class_member_data: # this is the current script class obj searching for "current_access", need some better names
-				push_error("SECONDARY CURRENT CLASS CHECK")
+				print_deb_err(T.ACCESS_PATH, "SECONDARY CURRENT CLASS CHECK")
 				#var access_path = current_class_member_data.get(Keys.ACCESS_PATH)
 				var type = class_obj.get_member_type(symbol_front)
 				if symbol_front_type == type:
@@ -171,7 +171,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 			
 			var global_name = UClassDetail.get_global_class_name(secondary_script_path)
 			if global_name:
-				push_error("SECONDARY GLOBAL CHECK")
+				print_deb_err(T.ACCESS_PATH, "SECONDARY GLOBAL CHECK")
 				var full_access_path = UString.dot_joinv([global_name, access_path, secondary_access.declaration_symbol])
 				access_options.standard = full_access_path
 				return access_options
@@ -217,11 +217,11 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 	
 	if class_obj.inherits_script(UString.dot_join(to_find_script_path, to_find_class_path)):
 		if class_obj.get_member_data(dec_front, true) != null:
-			print("INH EXIT")
+			print_deb(T.ACCESS_PATH, "INH EXIT")
 			access_options.standard = access_object.declaration_symbol
 			return access_options
 		
-		print("INHERITED")
+		print_deb(T.ACCESS_PATH, "INHERITED")
 	
 	#var declaration_script_data = Utils.type_path_get_script_data(access_object.declaration_type) # same logic as above
 	#var declaration_script_path = declaration_script_data[0]
@@ -261,8 +261,7 @@ func get_global_name_and_script_alias(to_find:String, class_obj:ParserClass, acc
 	
 	var rev_search = reverse_path_chain_search(to_find, class_obj)
 	if rev_search != "":
-		print("SCRIPT ALIAS::", rev_search)
-		print_deb(T.ACCESS_PATH, "reverse_path_chain_search", "->", rev_search)
+		print_deb(T.ACCESS_PATH, "SCRIPT ALIAS", "->", rev_search)
 		access_options.script_alias = rev_search
 		return
 
@@ -288,12 +287,13 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass):
 			working_script_access_path = UString.trim_member_access_back(working_script_access_path)
 		else:
 			working_script_access_path = ""
-		print(working_script_access_path)
-		print(checked_access)
-		print("CHECKING::", search_path)
+		
+		print_deb(T.ACCESS_PATH, working_script_access_path)
+		print_deb(T.ACCESS_PATH, checked_access)
+		print_deb(T.ACCESS_PATH, "CHECKING", search_path)
 		var check = class_obj.has_preload(search_path)
 		if check != null:
-			print("FOUND::", check, "::", working_script_access_path)
+			print_deb(T.ACCESS_PATH, "FOUND", check, working_script_access_path)
 			#if to_find.ends_with(ENUM_SUFFIX):
 				#working_script_access_path = UString.dot_join(working_script_access_path, Utils.type_path_get_member(to_find))
 			#var return_val = UString.dot_join(check, working_script_access_path)
@@ -301,7 +301,7 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass):
 			if to_find.ends_with(ENUM_SUFFIX):
 				checked_access = UString.dot_join(checked_access, Utils.type_path_get_member(to_find))
 			var return_val = UString.dot_join(check, checked_access)
-			print("FINAL::", return_val)
+			print_deb(T.ACCESS_PATH, "FINAL", return_val)
 			return return_val
 		
 		checked_access = UString.dot_join(back, checked_access)
@@ -340,6 +340,8 @@ class AccessUtils:
 		string = string.trim_suffix(Keys.INS_DELIM)
 		return string
 
+
+
 #! arg_location section:T
 static func print_deb(section:String, ...msg:Array):
 	if not PRINT_DEBUG:
@@ -358,14 +360,11 @@ static func print_deb_err(section:String, ...msg:Array):
 
 const _PRINT = [
 	#T.BUILTIN, 
-	T.INHERITED,
+	#T.INHERITED,
 	#T.VAR_TO_CONST,
 	#T.RESOLVE,
-	T.ACCESS_PATH
+	#T.ACCESS_PATH
 	]
-
-#func t():
-	#print_deb(T.ACCESS_PATH)
 
 
 class T:

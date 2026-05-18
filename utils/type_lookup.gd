@@ -102,7 +102,9 @@ func _get_function_data(identifier:String, class_obj:ParserClass, line:int=-1):
 	elif BuiltInChecker.is_global_method(stripped_identifier):
 		return BuiltInChecker.get_global_func_data(stripped_identifier)
 	
-	print("FUNC DATA TEST::NO RESULT::", identifier, " -> ", type_rich.origin)
+	
+	print_deb(T.RESOLVE, "FUNC DATA TEST", "NO RESULT", identifier, " -> ", type_rich.origin)
+	
 	return {}
 
 #endregion
@@ -297,16 +299,16 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 	
 	var tern_check = _check_for_ternary_operation(expression, class_data)
 	if tern_check != "":
-		#print("TERN::", expression, " -> ", tern_check)
+		print_deb(T.RESOLVE, "TERN", expression, " -> ", tern_check)
 		return tern_check
 	var bool_bit_check = _check_for_bool_or_bitwise_operation(expression)
 	if bool_bit_check != "":
-		#print("COMPCHECK::bool::", expression, " -> ", bool_bit_check)
+		print_deb(T.RESOLVE, "COMPCHECK", "bool", expression, " -> ", bool_bit_check)
 		return bool_bit_check
 	
 	var comp_check:String = _check_for_math_operation(expression)
 	if comp_check != "":
-		#print("COMPCHECK::", expression, " -> ", comp_check)
+		print_deb(T.RESOLVE, "COMPCHECK", expression, " -> ", comp_check)
 		expression = comp_check
 	
 	var string_map = parser.get_string_map(expression)
@@ -1036,8 +1038,9 @@ func _get_inherited_member_type(identifier:String, full_part:String, class_obj:P
 func _ensure_valid_type_path(full_script_path:String):
 	if full_script_path.begins_with("preload"):
 		var const_data = Utils.get_var_or_const_info("const dummy = " + full_script_path)
-		full_script_path = const_data[1] # not sure if this is still needed, but I think it would 
-		print("TYPE_PRELOAD::", full_script_path) # be better to use resolve_preload maybe?
+		full_script_path = const_data[1] # not sure if this is still needed, but I think it would
+		
+		print_deb(T.RESOLVE, "TYPE_PRELOAD", full_script_path) # be better to use resolve_preload maybe?
 		## TEST
 	
 	var script_data = UString.get_script_path_and_suffix(full_script_path)
@@ -1171,7 +1174,7 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 					return ".".join(resolved_parts)
 				
 				#resolved_parts.append(identifier)
-				print("MEMBER IS CONST TYPE::", identifier, "::", type)
+				print_deb(T.VAR_TO_CONST, "MEMBER IS CONST TYPE", identifier, type)
 				var next_parser = parser.get_parser_and_class_obj_for_script(type)
 				if not next_parser:
 					return ".".join(resolved_parts)
@@ -1285,7 +1288,7 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 		member_data = class_obj.get_member(member_name)
 	
 	if member_data == null:
-		print("MEMBER NULL, WHAT TO DO???: ", member_name, " CLASS:: ", class_obj.get_name())
+		print_deb(T.RESOLVE, "MEMBER NULL, WHAT TO DO???", member_name, "CLASS", class_obj.get_name())
 		return "" # only time I have triggered is deleting a var and then quickly trying to access, difficult to trigger
 	
 	var type_declaration = ""
@@ -1307,7 +1310,7 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 				if allow_rebuild:
 					return _check_class_obj_member_data(member_name, class_obj, local_vars, false)
 				else:
-					print("ABORT CHECK MEMBER DATA")
+					print_deb(T.RESOLVE, "ABORT CHECK MEMBER DATA")
 					return "" # this should be handled by the above member_data check
 		
 		type_declaration = _get_script_member_type(line_index, column)

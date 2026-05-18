@@ -364,7 +364,7 @@ func get_function_call_data() -> FunctionCallData:
 	
 	var parser = Utils.ParserRef.get_parser(self)
 	var expression = _active_function_call.expression
-	print("FUNC EXPR::", expression)
+	#print("FUNC EXPR::", expression)
 	_active_function_call.symbol_data = get_symbol_data(expression, get_current_class_object(), caret_line, local_vars)
 	_active_function_call.function_data = parser.get_function_data(expression, caret_line)
 	#_active_function_call.function_data = #^ this needs to operate on function object, it will be faster and ensure proper return
@@ -706,7 +706,7 @@ class OperationData:
 		var symbol_script = left_symbol_data.symbol_script_path
 		
 		if symbol_script == class_obj.main_script_path: # not 100% sure why this is needed, kind of acts like get_access_object did
-			print("OP SET SYMBOL SCRIPT NULL")
+			#print("OP SET SYMBOL SCRIPT NULL")
 			symbol_script_access_object = null
 		
 		return access.find_path_to_type(class_obj, current_access, symbol_script_access_object, to_find, symbol_script)
@@ -786,7 +786,8 @@ class FunctionCallData:
 		var arg = Argument.new()
 		arg.name = _func_get_current_arg_name()
 		arg.type = func_get_current_arg_type()
-		print("ARG TYPE:::", arg.type)
+		#print("ARG TYPE::", arg.type)
+		
 		arg.declaration = func_get_current_arg_declaration()
 		
 		var function_object = get_function_script()
@@ -822,8 +823,10 @@ class FunctionCallData:
 	func func_get_current_arg_type():
 		var current_arg_data = _func_get_current_arg_data()
 		var function_object = get_function_script()
-		print("ARG DATA::", current_arg_data)
-		print("FUNC OBJ::", function_object)
+		
+		#print("ARG DATA::", current_arg_data)
+		#print("FUNC OBJ::", function_object)
+		
 		if current_arg_data == null:
 			return ""
 		var arg_type_resolved = current_arg_data.get(Keys.TYPE_RESOLVED)
@@ -840,16 +843,16 @@ class FunctionCallData:
 			var script_data = Utils.type_path_get_script_data(function_object)
 			resolved = parser.resolve_expression_in_script(arg_type, script_data[0], script_data[1])
 		else:
-			print("FUNC OBJ NOT SCRIPT::", function_object)
+			#print("FUNC OBJ NOT SCRIPT::", function_object)
 			resolved = arg_type
 		
-		print("ARG DATA RESOLVED::", resolved)
+		#print("ARG DATA RESOLVED::", resolved)
 		current_arg_data[Keys.TYPE_RESOLVED] = resolved
 		return resolved
 	
 	func _func_get_current_arg_data():
 		var arg_data = function_data.get(Keys.FUNC_ARGS, {})
-		print("FUNC DATA:: ARGS::", arg_data)
+		#print("FUNC DATA::ARGS::", arg_data)
 		return arg_data.get(_func_get_current_arg_name())
 		
 	
@@ -863,7 +866,7 @@ class FunctionCallData:
 	func get_type_access_path(type_path:String="", argument_object:AccessObject=null):
 		
 		if type_path == "":
-			print("GETTTING ARG ACCESS")
+			#print("GETTING ARG ACCESS")
 			var arg = func_get_current_arg()
 			argument_object = arg.access_object
 			type_path = arg.type

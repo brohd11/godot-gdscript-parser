@@ -4,7 +4,7 @@ const Utils = GDScriptParser.Utils
 const Keys = Utils.Keys
 const UFile = GDScriptParser.UFile
 
-const CLASS_NAME = &"class_name"
+const CLASS_NAME = &"<%class_name%>"
 const MEMBER_TYPE = &"member_type"
 const METHODS = &"methods"
 const PROPERTIES = &"properties"
@@ -358,6 +358,9 @@ static func get_member_data(class_nm:StringName, member_name:String, include_inh
 	var class_data_array:Array[Dictionary] = get_class_data(class_nm, include_inherited)
 	for dict:Dictionary in class_data_array:
 		if dict.has(member_name):
+			var member_data = dict.get(member_name, {})
+			if member_data is String:
+				print(class_nm, "::", member_name, "::", member_data)
 			return dict.get(member_name, {})
 	return {}
 

@@ -223,9 +223,10 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 		
 		print_deb(T.ACCESS_PATH, "INHERITED")
 	
-	#var declaration_script_data = Utils.type_path_get_script_data(access_object.declaration_type) # same logic as above
-	#var declaration_script_path = declaration_script_data[0]
-	#var declaration_class_path = declaration_script_data[1]
+	
+	#var dec_front_type = access_object.declaration_type
+	#if access_object.declaration_symbol.contains("."):
+		#dec_front_type = class_obj.get_member_type(dec_front, true)
 
 	var class_obj_to_check = [class_obj]
 	
@@ -236,7 +237,9 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 	for c_obj in class_obj_to_check:
 		var dec_front_member_data = c_obj.get_member_data(dec_front, true)
 		if dec_front_member_data != null:
-			var type = c_obj.get_member_type(dec_front)
+			#var type = c_obj.get_member_type(dec_front)
+			#if type != dec_front_type: # not sure about this...
+				#continue
 			var access_path = dec_front_member_data.get(Keys.ACCESS_PATH)
 			if to_find_is_current_script:
 				access_path = access_path.trim_prefix(class_obj.access_path)
@@ -244,6 +247,10 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 			print_deb_err(T.ACCESS_PATH, "IN MY FIRST CHECK::", full_access_path)
 			access_options.standard = full_access_path
 			return access_options
+	
+	#var search = _find_constant_by_value(to_find, class_obj)
+	#if search != null:
+		#print("SEARCH::", search)
 	
 	return access_options
 
@@ -309,6 +316,43 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass):
 		
 	return ""
 
+func _find_constant_by_value(type_to_find:String, initial_class_obj:ParserClass, current_access:="", recursions=0):
+	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("_find_constant_by_value")
+	if recursions > 3:
+		return ""
+	
+	var gdscript_constants = initial_class_obj.get_gdscript_constants(true)
+	for key in gdscript_constants.keys():
+		var val = gdscript_constants[key]
+		if val == type_to_find:
+			var member_data = initial_class_obj.get_member_data(key, true)
+			var access_path = member_data.get(Keys.ACCESS_PATH)
+			return UString.dot_joinv([current_access, access_path, key])
+		elif type_to_find.begins_with(val):
+			var stripped = type_to_find.trim_prefix(val)
+			if type_to_find.ends_with(ENUM_SUFFIX):
+				var member = Utils.type_path_get_member(type_to_find)
+				var non_member = Utils.type_path_get_non_member(type_to_find)
+				stripped = UString.dot_join(non_member, member)
+			return UString.dot_joinv([current_access, key, stripped])
+	
+	var parser = Utils.ParserRef.get_parser(self)
+	
+	for key in gdscript_constants.keys():
+		if key.ends_with(ENUM_SUFFIX):
+			continue
+		var next_parser = parser.get_parser_and_class_obj_for_script(gdscript_constants[key])
+		if not next_parser:
+			continue
+		var next_access = UString.dot_join(current_access, key)
+		var rec_check = _find_constant_by_value(type_to_find, next_parser.class_obj, next_access, recursions + 1)
+		if rec_check != "":
+			return rec_check
+	
+	t.stop()
+	return ""
+
+
 
 class AccessOptions:
 	var standard:String
@@ -363,7 +407,7 @@ const _PRINT = [
 	#T.INHERITED,
 	#T.VAR_TO_CONST,
 	#T.RESOLVE,
-	#T.ACCESS_PATH
+	T.ACCESS_PATH
 	]
 
 

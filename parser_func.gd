@@ -281,6 +281,31 @@ func get_function_data() -> Dictionary:
 	var return_string:String = get_return_type()
 	return {Keys.FUNC_ARGS: arguments.duplicate(), Keys.FUNC_RETURN:return_string}
 
+func get_arguments_raw() -> Dictionary:
+	var dict = {}
+	if not _cache_dirty:
+		for a in arguments:
+			dict[a] = true
+		return dict
+	
+	var column:int = member_data.get(Keys.COLUMN_INDEX, 0)
+	var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
+	if code_edit_parser.check_member_line(member_data.get(Keys.MEMBER_TYPE), name, declaration_line, column):
+		var func_data:Dictionary = code_edit_parser.get_type_from_line(declaration_line, column)
+		var result:Variant = func_data.get("result")
+		if not result is Dictionary:
+			print("GET ARG RAW::",result, "::", name)
+		if result:
+			var func_args = result.get(Keys.FUNC_ARGS, {})
+			for a in func_args:
+				dict[a] = true
+			return dict
+		if not result is Dictionary:
+			print(result, "::", name)
+	
+	return {}
+	
+
 func get_arguments() -> Dictionary:
 	_set_function_data()
 	return arguments

@@ -67,7 +67,6 @@ func set_script_resource(script:GDScript):
 		script_base_type = "RefCounted"
 	#print("INNERSCRIPT BASE::", script_base_type)
 
-
 func get_script_resource():
 	return script_resource
 
@@ -86,6 +85,11 @@ func get_members_hash():
 		var names = dict.keys()
 		names.sort()
 		all_members.append_array(names)
+	
+	for f in functions.values():
+		var args = f.get_arguments_raw()
+		if not args.is_empty():
+			all_members.append(args)
 	
 	_members_hash = all_members.hash()
 	return _members_hash

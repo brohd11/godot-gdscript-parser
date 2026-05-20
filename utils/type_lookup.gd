@@ -4,8 +4,6 @@ const PRINT_DEBUG = false # not PLUGIN_EXPORTED
 
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 
-const VarInsertType = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/type_lookup/var_insert_type.gd")
-
 const UString = GDScriptParser.UString
 const UFile = GDScriptParser.UFile
 const UClassDetail = GDScriptParser.UClassDetail
@@ -125,14 +123,14 @@ func resolve_inner_class_at_line(expression:String, line:int):
 	var type_check = _simple_type_check(result)
 	if type_check != "" and type_check != result:
 		# the only time I've seen trigger is when a path goes in, returns exact same
-		printerr("IS THIS USED - _simple_type_check in resolve_inner_class_at_line::", result, " -> ", type_check)
+		print_deb_err(T.RESOLVE, "IS THIS USED - _simple_type_check in resolve_inner_class_at_line::", result, " -> ", type_check)
 		return type_check
 	return result
 
 
 func resolve_expression_to_type_at_line(expression:String, line:int):
 	if class_resolution == true:
-		printerr("CLASS RES TRUE")
+		print_deb_err(T.RESOLVE, "CLASS RES TRUE")
 	class_resolution = false
 	
 	var class_data = get_class_data_at_line(line)
@@ -140,7 +138,7 @@ func resolve_expression_to_type_at_line(expression:String, line:int):
 
 func resolve_expression_to_type_at_line_respect_inf_context(expression:String, line:int):
 	if class_resolution == true:
-		printerr("CLASS RES TRUE")
+		print_deb_err(T.RESOLVE, "CLASS RES TRUE")
 	class_resolution = false
 	
 	var class_data = get_class_data_at_line(line)
@@ -152,9 +150,9 @@ func resolve_expression_to_var_data_at_line(expression:String, line:int):
 
 func _resolve_expression_to_var_data_at_line_simple(expression:String, line:int):
 	if class_resolution == true:
-		printerr("CLASS RES TRUE")
+		print_deb_err(T.RESOLVE, "CLASS RES TRUE")
 	class_resolution = false
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET VAR DATA")
+	var t = GDScriptParser.TF.new("GET VAR DATA")
 	
 	var class_data = get_class_data_at_line(line)
 	if not class_data.valid_data:
@@ -219,7 +217,7 @@ func _resolve_expression_to_var_data_at_line_simple(expression:String, line:int)
 
 func _resolve_expression_to_origin(expression: String, class_data:ClassData) -> String:
 	if class_resolution == true:
-		printerr("CLASS RES TRUE")
+		print_deb_err(T.RESOLVE, "CLASS RES TRUE")
 	class_resolution = false
 	
 	var inf_context = _get_or_instance_inf_context()
@@ -243,7 +241,7 @@ func _resolve_expression_to_origin(expression: String, class_data:ClassData) -> 
 
 func _resolve_expression_to_type(expression: String, class_data:ClassData, set_find_origin:=false) -> String:
 	if class_resolution == true:
-		printerr("CLASS RES TRUE")
+		print_deb_err(T.RESOLVE, "CLASS RES TRUE")
 	class_resolution = false
 	
 	if not class_data.valid_data:
@@ -548,7 +546,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 						add_to_inf_context = false
 		
 		if current_type_path == "null": # if this never calls, can remove it from the check below
-			printerr("TYPE PATH IS NULL")
+			print_deb_err("TYPE PATH IS NULL")
 		
 		var class_member_resolved:=false
 		if not valid_class_identifier:
@@ -667,7 +665,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		
 		
 		if resolved_type is not String and resolved_type is not StringName:
-			printerr(T.RESOLVE, "::RETURN FAIL--IS NOT STRING::", expression) #^r if this doesn't call, is obsolete
+			print_deb_err(T.RESOLVE, "::RETURN FAIL--IS NOT STRING::", expression) #^r if this doesn't call, is obsolete
 			return ""
 		if resolved_type == "": # If we hit a dead end (untyped var, unknown function)
 			print_deb(T.RESOLVE, "RETURN FAIL", expression)
@@ -974,7 +972,7 @@ func _resolve_builtin_class_member(identifier:String, current_type_path:String, 
 
 func _process_external_identifier(identifier:String, script_path:String, class_access_path:String = ""):
 	var type = ""
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("OUTSIDE PARSER: " + identifier + " -> " + str(script_path.get_file()))
+	var t = GDScriptParser.TF.new("OUTSIDE PARSER: " + identifier + " -> " + str(script_path.get_file()))
 	print_deb(T.RESOLVE, "ATTEMPT_EXTERNAL", identifier, script_path, class_access_path)
 	var external_parser = _get_parser_for_script(script_path)
 	#print(script_path, "::", class_access_path, "::", identifier)
@@ -1030,7 +1028,7 @@ func _get_inherited_member_type(identifier:String, full_part:String, class_obj:P
 		if inheriting_script != "":
 			var script_data = UString.get_script_path_and_suffix(inheriting_script)
 			print_deb(T.INHERITED, "EXTERNAL SCRIPT", inheriting_script)
-			printerr("IS THIS EVER USED - _get_inherited_member_type::want to delete _find_inheriting_script")
+			print_deb_err(T.INHERITED, "IS THIS EVER USED - _get_inherited_member_type::want to delete _find_inheriting_script")
 			return _process_external_identifier(identifier, script_data[0], script_data[1]) # may need access path for class?
 	return ""
 
@@ -1760,7 +1758,7 @@ func set_autoload_cache():
 		elif autoload_path.get_extension() == "cs":
 			continue
 		else:
-			autoload_path = ALibRuntime.Utils.UResource.UPackedScene.ReadFile.get_root_script_path(autoload_path)
+			autoload_path = UResource.UPackedScene.ReadFile.get_root_script_path(autoload_path)
 			if autoload_path == "":
 				continue
 		
@@ -1891,13 +1889,14 @@ class ClassData:
 static func get_empty_type_rich() -> Dictionary:
 	return {"type": "", "origin": "", "member_stack": [], "is_instance": false}
 
+const PrintDebug = preload("uid://d1ki8cxxh7lvb") #! resolve ALibEditor.PrintDebug
 #! arg_location section:T
 static func print_deb(section:String, ...msg:Array):
 	if not PRINT_DEBUG:
 		return
 	if section in _PRINT:
 		msg.push_front(section)
-		ALibEditor.PrintDebug.print(msg)
+		PrintDebug.print(msg)
 
 #! arg_location section:T
 static func print_deb_err(section:String, ...msg:Array):
@@ -1905,7 +1904,7 @@ static func print_deb_err(section:String, ...msg:Array):
 		return
 	if section in _PRINT:
 		msg.push_front(section)
-		ALibEditor.PrintDebug.print_err(msg)
+		PrintDebug.print_err(msg)
 
 const _PRINT = [
 	#T.BUILTIN,

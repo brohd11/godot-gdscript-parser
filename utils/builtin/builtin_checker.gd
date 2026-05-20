@@ -104,7 +104,7 @@ static func _load_extension_api() -> void:
 				return
 	
 	if not FileAccess.file_exists(target_path):
-		printerr("Failed to generate extension_api.json")
+		printerr("Failed to generate extension_api.json for GDScriptParser - This should not happen, file an issue on GitHub")
 		return
 	var data:Dictionary = UFile.read_from_json(target_path)
 	
@@ -358,9 +358,9 @@ static func get_member_data(class_nm:StringName, member_name:String, include_inh
 	var class_data_array:Array[Dictionary] = get_class_data(class_nm, include_inherited)
 	for dict:Dictionary in class_data_array:
 		if dict.has(member_name):
-			var member_data = dict.get(member_name, {})
-			if member_data is String:
-				print(class_nm, "::", member_name, "::", member_data)
+			#var member_data = dict.get(member_name, {})
+			#if member_data is String: # this check was was for class_name, should not be an issue now
+				#print(class_nm, "::", member_name, "::", member_data)
 			return dict.get(member_name, {})
 	return {}
 

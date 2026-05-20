@@ -77,7 +77,7 @@ func parse_text(force:=false):
 		#print("CALLED PARSE NO CODE EDIT")
 		return
 	
-	#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("S::" + parser.get_script_path())
+	#var t = GDScriptParser.TF.new("S::" + parser.get_script_path())
 	
 	_set_code_edit(parser.code_edit)
 	indent_size = code_edit.get_tab_size()
@@ -258,7 +258,7 @@ func _parse_line(stripped:String, line:int, column:int=0):
 		var keyword:StringName = result.get_string(2)
 		if result.get_string(1) != "":
 			if result.get_string(1) != "static":
-				printerr("REGEX MISTAKE SHOULD BE STATIC ", result.get_string(1))
+				GDScriptParser.print_deb_err("REGEX MISTAKE SHOULD BE STATIC ", result.get_string(1))
 			keyword = "static " + keyword
 		var member_name = StringName(result.get_string(3))
 		
@@ -455,7 +455,7 @@ func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=fal
 		context_regex = RegEx.new()
 		context_regex.compile("[\"'(){}\\[\\]]")
 	
-	#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("Get Caret Context")
+	#var t = GDScriptParser.TF.new("Get Caret Context")
 	if start_data.is_empty():
 		start_data = get_line_context_start_simple(target_line_index)
 	
@@ -764,7 +764,7 @@ func strip_annotations(stripped_text:String):
 	return stripped_text
 
 func check_member_line(member_type:String, member_name:String, line:int, column:int=0, rebuild:=true):
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("CHECK MEMBER" + str([member_type, " ", member_name]))
+	var t = GDScriptParser.TF.new("CHECK MEMBER" + str([member_type, " ", member_name]))
 	var line_text = get_line(line).strip_edges(true, false)
 	if column != 0:
 		line_text = get_line(line).substr(column).strip_edges(true, false)
@@ -806,7 +806,7 @@ func get_type_from_line_text(stripped_line_text:String):
 			elif dec == &"func " or dec == &"static func ":
 				data["result"] = Utils.get_func_info(stripped_line_text)
 			elif dec == &"class ":
-				printerr("GET TYPE FROM LINE CLASS - IF THIS CALLS NEED TO MANAGE EXTENDING PATHS")
+				GDScriptParser.print_deb_err("GET TYPE FROM LINE CLASS - IF THIS CALLS NEED TO MANAGE EXTENDING PATHS")
 				data["result"] = Utils.get_class_info(stripped_line_text)
 			elif dec == &"signal ":
 				data["result"] = Utils.get_signal_info(stripped_line_text)
@@ -824,7 +824,7 @@ func get_member_name_from_line(line:int):
 		var keyword:String = result.get_string(2)
 		if result.get_string(1) != "":
 			if result.get_string(1) != "static":
-				printerr("REGEX MISTAKE SHOULD BE STATIC ", result.get_string(1))
+				GDScriptParser.print_deb_err("REGEX MISTAKE SHOULD BE STATIC ", result.get_string(1))
 			keyword = "static " + keyword
 		return result.get_string(3)
 	return ""

@@ -317,7 +317,7 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass):
 	return ""
 
 func _find_constant_by_value(type_to_find:String, initial_class_obj:ParserClass, current_access:="", recursions=0):
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("_find_constant_by_value")
+	var t = GDScriptParser.TF.new("_find_constant_by_value")
 	if recursions > 3:
 		return ""
 	
@@ -385,14 +385,14 @@ class AccessUtils:
 		return string
 
 
-
+const PrintDebug = preload("uid://d1ki8cxxh7lvb") #! resolve ALibEditor.PrintDebug
 #! arg_location section:T
 static func print_deb(section:String, ...msg:Array):
 	if not PRINT_DEBUG:
 		return
 	if section in _PRINT:
 		msg.push_front(section)
-		ALibEditor.PrintDebug.print(msg)
+		PrintDebug.print(msg)
 
 #! arg_location section:T
 static func print_deb_err(section:String, ...msg:Array):
@@ -400,14 +400,14 @@ static func print_deb_err(section:String, ...msg:Array):
 		return
 	if section in _PRINT:
 		msg.push_front(section)
-		ALibEditor.PrintDebug.print_err(msg)
+		PrintDebug.print_err(msg)
 
 const _PRINT = [
 	#T.BUILTIN, 
 	#T.INHERITED,
 	#T.VAR_TO_CONST,
 	#T.RESOLVE,
-	T.ACCESS_PATH
+	#T.ACCESS_PATH
 	]
 
 

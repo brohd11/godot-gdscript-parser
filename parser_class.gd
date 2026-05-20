@@ -1,5 +1,7 @@
 #! import_p Keys,
 
+const PLUGIN_EXPORTED = false
+
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 const ParserFunc = GDScriptParser.ParserFunc
 const Utils = GDScriptParser.Utils
@@ -287,7 +289,7 @@ func get_member_type(identifier:String, include_inherited:=false) -> String:
 	return ""
 
 func get_member_type_rich(identifier:String):
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET MEMBER::" + identifier)
+	var t = GDScriptParser.TF.new("GET MEMBER::" + identifier)
 	var member_data = get_member(identifier)
 	if member_data == null:
 		return GDScriptParser.TypeLookup.get_empty_type_rich()
@@ -298,7 +300,7 @@ func get_member_type_rich(identifier:String):
 	var cached = _resolve_cache.get_or_add(identifier, {})
 	var type_rich:Dictionary
 	if not cache_valid:
-		#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET TYPE")
+		#var t = GDScriptParser.TF.new("GET TYPE")
 		if member_data is ParserFunc:
 			cached[Keys.CLASS_CACHE_DEC] = member_data.get_return_type_raw()
 			
@@ -391,12 +393,12 @@ func is_member_static_typed(identifier:String):
 	if result is Array:
 		return result[1] != "" or result[3]
 	else:
-		print("NOT AN ARRAY IN MEMBER STATIC TYPED")
-		print(result)
+		GDScriptParser.print_deb_err("NOT AN ARRAY IN MEMBER STATIC TYPED", result)
+		return false
 	return true
 
 func has_preload(path:String) -> Variant: # doesnt handle inherited, should cache this somehow
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("GET PRELOAD")
+	var t = GDScriptParser.TF.new("GET PRELOAD")
 	
 	var all_const = get_inherited_members().duplicate()
 	all_const.merge(constants.duplicate())
@@ -434,7 +436,7 @@ func get_inherited_members() -> Dictionary:
 	
 	if not inherited_members.is_empty():
 		return inherited_members
-	#var t = ALibRuntime.Utils.UProfile.TimeFunction.new("INHCHJECK::" + get_name())
+	#var t = GDScriptParser.TF.new("INHCHJECK::" + get_name())
 	_get_inherited_members()
 	
 	#t.stop()

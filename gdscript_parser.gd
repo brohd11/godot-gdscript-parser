@@ -4,6 +4,8 @@
 const PLUGIN_EXPORTED = false
 const CACHE_TYPES = true
 
+const TF = preload("uid://ft7o6vspsurv") #! resolve ALibRuntime.Utils.UProfile.TimeFunction
+
 const UString = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_string.gd")
 const UClassDetail = preload("res://addons/addon_lib/brohd/alib_editor/utils/src/u_class_detail.gd")
 const UFile = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_file.gd")
@@ -19,7 +21,6 @@ const CodeEditParser = preload("res://addons/addon_lib/brohd/alib_runtime/utils/
 const TypeLookup = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/type_lookup.gd")
 const Access = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/access.gd")
 const BuiltInChecker = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/builtin/builtin_checker.gd")
-
 const InferenceContext = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/type_lookup/inference_context.gd")
 
 const Utils = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/utils.gd")
@@ -130,7 +131,7 @@ func set_current_script(script:GDScript) -> void:
 		clear_current_class()
 	_script_resource = script
 	if _script_resource == null:
-		print("GDScriptParser.set_current_script - SCRIPT NULL")
+		print_deb_err("GDScriptParser.set_current_script - SCRIPT NULL")
 		return
 	_script_path = _script_resource.resource_path
 
@@ -334,16 +335,14 @@ func get_line_context(line:int, column:int=0, insert_caret:=false) -> String:
 func resolve_expression_in_script(expression:String, script_path:String, class_path:String) -> String:
 	var target_parser:Dictionary = get_parser_and_class_obj(script_path, class_path)
 	if not target_parser or not target_parser.class_obj:
-		if not PLUGIN_EXPORTED:
-			printerr("Could not get parser for path::resolve_expression_in_script::", script_path, "::", class_path)
+		print_deb_err("Could not get parser for path::resolve_expression_in_script::", script_path, "::", class_path)
 		return ""
 	return target_parser.parser.resolve_expression_to_type(expression, target_parser.class_obj.line_indexes[0])
 
 func resolve_to_access_object_in_script(expression:String, script_path:String, class_path:String) -> Variant:
 	var target_parser:Dictionary = get_parser_and_class_obj(script_path, class_path)
 	if not target_parser or not target_parser.class_obj:
-		if not PLUGIN_EXPORTED:
-			printerr("Could not get parser for path::resolve_to_access_object_in_script::", script_path, "::", class_path)
+		print_deb_err("Could not get parser for path::resolve_to_access_object_in_script::", script_path, "::", class_path)
 		return
 	return target_parser.parser.resolve_to_access_object(expression, target_parser.class_obj.line_indexes[0])
 
@@ -353,7 +352,7 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 		return
 	var script_path:String = script_data[0]
 	if not Utils.is_gdscript_path(script_path):
-		print("NOT A GDSCRIPT FILE::", full_script_path)
+		print_deb_err("get_parser_for_path::NOT A GDSCRIPT FILE::", full_script_path)
 		return
 	if not FileAccess.file_exists(script_path):
 		_parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {}).erase(script_path)
@@ -368,8 +367,10 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 	if _get_cached_parser_callable.is_valid():
 		return _get_cached_parser_callable.call()
 	if _parser_cache == null:
-		print("PARSER CACHE NULL::", _script_path)
-		pass
+		# is this needed? doesn't really do anything, think it was from first impl
+		print_deb_err("get_parser_for_path::PARSER CACHE NULL::", _script_path)
+	
+	
 	
 	var active_parsers_cache:Dictionary = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
 	var parser_data:Variant = get_cached_parser_data(script_path)
@@ -544,3 +545,8 @@ func print_hierarchy() -> void:
 		for f:String in _class.functions.keys():
 			print(member_indent_str + f)
 		print("")
+
+static func print_deb_err(...args:Array):
+	if not PLUGIN_EXPORTED:
+		return
+	printerr("::".join(args))

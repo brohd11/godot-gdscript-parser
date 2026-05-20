@@ -123,7 +123,7 @@ func _init(parser:GDScriptParser, parse_context:=true) -> void:
 
 
 func parse():
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("CARET CONTEXT")
+	var t = GDScriptParser.TF.new("CARET CONTEXT")
 	
 	var parser = ParserRef.get_parser(self)
 	var code_edit_parser = ParserRef.get_code_edit_parser(self)

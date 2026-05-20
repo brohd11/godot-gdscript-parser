@@ -248,7 +248,7 @@ static func add_var_to_dict(stripped_line:String, line:int, dict:Dictionary, mem
 	elif member_type == Keys.MEMBER_TYPE_FOR:
 		var_data = get_for_loop_info(stripped_line)
 	else:
-		printerr("UNHANDLED MEMBER TYPE::Utils.add_var_to_dict - ", stripped_line, "::", member_type)
+		print_deb(T.LOCAL_VAR, "UNHANDLED MEMBER TYPE::Utils.add_var_to_dict - ", stripped_line, "::", member_type)
 		return []
 	if var_data != null:
 		var var_name:String = var_data[0]
@@ -260,7 +260,7 @@ static func add_var_to_dict(stripped_line:String, line:int, dict:Dictionary, mem
 		
 		var key:Variant = line if int_key else var_name
 		if dict.has(key):
-			printerr("LOCAL VARS HAS KEY ALREADY::", key, "::",var_name, "::",line)
+			print_deb(T.LOCAL_VAR, "LOCAL VARS HAS KEY ALREADY::", key, "::",var_name, "::",line)
 		dict[key] = {
 			Keys.MEMBER_NAME: var_name,
 			Keys.LINE_INDEX: line,
@@ -363,21 +363,22 @@ class ParserRef:
 		return
 
 
-static func test():
-	var script = load("res://test_comp.gd")
-	print(run_expression("START_POS", script))
-	pass
+
+
+const PrintDebug = preload("uid://d1ki8cxxh7lvb") #! resolve ALibEditor.PrintDebug
 
 #! arg_location section:T
 static func print_deb(section:String, ...msg:Array):
 	if section in _PRINT:
 		msg.push_front(section)
-		ALibEditor.PrintDebug.print(msg)
+		PrintDebug.print(msg)
 
 const _PRINT = [
-	T.ACCESS_PATH, 
+	T.ACCESS_PATH,
+	T.LOCAL_VAR
 	]
 
 
 class T:
 	const ACCESS_PATH = "ENUM ACCESS PATH"
+	const LOCAL_VAR = "LOCAL_VAR"

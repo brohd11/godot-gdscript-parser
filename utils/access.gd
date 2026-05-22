@@ -181,7 +181,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 	return access_options
 
 
-func find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject, to_find:String):
+func find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject, to_find:String) -> AccessOptions:
 	var result = _find_path_to_type_simple(class_obj, access_object, to_find)
 	# ensure no suffixes, or self prefix
 	result.standard = AccessUtils.clean_path(result.standard)
@@ -189,7 +189,7 @@ func find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject,
 	result.global = AccessUtils.clean_path(result.global)
 	return result
 
-func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject, to_find:String):
+func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject, to_find:String) -> AccessOptions:
 	var parser = Utils.ParserRef.get_parser(self)
 	print_deb(T.ACCESS_PATH, "OPERATION", "----------------------------------------")
 	print_deb(T.ACCESS_PATH,"FROM", class_obj.get_script_class_path(), "TO FIND",to_find)
@@ -224,9 +224,9 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 		print_deb(T.ACCESS_PATH, "INHERITED")
 	
 	
-	#var dec_front_type = access_object.declaration_type
-	#if access_object.declaration_symbol.contains("."):
-		#dec_front_type = class_obj.get_member_type(dec_front, true)
+	var dec_front_type = access_object.declaration_type
+	if access_object.declaration_symbol.contains("."):
+		dec_front_type = class_obj.get_member_type(dec_front, true)
 
 	var class_obj_to_check = [class_obj]
 	
@@ -237,9 +237,9 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 	for c_obj in class_obj_to_check:
 		var dec_front_member_data = c_obj.get_member_data(dec_front, true)
 		if dec_front_member_data != null:
-			#var type = c_obj.get_member_type(dec_front)
-			#if type != dec_front_type: # not sure about this...
-				#continue
+			var type = c_obj.get_member_type(dec_front)
+			if type != dec_front_type: # not sure about this...
+				continue
 			var access_path = dec_front_member_data.get(Keys.ACCESS_PATH)
 			if to_find_is_current_script:
 				access_path = access_path.trim_prefix(class_obj.access_path)
@@ -248,9 +248,14 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 			access_options.standard = full_access_path
 			return access_options
 	
-	#var search = _find_constant_by_value(to_find, class_obj)
-	#if search != null:
+	
+	#^ this works well, but it is slow and a last resort.
+	#^ maybe the caller can call it from outside if needed...
+	#var search = find_constant_by_value(to_find, class_obj)
+	#if search != "":
 		#print("SEARCH::", search)
+		#access_options.standard = search
+		#return access_options
 	
 	return access_options
 
@@ -297,7 +302,7 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass):
 		
 		print_deb(T.ACCESS_PATH, working_script_access_path)
 		print_deb(T.ACCESS_PATH, checked_access)
-		print_deb(T.ACCESS_PATH, "CHECKING", search_path)
+		print_deb(T.ACCESS_PATH, "SEARCHING FOR", search_path)
 		var check = class_obj.has_preload(search_path)
 		if check != null:
 			print_deb(T.ACCESS_PATH, "FOUND", check, working_script_access_path)
@@ -315,6 +320,10 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass):
 		
 		
 	return ""
+
+func find_constant_by_value(type_to_find:String, initial_class_obj:ParserClass):
+	#return _find_constant_by_value(type_to_find, initial_class_obj)
+	return _find_constant_by_value_bf(type_to_find, initial_class_obj)
 
 func _find_constant_by_value(type_to_find:String, initial_class_obj:ParserClass, current_access:="", recursions=0):
 	var t = GDScriptParser.TF.new("_find_constant_by_value")
@@ -352,6 +361,45 @@ func _find_constant_by_value(type_to_find:String, initial_class_obj:ParserClass,
 	t.stop()
 	return ""
 
+# maybe add a depth param to this? check '.' count and abort if too many slices
+# this works good, but it can be slowww
+func _find_constant_by_value_bf(type_to_find:String, initial_class_obj:ParserClass):
+	var t = GDScriptParser.TF.new("_find_const_bf")
+	var parser = Utils.ParserRef.get_parser(self)
+	
+	var checked = {}
+	var queue = [{"class_obj":initial_class_obj, "access": ""}]
+	while not queue.is_empty():
+		var class_data = queue.pop_front()
+		var class_obj = class_data.get("class_obj") as GDScriptParser.ParserClass
+		checked[class_obj.get_script_class_path()] = true
+		var access = class_data.get("access")
+		var pc = class_obj.has_preload(type_to_find)
+		if pc:
+			t.stop()
+			return UString.dot_join(access, pc)
+		
+		var gdscript_constants = class_obj.get_gdscript_constants(true)
+		for key in gdscript_constants:
+			var val = gdscript_constants[key]
+			if val.ends_with(ENUM_SUFFIX):
+				continue
+			if checked.has(val):
+				print("DOES TJOS DO")
+				continue
+			var next_parser = parser.get_parser_and_class_obj_for_script(gdscript_constants[key])
+			if not next_parser:
+				continue
+			var next_class = next_parser.class_obj as GDScriptParser.ParserClass
+			if checked.has(next_class.get_script_class_path()):
+				print("SECOND CHECK, IS THIS NEEDED::", val)
+				continue
+			queue.append({
+				"class_obj": next_class,
+				"access": UString.dot_join(access, key)
+			})
+	t.stop()
+	return ""
 
 
 class AccessOptions:

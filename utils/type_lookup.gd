@@ -1911,7 +1911,7 @@ static func print_deb_err(section:String, ...msg:Array):
 const _PRINT = [
 	#T.BUILTIN,
 	#T.INHERITED,
-	T.VAR_TO_CONST,
+	#T.VAR_TO_CONST,
 	#T.RESOLVE,
 	#T.ACCESS_PATH
 	]

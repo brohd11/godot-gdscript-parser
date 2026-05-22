@@ -1431,13 +1431,14 @@ static func get_class_member_type(base_type:String, identifier:String):
 				base_type = "Dictionary"
 	
 	# this is special for these, can either handle 'enum::SomeEnum' or keep these
-	if ClassDB.class_has_enum(base_type, identifier):
-		return Utils.type_path_add_type(Utils.type_path_add_member(base_type, identifier), "Enum")
-	elif ClassDB.class_has_integer_constant(base_type, identifier):
-		var int_enum = ClassDB.class_get_integer_constant_enum(base_type, identifier)
-		if int_enum != "":
-			return Utils.type_path_add_type(Utils.type_path_add_member(base_type, int_enum), "Enum")
-		return Utils.type_path_add_type(Utils.type_path_add_member(base_type, identifier), "int")
+	if ClassDB.class_exists(base_type):
+		if ClassDB.class_has_enum(base_type, identifier):
+			return Utils.type_path_add_type(Utils.type_path_add_member(base_type, identifier), "Enum")
+		elif ClassDB.class_has_integer_constant(base_type, identifier):
+			var int_enum = ClassDB.class_get_integer_constant_enum(base_type, identifier)
+			if int_enum != "":
+				return Utils.type_path_add_type(Utils.type_path_add_member(base_type, int_enum), "Enum")
+			return Utils.type_path_add_type(Utils.type_path_add_member(base_type, identifier), "int")
 	
 	var result = BuiltInChecker.get_member_type(base_type, identifier)
 	return result

@@ -1393,10 +1393,11 @@ func _class_has_member(base_type:String, identifier:String):
 	elif base_type.begins_with("Dictionary["):
 		base_type = "Dictionary"
 	
-	if ClassDB.class_has_enum(base_type, identifier):
-		return true
-	elif ClassDB.class_has_integer_constant(base_type, identifier):
-		return true # handles loose enum members
+	if ClassDB.class_exists(base_type): 
+		if ClassDB.class_has_enum(base_type, identifier):
+			return true
+		elif ClassDB.class_has_integer_constant(base_type, identifier):
+			return true # handles loose enum members
 	# this should be sufficient for this check
 	return BuiltInChecker.class_has_member(base_type, identifier)
 

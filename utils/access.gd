@@ -262,12 +262,12 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 
 func get_global_name_and_script_alias(to_find:String, class_obj:ParserClass, access_options:AccessOptions):
 	var to_find_script_data = GDScriptParser.Utils.type_path_get_script_data(to_find)
-	var to_find_script = load(to_find_script_data[0]) as GDScript
+	var to_find_script_path = to_find_script_data[0]
 	var to_find_class_path = to_find_script_data[1]
 	var member_name = Utils.type_path_get_member(to_find)
-	
-	if to_find_script.get_global_name() != "":
-		access_options.global = AccessUtils.remove_suffixes(UString.dot_joinv([to_find_script.get_global_name(), to_find_class_path, member_name]))
+	var global_name = UClassDetail.get_global_class_name(to_find_script_path)
+	if global_name != "":
+		access_options.global = AccessUtils.remove_suffixes(UString.dot_joinv([global_name, to_find_class_path, member_name]))
 	if access_options.script_alias != "":
 		return # early exit if it has been changed, this can be expensive, not sure if this needed now?
 	

@@ -451,9 +451,12 @@ func get_line_context_start_simple(target_line_index:int) -> Dictionary:
 
 
 func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=false, start_data:={}) -> Dictionary:
+	if not is_instance_valid(code_edit):
+		return {}
 	if not is_instance_valid(context_regex):
 		context_regex = RegEx.new()
 		context_regex.compile("[\"'(){}\\[\\]]")
+	
 	
 	#var t = GDScriptParser.TF.new("Get Caret Context")
 	if start_data.is_empty():

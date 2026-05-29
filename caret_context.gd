@@ -489,7 +489,12 @@ func get_symbol_data(chain_text:String, class_obj:GDScriptParser.ParserClass, li
 		if GDScriptParser.TypeLookup.BuiltInChecker.is_global_method(chain_text):
 			resolved_symbol_script = &"global_method"
 		else:
-			resolved_symbol_script = UString.dot_join(parser.get_script_path(), current_class)
+			var member_data = class_obj.get_member_data(front, true)
+			if member_data == null:
+				#printerr("MEMBER NOT IN FUNC")
+				resolved_symbol_script = UString.dot_join(parser.get_script_path(), current_class)
+			else:
+				resolved_symbol_script = Utils.get_class_access_path_from_member_data(member_data)
 	else:
 		var access = UString.trim_member_access_back(chain_text, string_map)
 		var resolved = parser.resolve_expression_to_type(access)

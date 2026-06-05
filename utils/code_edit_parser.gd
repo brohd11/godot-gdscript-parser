@@ -107,7 +107,7 @@ func parse_text(force:=false):
 		if i >= code_edit_line_count: # some how get line can return a blank line when calling out of range?
 			break
 		var stripped:String = get_line(i, true, true)
-		if stripped == "":
+		if stripped == "" or not is_valid_code(i, 0): # avlid code check for multiline strings with vars, for a template or something
 			class_access_map[_pc.access_path].append(i)
 			if _pc.in_function:
 				_pc.current_func_dict[Keys.FUNC_LINES].append(i)

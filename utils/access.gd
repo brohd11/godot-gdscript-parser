@@ -198,7 +198,6 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 	var access_options = AccessOptions.new()
 	get_global_name_and_script_alias(to_find, class_obj, access_options)
 	
-	
 	var to_find_script_data = Utils.type_path_get_script_data(to_find)
 	var to_find_script_path = to_find_script_data[0]
 	var to_find_class_path = to_find_script_data[1]
@@ -213,6 +212,9 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 	if dec_front == "self":
 		if to_find_is_current_script:
 			access_options.standard = to_find.trim_prefix(class_obj.get_script_class_path())
+			if access_options.standard == "" and to_find_class_path != "":
+				# means we are in an inner class, return the name
+				access_options.standard = to_find_class_path.get_file()
 			return access_options
 	
 	if class_obj.inherits_script(UString.dot_join(to_find_script_path, to_find_class_path)):

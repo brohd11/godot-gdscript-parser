@@ -259,8 +259,8 @@ static func add_var_to_dict(stripped_line:String, line:int, dict:Dictionary, mem
 			type = get_type_from_for_info(var_data)
 		
 		var key:Variant = line if int_key else var_name
-		if dict.has(key):
-			print_deb(T.LOCAL_VAR, "LOCAL VARS HAS KEY ALREADY::", key, "::",var_name, "::",line)
+		#if dict.has(key):
+			#print_deb(T.LOCAL_VAR, "LOCAL VARS HAS KEY ALREADY::", key, "::",var_name, "::",line)
 		dict[key] = {
 			Keys.MEMBER_NAME: var_name,
 			Keys.LINE_INDEX: line,

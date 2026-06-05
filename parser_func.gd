@@ -74,6 +74,7 @@ func parse() -> void:
 func _set_function_data() -> void:
 	if not _cache_dirty:
 		return
+	_return_type = "" # ensure this doesn't get stuck
 	
 	var column:int = member_data.get(Keys.COLUMN_INDEX, 0)
 	var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
@@ -315,6 +316,7 @@ func get_arguments() -> Dictionary:
 
 func get_return_type(inferred:=true) -> String: # this could be used to parse
 	_set_function_data()
+	
 	if _return_type_raw == "":
 		_return_type_raw = _infer_return_type()
 	

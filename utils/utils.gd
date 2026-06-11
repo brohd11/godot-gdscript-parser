@@ -273,7 +273,9 @@ static func get_class_access_path_from_member_data(dict:Dictionary) -> String:
 	return UString.dot_join(dict.get(Keys.SCRIPT_PATH, ""), dict.get(Keys.ACCESS_PATH, ""))
 
 static func token_is_string(text:String) -> bool: # should this account for StringName and NodePath?
-	if text.begins_with('"') or text.begins_with("'"):
+	if text.begins_with("r"):
+		text = text.trim_prefix("r")
+	if (text.begins_with('"') and text.ends_with('"')) or (text.begins_with("'") and text.ends_with("'")):
 		return true
 	return false
 

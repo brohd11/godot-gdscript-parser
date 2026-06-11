@@ -398,8 +398,6 @@ func is_member_static_typed(identifier:String):
 	return true
 
 func has_preload(path:String) -> Variant: # doesnt handle inherited, should cache this somehow
-	var t = GDScriptParser.TF.new("GET PRELOAD")
-	
 	var all_const = get_inherited_members().duplicate()
 	all_const.merge(constants.duplicate())
 	#print("TO FIND::", path)
@@ -416,7 +414,6 @@ func has_preload(path:String) -> Variant: # doesnt handle inherited, should cach
 		var type = class_object.get_member_type(c) # this will cache it in the proper class
 		#print("PRELOAD TYPE::", type)
 		if type == path:
-			t.stop()
 			return c
 	
 	var inherited_script_paths = get_inherited_scripts()

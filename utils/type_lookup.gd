@@ -1,6 +1,6 @@
 
 const PLUGIN_EXPORTED = false
-const PRINT_DEBUG = false # not PLUGIN_EXPORTED
+const PRINT_DEBUG = true # not PLUGIN_EXPORTED
 
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 
@@ -1151,6 +1151,7 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 		
 		print_deb(T.VAR_TO_CONST, "")
 		print_deb(T.VAR_TO_CONST, "CYCLE ----------")
+		print_deb(T.VAR_TO_CONST, "UNRESOLVED PARTS", parts)
 		print_deb(T.VAR_TO_CONST, "RESOLVED PARTS", resolved_parts)
 		print_deb(T.VAR_TO_CONST, "CHECK", identifier, current_class_obj.get_script_class_path())
 		
@@ -1166,7 +1167,11 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 		if member_data:
 			var member_type = member_data.get(Keys.MEMBER_TYPE)
 			if Utils.member_is_const_class_enum(member_type):
-				resolved_parts.append(identifier)
+				if resolved_parts.size() > 0 and resolved_parts.back() == identifier:
+					pass
+				else: # handle repeated consts, Utils.Config.Config # naive way though
+					resolved_parts.append(identifier)
+				
 				var type = current_class_obj.get_member_type(identifier, true)
 				if Utils.type_path_get_type(type, true) == "Enum":
 					return ".".join(resolved_parts)

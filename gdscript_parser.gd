@@ -162,6 +162,10 @@ func set_source_code(source:String) -> void: # need a version if the script edit
 
 #endregion
 
+func cache_valid():
+	if is_instance_valid(code_edit_parser.tree_sitter_manager):
+		return code_edit_parser.tree_sitter_manager.cache_valid()
+	return not code_edit_parser.cache_dirty
 
 func parse(force:=false) -> void:
 	get_code_edit_parser().string_map_cache.clear() # clear this everytime so this doesn't get out of hand

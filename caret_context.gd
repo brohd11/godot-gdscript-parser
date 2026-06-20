@@ -163,7 +163,7 @@ func parse():
 	char_before_caret = _get_char_before_caret()
 	
 	var current_block_type = ""
-	var last_block = function_blocks.pop_back()
+	var last_block = null if function_blocks.is_empty() else function_blocks.front()
 	if last_block != null:
 		current_block = last_block
 		current_block_type = current_block.get("type")

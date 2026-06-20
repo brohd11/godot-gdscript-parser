@@ -16,6 +16,7 @@ var _parser:WeakRef
 var _code_edit_parser:WeakRef
 @warning_ignore_restore("unused_private_class_variable")
 
+var use_ts:bool = false
 
 var _resolve_cache:={}
 
@@ -112,6 +113,9 @@ func set_members(members_dict:Dictionary):
 
 
 func _create_function(_name, data:Dictionary):
+	if use_ts:
+		_create_function_ts(_name, data)
+		return
 	var member_type = data.get(Keys.MEMBER_TYPE)
 	if member_type != Keys.MEMBER_TYPE_FUNC and member_type != Keys.MEMBER_TYPE_STATIC_FUNC:
 		return
@@ -129,6 +133,38 @@ func _create_function(_name, data:Dictionary):
 	function.declaration_line = data.get(Keys.LINE_INDEX, -1)
 	function.func_lines = data.get(Keys.FUNC_LINES)
 
+func _create_function_ts(_name, data:Dictionary):
+	#print(data)
+	var member_type = data.get(Keys.MEMBER_TYPE)
+	if member_type != Keys.MEMBER_TYPE_FUNC and member_type != Keys.MEMBER_TYPE_STATIC_FUNC:
+		return
+	var function:ParserFunc
+	if functions.has(_name):
+		function = functions[_name]
+		function.queue_refresh()
+	else:
+		function = ParserFunc.new()
+		function.name = _name
+		Utils.ParserRef.set_refs(function, ParserRef.get_parser(self), self)
+		functions[_name] = function
+	
+	var start_line = data.get(Keys.LINE_INDEX)
+	var end_line = data.get("end_line")
+	function.declaration_line = start_line
+	function.func_lines = range(start_line, end_line + 1)
+	function.class_indent = indent_level
+	function.member_data = data
+	function._return_type_raw = data.get("return_type")
+	
+	
+	var args = data.get("args")
+	data.erase("args")
+	function.arguments = args
+	
+	var locals = data.get("locals")
+	data.erase("locals")
+	function.local_vars = locals
+	
 
 func set_constants(const_dict:Dictionary):
 	constants = const_dict
@@ -390,7 +426,7 @@ func is_member_static_typed(identifier:String):
 	if result == null:
 		return false
 	
-	if result is Array:
+	if result is Array and result.size() == 4:
 		return result[1] != "" or result[3]
 	else:
 		GDScriptParser.print_deb_err("NOT AN ARRAY IN MEMBER STATIC TYPED", result)

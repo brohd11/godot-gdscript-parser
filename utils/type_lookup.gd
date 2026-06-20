@@ -1355,7 +1355,8 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 	# niche case, if a local var is the same name as a class member and directly assigned it will rerun with no local vars
 	if type_declaration == member_name and allow_rebuild: # allow rebuild will only allow one attempt
 		return _check_class_obj_member_data(member_name, class_obj, {}, false)
-	
+	if type_declaration == null:
+		print("Type null:", member_name, ":", member_data)
 	if type_declaration.begins_with("preload"):
 		var p_check = resolve_preload(type_declaration, class_obj)
 		if p_check != "": # adding this check here allows a non resolved preload to be resolved to path and have ins tag added if appropriate

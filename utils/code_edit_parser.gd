@@ -1,5 +1,7 @@
 #! import_p Keys,
 
+const PRINT_DEBUG = false
+
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 const ParserClass = GDScriptParser.ParserClass
 const Utils = GDScriptParser.Utils
@@ -10,6 +12,9 @@ const Keywords = Utils.Keywords
 
 var _parser:WeakRef
 var code_edit:CodeEdit
+
+var use_tree_sitter:bool = ClassDB.class_exists("GDScriptTreeSitter")
+var tree_sitter_manager
 
 var indent_size:int
 
@@ -69,6 +74,9 @@ func ensure_first_parse():
 	parse_text()
 
 func parse_text(force:=false):
+	if use_tree_sitter:
+		return parse_text_ts()
+	
 	_initialize_regex_map()
 	_initialize_regex_annotation()
 	
@@ -77,7 +85,10 @@ func parse_text(force:=false):
 		#print("CALLED PARSE NO CODE EDIT")
 		return
 	
-	#var t = GDScriptParser.TF.new("S::" + parser.get_script_path())
+	
+	var t = GDScriptParser.TF.new("S::" + parser.get_script_path())
+	
+	
 	
 	_set_code_edit(parser.code_edit)
 	indent_size = code_edit.get_tab_size()
@@ -194,6 +205,7 @@ func parse_text(force:=false):
 		var class_lines = class_access_map[path]
 		_class_obj.set_lines(class_lines)
 		
+		_class_obj.use_ts = false
 		_class_obj.set_members(members)
 		_class_obj.set_constants(valid_constants)
 		_class_obj.set_inner_classes(valid_classes)
@@ -206,9 +218,11 @@ func parse_text(force:=false):
 			parser._class_access.erase(access_path)
 	
 	# reassign the classes and new classes
-	parser.set_class_objs(temp_class_access)
+	#parser.set_class_objs(temp_class_access)
 	
-	#t.stop()
+	
+	if PRINT_DEBUG:
+		t.stop()
 	#print("CLASSES ",temp_class_access.keys())
 	cache_dirty = false
 	_first_parse_complete = true
@@ -338,6 +352,125 @@ func _line_has_open_bracket(stripped:String):
 	if stripped.count("[") != stripped.count("]"):
 		return true
 	return false
+
+
+func parse_text_ts(force:=false):
+	
+	#_initialize_regex_map() # these aren't used with ts I believe
+	#_initialize_regex_annotation()
+	
+	var parser = _get_parser()
+	if not is_instance_valid(parser.code_edit):
+		#print("CALLED PARSE NO CODE EDIT")
+		return
+	
+	var t = GDScriptParser.TF.new("TS::" + parser.get_script_path())
+	
+	_set_code_edit(parser.code_edit)
+	indent_size = code_edit.get_tab_size()
+	
+	var existing_class_access = parser._class_access # if existing class is empty, then it hasn't been parsed
+	if existing_class_access.is_empty():
+		cache_dirty = true
+	# if this is here, the tree_sitter_manager can be sparse parsed and not run properly
+	#elif is_instance_valid(tree_sitter_manager):
+		#cache_dirty = not tree_sitter_manager.cache_valid()
+	
+	cache_dirty = true
+	
+	if not cache_dirty and not force: # cache_dirty means text is changed. If it hasn't then everything should be valid
+		#t.stop()
+		#print("CODE EDIT PARSE EARLY EXIT::", parser.get_script_path().get_file())
+		return
+	
+	var main_script = parser._script_resource
+	var main_script_path = main_script.resource_path
+	
+	
+	if not is_instance_valid(tree_sitter_manager):
+		var code_edit_tree_parser = load("res://addons/tree_sitter_gd/gdscript_code_edit_tree_parser.gd")
+		tree_sitter_manager = code_edit_tree_parser.new()
+	
+	
+	if tree_sitter_manager._edit != code_edit:
+		var t4 = ALibRuntime.Utils.UProfile.TimeFunction.new("PARSE TEXT NEW CODE")
+		tree_sitter_manager.detach()
+		tree_sitter_manager.attach(code_edit, main_script_path)
+		if PRINT_DEBUG:
+			t4.stop()
+	elif not tree_sitter_manager.cache_valid(): # only re-parse if needed
+		tree_sitter_manager.parse_text()
+	
+	var t2 = ALibRuntime.Utils.UProfile.TimeFunction.new("PARSE TO DATA")
+	var full_parse_data = tree_sitter_manager.parse()
+	if PRINT_DEBUG:
+		t2.stop()
+	
+	var temp_class_access = {}
+	for path:String in full_parse_data.keys():
+		var _class_obj:ParserClass
+		if existing_class_access.has(path):
+			_class_obj = existing_class_access[path]
+			_class_obj.queue_refresh()
+		if not is_instance_valid(_class_obj):
+			_class_obj = ParserClass.new()
+			Utils.ParserRef.set_refs(_class_obj, parser)
+			_class_obj.access_path = path
+			_class_obj.indent_level = get_indent_access_path(path)
+		
+		
+		
+		var cls_data = full_parse_data[path]
+		cls_data[Keys.TYPE] = Utils.get_class_access_path_from_member_data(cls_data)
+		
+		var members = cls_data.get("members")
+		var ex = cls_data.get("extends", "")
+		if ex == "":
+			ex = "RefCounted"
+		_class_obj.set_extends(ex)
+		
+		var valid_constants:Dictionary = cls_data.get("constants")
+		var valid_classes:Dictionary = cls_data.get("inner_classes")
+		
+		_class_obj.main_script_path = main_script_path
+		if path == "":
+			_class_obj.set_script_resource(parser._script_resource)
+			_class_obj.class_name_data = cls_data
+		else:
+			#_class_obj.set_script_resource(UClassDetail.get_member_info_by_path(main_script, _pc.access_path))
+			var inner_script = UClassDetail.get_member_info_by_path(main_script, path)
+			#prints("INNERSCRIPT::", inner_script, "::PATH::", path)
+			_class_obj.set_script_resource(inner_script)
+		
+		
+		var class_start = cls_data.get("line_index")
+		var class_end = cls_data.get("end_line")
+		var class_lines = range(class_start, class_end + 1)
+		_class_obj.set_lines(class_lines)
+		_class_obj.use_ts = true
+		
+		_class_obj.set_members(members)
+		_class_obj.set_constants(valid_constants)
+		_class_obj.set_inner_classes(valid_classes)
+		#print(valid_constants)
+		temp_class_access[path] = _class_obj
+	
+	# remove classes that may have been removed
+	for access_path in parser._class_access.keys():
+		if not temp_class_access.has(access_path):
+			parser._class_access.erase(access_path)
+	
+	# reassign the classes and new classes
+	parser.set_class_objs(temp_class_access)
+	
+	if PRINT_DEBUG:
+		t.stop()
+	#print("CLASSES ",temp_class_access.keys())
+	cache_dirty = false
+	_first_parse_complete = true
+	#_pc = null
+	return temp_class_access
+
 
 
 #region CaretContext

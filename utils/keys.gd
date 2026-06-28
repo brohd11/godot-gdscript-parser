@@ -75,6 +75,7 @@ const ACCESS_PATH = &"access_path"
 const SCRIPT_PATH = &"script_path"
 
 const HAS_STATIC_TYPE = &"has_static_type"
+const ASSIGNMENT = &"assignment"
 const TYPE = &"type"
 const TYPE_RESOLVED = &"type_resolved"
 

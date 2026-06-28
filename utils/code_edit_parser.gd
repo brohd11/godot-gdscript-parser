@@ -14,7 +14,7 @@ var _parser:WeakRef
 var code_edit:CodeEdit
 
 var use_tree_sitter:bool = ClassDB.class_exists("GDScriptTreeSitter")
-var tree_sitter_manager
+var tree_sitter_manager:Variant
 
 var indent_size:int
 
@@ -131,7 +131,7 @@ func parse_text(force:=false):
 			var data = get_semi_colon_strings(i)
 			for column in data.keys():
 				var text = data[column]
-				_parse_line(text, i, column)
+				_parse_line(text.strip_edges(), i, column)
 		else:
 			_parse_line(stripped, i)
 		
@@ -191,7 +191,6 @@ func parse_text(force:=false):
 					if class_data.get(Keys.ACCESS_PATH) == path: # so it overides here.
 						valid_classes[name] = class_data
 		
-		
 		_class_obj.main_script_path = _pc.main_script_path
 		if path == "":
 			_class_obj.set_script_resource(parser._script_resource)
@@ -218,7 +217,7 @@ func parse_text(force:=false):
 			parser._class_access.erase(access_path)
 	
 	# reassign the classes and new classes
-	#parser.set_class_objs(temp_class_access)
+	parser.set_class_objs(temp_class_access)
 	
 	
 	if PRINT_DEBUG:
@@ -372,11 +371,10 @@ func parse_text_ts(force:=false):
 	var existing_class_access = parser._class_access # if existing class is empty, then it hasn't been parsed
 	if existing_class_access.is_empty():
 		cache_dirty = true
+	
 	# if this is here, the tree_sitter_manager can be sparse parsed and not run properly
 	#elif is_instance_valid(tree_sitter_manager):
 		#cache_dirty = not tree_sitter_manager.cache_valid()
-	
-	cache_dirty = true
 	
 	if not cache_dirty and not force: # cache_dirty means text is changed. If it hasn't then everything should be valid
 		#t.stop()
@@ -479,10 +477,10 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 	if not is_instance_valid(code_edit):
 		return {}
 	
-	var all_blocks_array = Keywords.CONTROL_FLOW_KEYWORDS
-	var map_blocks_array = params.get(Keys.CONTEXT_BLOCKS, []) as Array
-	var has_blocks = not map_blocks_array.is_empty()
-	var map_local_vars = params.get(Keys.CONTEXT_LOCAL_VARS, true) as bool
+	var all_blocks_array:Array = Keywords.CONTROL_FLOW_KEYWORDS
+	var map_blocks_array:Array = params.get(Keys.CONTEXT_BLOCKS, [])
+	var has_blocks:bool = not map_blocks_array.is_empty()
+	var map_local_vars:bool = params.get(Keys.CONTEXT_LOCAL_VARS, true)
 	
 	var respect_scope = has_blocks or map_local_vars
 	
@@ -501,7 +499,11 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 		context_start_line -= 1
 		if _line_has_semi_colon(context_start_line):
 			has_semi_col = true
-			break
+			#break # originally this just breaks.
+			# It stops local vars from being collected though...
+			# perhaps the better way would be to switch how locals are being collected
+			if not map_local_vars: #ALERT TEST not sure about this..
+				break
 		var stripped = code_edit.get_line(context_start_line).strip_edges()
 		if stripped == "" or stripped.begins_with("#"):
 			continue
@@ -525,7 +527,7 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 							current_indent = line_indent
 							if control_flow in map_blocks_array:
 								if control_flow == Keywords.FOR:
-									var var_data = Utils.add_var_to_dict(stripped, context_start_line, local_vars, Keys.MEMBER_TYPE_FOR)
+									var var_data = Utils.add_var_to_dict(stripped, context_start_line, 0, local_vars, Keys.MEMBER_TYPE_FOR)
 									blocks.append({"type":"for",
 									"indent": line_indent,
 									"var":{"name": var_data[0], "type": var_data[1]}})
@@ -536,10 +538,24 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 				
 				if map_local_vars:
 					if context_start_line < target_line_index:
-						var var_data = Utils.add_var_to_dict(stripped, context_start_line, local_vars)
-						if var_data != null:
-							#print("MAP LOCAL::", var_data, "::IND::CUR::", current_indent, "::LINE::", line_indent)
-							continue
+						if not stripped.contains(";"):
+							var var_data = Utils.add_var_to_dict(stripped, context_start_line, 0, local_vars)
+							if var_data != null:
+								#print("MAP LOCAL::", var_data, "::IND::CUR::", current_indent, "::LINE::", line_indent)
+								continue
+						else:
+							var assigns = [stripped]
+							var line_text = code_edit.get_line(context_start_line)
+							assigns = UString.string_safe_split(stripped, ";")
+							if stripped.begins_with("var my"):
+								print("has sem---",assigns)
+							var col = 0
+							for a in assigns:
+								col = line_text.find(a, col)
+								var var_data = Utils.add_var_to_dict(a.strip_edges(), context_start_line, col, local_vars)
+								if var_data != null:
+									#print("MAP LOCAL::", var_data, "::IND::CUR::", current_indent, "::LINE::", line_indent)
+									continue
 				else:
 					if not Utils.line_has_any_declaration(stripped):
 						continue
@@ -667,8 +683,8 @@ func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=fal
 		var string_map = get_string_map(context_text)
 		var semi_prev = UString.string_safe_rfind(context_text, ";", caret_idx, string_map) + 1
 		var semi_next = UString.string_safe_find(context_text, ";", caret_idx, string_map)
-		context_text = context_text.substr(semi_prev, semi_next - semi_prev)
-	
+		var end_idx = -1 if semi_next == -1 else semi_next - semi_prev
+		context_text = context_text.substr(semi_prev, end_idx)
 	
 	#t.stop()
 	var return_data = {

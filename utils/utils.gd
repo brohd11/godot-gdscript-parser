@@ -241,7 +241,7 @@ static func line_has_any_declaration(stripped_line:String) -> bool:
 			return true
 	return false
 
-static func add_var_to_dict(stripped_line:String, line:int, dict:Dictionary, member_type:=Keys.MEMBER_TYPE_VAR, int_key:=false) -> Variant:
+static func add_var_to_dict(stripped_line:String, line:int, column:int, dict:Dictionary, member_type:=Keys.MEMBER_TYPE_VAR, int_key:=false) -> Variant:
 	var var_data:Variant = null
 	if member_type == Keys.MEMBER_TYPE_VAR:
 		var_data = get_var_or_const_info(stripped_line)
@@ -264,9 +264,12 @@ static func add_var_to_dict(stripped_line:String, line:int, dict:Dictionary, mem
 		dict[key] = {
 			Keys.MEMBER_NAME: var_name,
 			Keys.LINE_INDEX: line,
+			Keys.COLUMN_INDEX: column,
 			Keys.MEMBER_TYPE: member_type,
 			Keys.TYPE: type,
 			}
+		if var_name in ["my", "you"]:
+			print("has sem:----", dict[key])
 	return var_data
 
 static func get_class_access_path_from_member_data(dict:Dictionary) -> String:

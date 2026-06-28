@@ -462,8 +462,9 @@ const _PRINT = [
 
 
 class T:
-	const RESOLVE = "RESOLVE"
-	const BUILTIN = "BUILTIN"
-	const INHERITED = "INHERITED"
-	const VAR_TO_CONST = "VAR TO CONST"
+	#const RESOLVE = "RESOLVE"
+	#const BUILTIN = "BUILTIN"
+	#const INHERITED = "INHERITED"
+	#const VAR_TO_CONST = "VAR TO CONST"
 	const ACCESS_PATH = "ACCESS PATH"
+	pass

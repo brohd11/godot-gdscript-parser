@@ -100,7 +100,6 @@ func _get_function_data(identifier:String, class_obj:ParserClass, line:int=-1):
 	elif BuiltInChecker.is_global_method(stripped_identifier):
 		return BuiltInChecker.get_global_func_data(stripped_identifier)
 	
-	
 	print_deb(T.RESOLVE, "FUNC DATA TEST", "NO RESULT", identifier, " -> ", type_rich.origin)
 	
 	return {}
@@ -157,7 +156,8 @@ func _resolve_expression_to_var_data_at_line_simple(expression:String, line:int)
 	var class_data = get_class_data_at_line(line)
 	if not class_data.valid_data:
 		return get_empty_type_rich()
-	
+	if expression == "you":
+		print("has sem:", class_data.local_vars)
 	var inf_context = _get_or_instance_inf_context()
 	inf_context.find_origin = true
 	var inf_expression = _get_inf_expression(class_data, expression)
@@ -183,8 +183,9 @@ func _resolve_expression_to_var_data_at_line_simple(expression:String, line:int)
 	# just check the type again rather than tracking the stack
 	var type = _resolve_expression_to_type(expression, class_data, true)
 	var is_instance = type.ends_with(Keys.INS_DELIM)
-	#print("RESULT::", origin, "::", type)
-	#print("GET TYPE RICH::", expression, " -> ", origin)
+	#print("ASSESS::", expression)
+	#print("ORIGIN::", origin)
+	#print("TYPE::", type)
 	
 	var type_check = Utils.type_path_get_type(type, true)
 	if type_check != "":

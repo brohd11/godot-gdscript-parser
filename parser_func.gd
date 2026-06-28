@@ -111,7 +111,8 @@ func _set_function_data() -> void:
 		else:
 			pass
 		arguments[arg] = {
-			Keys.TYPE: arg_type, 
+			Keys.TYPE: arg_type,
+			Keys.ASSIGNMENT: arg_assign,
 			Keys.HAS_STATIC_TYPE: has_static_type,
 			Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_FUNC_ARG,
 			Keys.LINE_INDEX: declaration_line
@@ -134,6 +135,7 @@ func has_static_return() -> bool:
 
 ## Scan current func for local vars and func data.
 func map_variables() -> void:
+	#print("MAP:", name, ":", _local_vars_mapped)
 	if _local_vars_mapped:
 		return
 	var found_for_local_vars:Dictionary = {}
@@ -154,39 +156,25 @@ func map_variables() -> void:
 		if indent <= class_indent:
 			break
 		
+		var ctx_start_data = code_edit_parser.get_line_context_start_simple(i)
+		var has_semi_cols:bool = ctx_start_data.get(Keys.CONTEXT_SEMI_COLON, false)
 		
-		var member_type:StringName = Keys.MEMBER_TYPE_VAR
-		var is_for:bool = stripped.begins_with("for ")
-		if is_for: # this should be regex
-			member_type = Keys.MEMBER_TYPE_FOR
-		else:
-			stripped = code_edit_parser.get_line_context_text(i)
 		
-		var var_data:Variant
-		if is_for:
-			var_data = Utils.get_for_loop_info(stripped)
+		if has_semi_cols:
+			var data:Dictionary = code_edit_parser.get_semi_colon_strings(i)
+			var cols = data.keys()
+			var last_col = cols[cols.size() - 1]
+			for column:int in cols:
+				var text:String = data[column]
+				if column == last_col:
+					text = code_edit_parser.get_line_context_text(i, column)
+				# column + 1 , accounts for the ';', works without, but mismatches with tree sitter
+				_process_local_var(text.strip_edges(), i, column + 1, found_for_local_vars)
 		else:
-			var_data = Utils.get_var_or_const_info(stripped)
-		if var_data != null:
-			var var_name:String = var_data[0]
-			var type_hint:String = var_data[1]
-			var has_static_type:bool = true
-			if type_hint.is_empty():
-				if is_for:
-					has_static_type = false
-				else:
-					has_static_type = var_data[3] # implicit type check
-				type_hint = var_data[2]
-			
-			var data:Dictionary = {
-				Keys.MEMBER_NAME: var_name,
-				Keys.LINE_INDEX: i,
-				Keys.MEMBER_TYPE: member_type,
-				Keys.TYPE: type_hint,
-				Keys.HAS_STATIC_TYPE: has_static_type,
-			}
-			local_vars[i] = data
-			found_for_local_vars[_get_cache_string(var_name, type_hint)] = true
+			var line_ctx:Dictionary = code_edit_parser.get_line_context(i)
+			var context_text:String = line_ctx.get(Keys.CONTEXT_TEXT, "")
+			var col:int = line_text.find(stripped)
+			_process_local_var(context_text.strip_edges(), i, col, found_for_local_vars)
 	
 	for key:String in arguments.keys():
 		var type_hint:String = arguments[key].get(Keys.TYPE)
@@ -198,22 +186,56 @@ func map_variables() -> void:
 	
 	_local_vars_mapped = true
 
-func get_local_var_member_data(member_name:String, line_idx:int) -> Variant:
-	if local_vars.has(line_idx):
-		return local_vars.get(line_idx)
+func _process_local_var(stripped:String, line:int, col:int, found_vars:Dictionary) -> void:
+	var member_type:StringName = Keys.MEMBER_TYPE_VAR
+	var is_for:bool = stripped.begins_with("for ")
+	if is_for: # this should be regex
+		member_type = Keys.MEMBER_TYPE_FOR
+	
+	var var_data:Variant
+	if is_for:
+		var_data = Utils.get_for_loop_info(stripped)
+	else:
+		var_data = Utils.get_var_or_const_info(stripped)
+	if var_data != null:
+		var var_name:String = var_data[0]
+		var type_hint:String = var_data[1]
+		var has_static_type:bool = true
+		if type_hint.is_empty():
+			if is_for:
+				has_static_type = false
+			else:
+				has_static_type = var_data[3] # implicit type check
+		
+		var data:Dictionary = {
+			Keys.MEMBER_NAME: var_name,
+			Keys.LINE_INDEX: line,
+			Keys.MEMBER_TYPE: member_type,
+			Keys.TYPE: type_hint,
+			Keys.ASSIGNMENT: var_data[2],
+			Keys.HAS_STATIC_TYPE: has_static_type,
+		}
+		var unique_name:String = "%s-%s-%s" % [var_name, line, col]
+		local_vars[unique_name] = data
+		found_vars[_get_cache_string(unique_name, type_hint)] = true
+	
+
+func get_local_var_member_data(member_name:String) -> Variant:
+	if local_vars.has(member_name):
+		return local_vars.get(member_name)
 	elif arguments.has(member_name):
 		return arguments.get(member_name)
 	return
 
-func get_local_var_type(line_idx:int, member_name:String) -> String:
-	var type_rich:Dictionary = get_local_var_type_rich(line_idx, member_name)
+func get_local_var_type(member_name:String) -> String:
+	var type_rich:Dictionary = get_local_var_type_rich(member_name)
 	if type_rich:
 		return type_rich.type
 	return ""
 
-func get_local_var_type_rich(line_idx:int, member_name:String) -> Dictionary:
+func get_local_var_type_rich(member_name:String) -> Dictionary:
 	var is_arg:bool = arguments.has(member_name)
-	var std_local:bool = local_vars.has(line_idx)
+	var std_local:bool = local_vars.has(member_name)
 	if not std_local and not is_arg:
 		return GDScriptParser.TypeLookup.get_empty_type_rich()
 	
@@ -224,15 +246,18 @@ func get_local_var_type_rich(line_idx:int, member_name:String) -> Dictionary:
 		var_data = arguments.get(member_name)
 		dec_line = declaration_line
 	else:
-		var_data = local_vars.get(line_idx)
+		var_data = local_vars.get(member_name)
 		dec_line = var_data.get(Keys.LINE_INDEX)
 	
 	var type_hint:String = var_data.get(Keys.TYPE, "")
+	if type_hint == "":
+		type_hint = var_data.get(Keys.ASSIGNMENT, "")
 	if type_hint == "":
 		return GDScriptParser.TypeLookup.get_empty_type_rich()
 	
 	var cache_string:String = _get_cache_string(member_name, type_hint)
 	for i:int in range(1): # single loop for early break
+		break # ALERT
 		if not GDScriptParser.CACHE_TYPES:
 			break
 		if not _cache.has(cache_string):
@@ -243,22 +268,23 @@ func get_local_var_type_rich(line_idx:int, member_name:String) -> Dictionary:
 		var cached_deps:Variant = cache_data.get(Keys.CLASS_CACHE_DEPENDENCIES)
 		if not GDScriptParser.InferenceContext.validate_dependencies(cached_deps, parser.get_script_path()):
 			break
-		
 		return cache_data.get(Keys.CLASS_CACHE_TYPE)
 	
 	var cached_data:Dictionary = _cache.get_or_add(cache_string, {})
 	cached_data[Keys.CLASS_CACHE_DEC] = type_hint
 	
+	if member_name.contains("-"):
+		member_name = member_name.get_slice("-", 0)
+	
 	dec_line += 1 # +1 forces the var to be in scope
 	var type_rich:Dictionary = parser.resolve_expression_to_type_rich(member_name, dec_line)
-	
 	cached_data[Keys.CLASS_CACHE_DEPENDENCIES] = GDScriptParser.InferenceContext.get_dependencies_from_member_stack(type_rich)
 	cached_data[Keys.CLASS_CACHE_TYPE] = type_rich
 	return type_rich
 
-func is_local_var_static_typed(line_idx:int, member_name:String) -> bool:
+func is_local_var_static_typed(member_name:String) -> bool:
 	var is_arg:bool = arguments.has(member_name)
-	var std_local:bool = local_vars.has(line_idx)
+	var std_local:bool = local_vars.has(member_name)
 	if not std_local and not is_arg:
 		return false
 	
@@ -266,7 +292,7 @@ func is_local_var_static_typed(line_idx:int, member_name:String) -> bool:
 	if is_arg:
 		var_data = arguments.get(member_name)
 	else:
-		var_data = local_vars.get(line_idx)
+		var_data = local_vars.get(member_name)
 	return var_data.get(Keys.HAS_STATIC_TYPE, false)
 
 
@@ -287,9 +313,9 @@ func get_function_data() -> Dictionary:
 	return {Keys.FUNC_ARGS: arguments.duplicate(), Keys.FUNC_RETURN:return_string}
 
 func get_arguments_raw() -> Dictionary:
-	var dict = {}
+	var dict:Dictionary = {}
 	if not _cache_dirty: # seems ok, but could this get out of sync?
-		for a in arguments:
+		for a:String in arguments:
 			dict[a] = true
 		return dict
 	
@@ -302,8 +328,8 @@ func get_arguments_raw() -> Dictionary:
 			GDScriptParser.print_deb_err("GET ARG RAW",result, name)
 			return {}
 		if result:
-			var func_args = result.get(Keys.FUNC_ARGS, {})
-			for a in func_args:
+			var func_args:Dictionary = result.get(Keys.FUNC_ARGS, {})
+			for a:String in func_args:
 				dict[a] = true
 			return dict
 	

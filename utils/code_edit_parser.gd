@@ -904,6 +904,24 @@ func get_line_no_comment(line:int):
 			break
 	return line_text.substr(0, com_idx).strip_edges(false)
 
+func get_member_column(line:int):
+	var line_text = code_edit.get_line(line)
+	return line_text.find(line_text.strip_edges(true, false))
+	var search_char = ""
+	if line_text.begins_with(" "):
+		search_char = " "
+	elif line_text.begins_with("\t"):
+		search_char = "\t"
+	else:
+		return 0
+	var count = 0
+	for i in range(line_text.length()):
+		if line_text[i] == search_char:
+			count += 1
+		else:
+			break
+	return count
+
 func strip_annotations(stripped_text:String):
 	_initialize_regex_annotation()
 	while stripped_text.begins_with("@"):

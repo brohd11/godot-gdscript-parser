@@ -197,7 +197,8 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 	
 	var access_options = AccessOptions.new()
 	get_global_name_and_script_alias(to_find, class_obj, access_options)
-	
+	print("GLOBAL:", access_options.global)
+	print("SCRIPT:", access_options.script_alias)
 	var to_find_script_data = Utils.type_path_get_script_data(to_find)
 	var to_find_script_path = to_find_script_data[0]
 	var to_find_class_path = to_find_script_data[1]
@@ -302,8 +303,8 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass):
 		else:
 			working_script_access_path = ""
 		
-		print_deb(T.ACCESS_PATH, working_script_access_path)
-		print_deb(T.ACCESS_PATH, checked_access)
+		print_deb(T.ACCESS_PATH, "WorkingAcess", working_script_access_path)
+		print_deb(T.ACCESS_PATH, "CheckedAccess", checked_access)
 		print_deb(T.ACCESS_PATH, "SEARCHING FOR", search_path)
 		var check = class_obj.has_preload(search_path)
 		if check != null:
@@ -319,8 +320,20 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass):
 			return return_val
 		
 		checked_access = UString.dot_join(back, checked_access)
+	
+	if to_find.begins_with(class_obj.main_script_path):
+		var to_find_script_data = Utils.type_path_get_script_data(to_find)
+		var to_find_member = Utils.type_path_get_member(to_find)
+		var to_find_access = to_find_script_data[1]
 		
+		var class_script_data = Utils.type_path_get_script_data(class_obj.get_script_class_path())
+		var class_access = class_script_data[1]
+		var actual_access = to_find_access
+		if to_find_access.begins_with(class_access):
+			actual_access = to_find_access.trim_prefix(class_access)
+		return UString.dot_join(actual_access, to_find_member)
 		
+	
 	return ""
 
 func find_constant_by_value(type_to_find:String, initial_class_obj:ParserClass):
@@ -453,18 +466,10 @@ static func print_deb_err(section:String, ...msg:Array):
 		PrintDebug.print_err(msg)
 
 const _PRINT = [
-	#T.BUILTIN, 
-	#T.INHERITED,
-	#T.VAR_TO_CONST,
-	#T.RESOLVE,
-	#T.ACCESS_PATH
+	T.ACCESS_PATH
 	]
 
 
 class T:
-	#const RESOLVE = "RESOLVE"
-	#const BUILTIN = "BUILTIN"
-	#const INHERITED = "INHERITED"
-	#const VAR_TO_CONST = "VAR TO CONST"
 	const ACCESS_PATH = "ACCESS PATH"
 	pass

@@ -22,7 +22,10 @@ var _parser:WeakRef
 ## Find path to 'to_find' from current class. symbol_access is the current script symbol used to access the type. secondary_access is from the script where the
 ## function or var is defined. Secondary path is that script path.
 func find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secondary_access:AccessObject, to_find:String, secondary_path:String):
-	var result = _find_path_to_type(class_obj, symbol_access, secondary_access, to_find, secondary_path)
+	var result = _find_path_to_type_hardened(class_obj, symbol_access, secondary_access, to_find, secondary_path)
+	
+	# old version
+	#var result = _find_path_to_type(class_obj, symbol_access, secondary_access, to_find, secondary_path)
 	# ensure no suffixes, or self prefix
 	result.standard = AccessUtils.clean_path(result.standard)
 	result.script_alias = AccessUtils.clean_path(result.script_alias)
@@ -181,8 +184,38 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 	return access_options
 
 
+## Hardened dual-access finder. Reuses the solid global/script_alias resolution, then resolves
+## the 'standard' path via verified fast-paths falling back to an accurate const-by-value search.
+## Never blends two overlapping class chains (the source of the duplicate-segment bug).
+func _find_path_to_type_hardened(class_obj:ParserClass, symbol_access:AccessObject, secondary_access:AccessObject, to_find:String, secondary_path:String) -> AccessOptions:
+	# Same early guards as the original: if there is no distinct secondary, treat it as a simple lookup.
+	if secondary_access == null or symbol_access == secondary_access:
+		return _find_path_to_type_simple_hardened(class_obj, symbol_access, to_find)
+	if symbol_access.declaration_symbol == secondary_access.declaration_symbol and symbol_access.declaration_type == secondary_access.declaration_type:
+		return _find_path_to_type_simple_hardened(class_obj, symbol_access, to_find)
+
+	var parser = Utils.ParserRef.get_parser(self)
+	symbol_access.clean_symbols()
+	secondary_access.clean_symbols()
+	secondary_path = secondary_path.trim_suffix(Keys.INS_DELIM)
+
+	print_deb(T.ACCESS_PATH, "HARDENED FUNCTION", "----------------------------------------")
+	print_deb(T.ACCESS_PATH, "FROM", class_obj.main_script_path, "TO FIND", to_find)
+	print_deb(T.ACCESS_PATH, "DEC", symbol_access.declaration_symbol, symbol_access.declaration_type)
+	print_deb(T.ACCESS_PATH, "DEC-SEC", secondary_access.declaration_symbol, secondary_access.declaration_type)
+
+	var access_options = AccessOptions.new()
+	get_global_name_and_script_alias(to_find, class_obj, access_options) # solid, reused verbatim
+
+	access_options.standard = _resolve_standard_path(class_obj, symbol_access, to_find, parser, secondary_access, secondary_path)
+	return access_options
+
+
 func find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject, to_find:String) -> AccessOptions:
-	var result = _find_path_to_type_simple(class_obj, access_object, to_find)
+	var result = _find_path_to_type_simple_hardened(class_obj, access_object, to_find)
+	
+	# old version
+	#var result = _find_path_to_type_simple(class_obj, access_object, to_find)
 	# ensure no suffixes, or self prefix
 	result.standard = AccessUtils.clean_path(result.standard)
 	result.script_alias = AccessUtils.clean_path(result.script_alias)
@@ -261,6 +294,139 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 		#return access_options
 	
 	return access_options
+
+
+## Hardened single-access finder. Same shape as the dual version with no secondary symbol.
+func _find_path_to_type_simple_hardened(class_obj:ParserClass, access_object:AccessObject, to_find:String) -> AccessOptions:
+	var parser = Utils.ParserRef.get_parser(self)
+	print_deb(T.ACCESS_PATH, "HARDENED OPERATION", "----------------------------------------")
+	print_deb(T.ACCESS_PATH, "FROM", class_obj.get_script_class_path(), "TO FIND", to_find)
+	print_deb(T.ACCESS_PATH, "DEC", access_object.declaration_symbol, access_object.declaration_type)
+
+	var access_options = AccessOptions.new()
+	get_global_name_and_script_alias(to_find, class_obj, access_options) # solid, reused verbatim
+
+	access_options.standard = _resolve_standard_path(class_obj, access_object, to_find, parser)
+	return access_options
+
+
+## Resolve the 'standard' (as-typed) access path to 'to_find'. Tries cheap, type-checked
+## candidates first, round-trip verifying each, then falls back to the accurate const-by-value
+## search. Returns "" when nothing verifies so the caller can use script_alias/global instead.
+## 'to_find' may be an enum (ends with ENUM_SUFFIX) or a bare inner class (no member/suffix).
+func _resolve_standard_path(class_obj:ParserClass, access_object:AccessObject, to_find:String, parser, secondary_access:AccessObject=null, secondary_path:String="") -> String:
+	var candidates = _gather_standard_candidates(class_obj, access_object, to_find, parser, secondary_access, secondary_path)
+	for candidate in candidates:
+		if candidate == "":
+			continue
+		if _standard_candidate_valid(candidate, to_find, class_obj, parser):
+			print_deb(T.ACCESS_PATH, "STANDARD (fast-path)", candidate)
+			return candidate
+
+	# Accurate but slower fallback. has_preload matches on the full type path, so the returned
+	# const-name chain is canonical by construction (no chain blending, no duplicate segments).
+	var search = find_constant_by_value(to_find, class_obj)
+	if search != "":
+		print_deb(T.ACCESS_PATH, "STANDARD (const search)", search)
+		return search
+
+	print_deb_err(T.ACCESS_PATH, "STANDARD UNRESOLVED", to_find)
+	return ""
+
+
+## Collect ordered, cheap 'standard' candidates. Each is a single class chain built from one
+## ACCESS_PATH source - never a blend of two overlapping chains.
+func _gather_standard_candidates(class_obj:ParserClass, access_object:AccessObject, to_find:String, parser, secondary_access:AccessObject, secondary_path:String) -> Array:
+	var candidates:Array = []
+
+	var to_find_script_data = Utils.type_path_get_script_data(to_find)
+	var to_find_script_path = to_find_script_data[0]
+	var to_find_class_path = to_find_script_data[1]
+	var to_find_is_current_script = class_obj.main_script_path == to_find_script_path
+
+	var dec_front = UString.get_member_access_front(access_object.declaration_symbol)
+
+	# 0. As-typed verbatim - when the declaration symbol already spells a complete, valid path to
+	#    to_find (e.g. "AddonData.AlertType"), prefer it. This both matches what the user typed and
+	#    avoids blending it with a member ACCESS_PATH that already contains the same class chain
+	#    (the source of the duplicate-segment bug). Verification below rejects it when incomplete.
+	candidates.append(access_object.declaration_symbol)
+
+	# 1. Global class prefix - the front is an autoload/global class, symbol is usable verbatim.
+	if UClassDetail.get_global_class_path(dec_front) != "":
+		candidates.append(access_object.declaration_symbol)
+
+	# 2. self / same-script - reference the enum or inner class relative to the current class.
+	if dec_front == "self" and to_find_is_current_script:
+		var same_script = to_find.trim_prefix(class_obj.get_script_class_path())
+		if same_script == "" and to_find_class_path != "":
+			same_script = to_find_class_path.get_file() # inner class, return its name
+		candidates.append(same_script)
+
+	# 3. Inherited - the front resolves through an inherited script that owns to_find.
+	if class_obj.inherits_script(UString.dot_join(to_find_script_path, to_find_class_path)):
+		if class_obj.get_member_data(dec_front, true) != null:
+			candidates.append(access_object.declaration_symbol)
+
+	# 4. Directly-typed member - the front is a const/class/enum member of the current class (or
+	#    of the class the access object was declared in), whose type matches. Build from that
+	#    single member's ACCESS_PATH.
+	var dec_front_type = access_object.declaration_type
+	if access_object.declaration_symbol.contains("."):
+		dec_front_type = class_obj.get_member_type(dec_front, true)
+
+	var class_objs_to_check := [class_obj]
+	var access_parser = parser.get_parser_and_class_obj_for_script(access_object.declaration_type)
+	if access_parser:
+		class_objs_to_check.append(access_parser.class_obj)
+
+	for c_obj in class_objs_to_check:
+		if c_obj == null:
+			continue
+		var member_data = c_obj.get_member_data(dec_front, true)
+		if member_data == null:
+			continue
+		if c_obj.get_member_type(dec_front) != dec_front_type:
+			continue
+		var access_path = member_data.get(Keys.ACCESS_PATH)
+		if to_find_is_current_script:
+			access_path = access_path.trim_prefix(class_obj.access_path)
+		candidates.append(UString.dot_joinv([access_path, access_object.declaration_symbol]))
+
+	# 5. Dual-access alias - the type comes from a function arg/return defined in another script, so
+	#    the secondary access object carries the member path as written there (e.g. "MyEnum",
+	#    "T.TimeScale", "NestedClassBase.AnotherNest.NestedNum"). On its own that path doesn't resolve
+	#    from the caller, so prefix it with how the caller reached the object's class and let
+	#    verification pick the one that truly resolves to to_find (which also disambiguates same-named
+	#    inner classes, since resolution runs in the caller's scope).
+	if secondary_access != null:
+		var sec_sym = secondary_access.declaration_symbol
+		# Qualified prefixed candidates first. Front prefix (reaches the object's class at script
+		# scope) is correct when the secondary member lives in an outer/sibling scope of that class;
+		# it's tried before the full-symbol prefix so a within-class member (which won't resolve via
+		# the front path) falls through to it. The bare verbatim secondary comes LAST - a bare
+		# single identifier is almost never a valid standalone path from another script's scope, so it
+		# only wins when the secondary is already a caller-usable path (a global/preload alias) and
+		# the prefixed forms fail verification.
+		var sym_front = UString.get_member_access_front(access_object.declaration_symbol)
+		if sym_front != access_object.declaration_symbol:
+			candidates.append(UString.dot_join(sym_front, sec_sym))     # front prefix (outer-scope members)
+		candidates.append(UString.dot_join(access_object.declaration_symbol, sec_sym))  # full-symbol prefix
+		candidates.append(sec_sym)                                       # secondary verbatim (last resort)
+
+	return candidates
+
+
+## Verify a candidate path resolves back to 'to_find' from within class_obj's scope.
+func _standard_candidate_valid(candidate:String, to_find:String, class_obj:ParserClass, parser) -> bool:
+	if candidate == "":
+		return false
+	var resolved = parser.resolve_expression_to_type(candidate, class_obj.declaration_line)
+	return _normalize_type(resolved) == _normalize_type(to_find)
+
+
+func _normalize_type(type_path:String) -> String:
+	return type_path.trim_suffix(Keys.INS_DELIM)
 
 
 func get_global_name_and_script_alias(to_find:String, class_obj:ParserClass, access_options:AccessOptions):
@@ -387,7 +553,10 @@ func _find_constant_by_value_bf(type_to_find:String, initial_class_obj:ParserCla
 	while not queue.is_empty():
 		var class_data = queue.pop_front()
 		var class_obj = class_data.get("class_obj") as GDScriptParser.ParserClass
-		checked[class_obj.get_script_class_path()] = true
+		var class_path = class_obj.get_script_class_path()
+		if checked.has(class_path):
+			continue
+		checked[class_path] = true
 		var access = class_data.get("access")
 		var pc = class_obj.has_preload(type_to_find)
 		if pc:
@@ -395,12 +564,12 @@ func _find_constant_by_value_bf(type_to_find:String, initial_class_obj:ParserCla
 			return UString.dot_join(access, pc)
 		
 		var gdscript_constants = class_obj.get_gdscript_constants(true)
-		for key in gdscript_constants:
+		for key in gdscript_constants.keys():
 			var val = gdscript_constants[key]
 			if val.ends_with(ENUM_SUFFIX):
 				continue
 			if checked.has(val):
-				print("DOES TJOS DO")
+				print("DOES THIS GO:", class_path, ":::", val)
 				continue
 			var next_parser = parser.get_parser_and_class_obj_for_script(gdscript_constants[key])
 			if not next_parser:

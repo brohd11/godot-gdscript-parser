@@ -212,10 +212,12 @@ func parse():
 		if _index_access_identifier != "":
 			expression_state = ExpressionState.INDEX_ACCESS
 	
-	if in_class_body:
-		scope_state = ScopeState.CLASS_BODY
-	elif current_block_type == &"match":
+	
+	# rearranged so block type is first instead of class body
+	if current_block_type == &"match":
 		scope_state = ScopeState.MATCH_BRANCH
+	elif in_class_body:
+		scope_state = ScopeState.CLASS_BODY
 	else:
 		scope_state = ScopeState.FUNCTION_BODY
 	

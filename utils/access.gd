@@ -21,8 +21,8 @@ var _parser:WeakRef
 
 ## Find path to 'to_find' from current class. symbol_access is the current script symbol used to access the type. secondary_access is from the script where the
 ## function or var is defined. Secondary path is that script path.
-func find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secondary_access:AccessObject, to_find:String, secondary_path:String):
-	var result = _find_path_to_type_hardened(class_obj, symbol_access, secondary_access, to_find, secondary_path)
+func find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secondary_access:AccessObject, to_find:String, secondary_path:String) -> AccessOptions:
+	var result:AccessOptions = _find_path_to_type_hardened(class_obj, symbol_access, secondary_access, to_find, secondary_path)
 	
 	# old version
 	#var result = _find_path_to_type(class_obj, symbol_access, secondary_access, to_find, secondary_path)
@@ -41,7 +41,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 		print_deb(T.ACCESS_PATH, "FUNCTION -> OPERATION", "current and secondary data is same")
 		return _find_path_to_type_simple(class_obj, symbol_access, to_find)
 	
-	var current_script_path = class_obj.main_script_path
+	var current_script_path:String = class_obj.main_script_path
 	print_deb(T.ACCESS_PATH, "FUNCTION", "----------------------------------------")
 	print_deb(T.ACCESS_PATH,"FROM", current_script_path, "TO FIND",to_find)
 	
@@ -49,23 +49,23 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 	print_deb(T.ACCESS_PATH, "DEC-SEC",  secondary_access.declaration_symbol, secondary_access.declaration_type)
 	print_deb(T.ACCESS_PATH, "FUNCTION", secondary_path)
 	
-	var parser = Utils.ParserRef.get_parser(self)
+	var parser:GDScriptParser = Utils.ParserRef.get_parser(self)
 	
 	symbol_access.clean_symbols()
 	secondary_access.clean_symbols()
 	secondary_path = secondary_path.trim_suffix(Keys.INS_DELIM)
 	
 	
-	var access_options = AccessOptions.new()
+	var access_options:AccessOptions = AccessOptions.new()
 	# get global name and script alias are easy to run
 	get_global_name_and_script_alias(to_find, class_obj, access_options) # TEMP this works well
 	
-	var symbol_script_data = Utils.type_path_get_script_data(symbol_access.declaration_type) # same logic as above
+	var symbol_script_data:Array[String] = Utils.type_path_get_script_data(symbol_access.declaration_type) # same logic as above
 	#var symbol_script_path = symbol_script_data[0]
-	var symbol_class_path = symbol_script_data[1]
+	var symbol_class_path:String = symbol_script_data[1]
 	
 	# trim the declaration to the script symbol only. This is a bit fragile, strictly string based
-	var dec_trimmed = ""
+	var dec_trimmed:String = ""
 	if Utils.type_path_get_type(symbol_access.declaration_type, true) == "Enum":
 		if symbol_access.declaration_symbol.contains("."):
 			dec_trimmed = UString.trim_member_access_back(symbol_access.declaration_symbol)
@@ -401,18 +401,31 @@ func _gather_standard_candidates(class_obj:ParserClass, access_object:AccessObje
 	#    inner classes, since resolution runs in the caller's scope).
 	if secondary_access != null:
 		var sec_sym = secondary_access.declaration_symbol
-		# Qualified prefixed candidates first. Front prefix (reaches the object's class at script
-		# scope) is correct when the secondary member lives in an outer/sibling scope of that class;
-		# it's tried before the full-symbol prefix so a within-class member (which won't resolve via
-		# the front path) falls through to it. The bare verbatim secondary comes LAST - a bare
-		# single identifier is almost never a valid standalone path from another script's scope, so it
-		# only wins when the secondary is already a caller-usable path (a global/preload alias) and
-		# the prefixed forms fail verification.
 		var sym_front = UString.get_member_access_front(access_object.declaration_symbol)
-		if sym_front != access_object.declaration_symbol:
-			candidates.append(UString.dot_join(sym_front, sec_sym))     # front prefix (outer-scope members)
-		candidates.append(UString.dot_join(access_object.declaration_symbol, sec_sym))  # full-symbol prefix
-		candidates.append(sec_sym)                                       # secondary verbatim (last resort)
+		# The correct candidate order depends on WHERE the method's arg is declared. secondary_path is
+		# the script of the object being operated on (caret_context passes symbol_script_path).
+		var secondary_script = Utils.type_path_get_script_data(secondary_path)[0]
+		var secondary_in_caller_script = class_obj.main_script_path == secondary_script
+
+		if secondary_in_caller_script:
+			# In-script: the arg is declared in the caller's own script, so the secondary symbol is
+			# written in the caller's scope and is reachable as-typed. Prefer the verbatim secondary;
+			# the object-prefixed forms follow only for a within-object member that verbatim can't reach.
+			candidates.append(sec_sym)                                       # verbatim first
+			if sym_front != access_object.declaration_symbol:
+				candidates.append(UString.dot_join(sym_front, sec_sym))     # front prefix (outer-scope members)
+			candidates.append(UString.dot_join(access_object.declaration_symbol, sec_sym))  # full-symbol prefix
+		else:
+			# Cross-script: the arg is written in a foreign script's scope, so it must be reached
+			# through the object's path. Front prefix (reaches the object's class at script scope) is
+			# tried before the full-symbol prefix so a within-class member falls through to it. The bare
+			# verbatim secondary comes LAST - a bare identifier is almost never a valid standalone path
+			# from another script's scope, so it only wins when it is already a caller-usable path (a
+			# global/preload alias) and the prefixed forms fail verification.
+			if sym_front != access_object.declaration_symbol:
+				candidates.append(UString.dot_join(sym_front, sec_sym))     # front prefix (outer-scope members)
+			candidates.append(UString.dot_join(access_object.declaration_symbol, sec_sym))  # full-symbol prefix
+			candidates.append(sec_sym)                                       # secondary verbatim (last resort)
 
 	return candidates
 
@@ -569,14 +582,14 @@ func _find_constant_by_value_bf(type_to_find:String, initial_class_obj:ParserCla
 			if val.ends_with(ENUM_SUFFIX):
 				continue
 			if checked.has(val):
-				print("DOES THIS GO:", class_path, ":::", val)
+				print_deb(T.FIND_BY_VAL, "ALREADY CHECKED", class_path, val)
 				continue
 			var next_parser = parser.get_parser_and_class_obj_for_script(gdscript_constants[key])
 			if not next_parser:
 				continue
 			var next_class = next_parser.class_obj as GDScriptParser.ParserClass
 			if checked.has(next_class.get_script_class_path()):
-				print("SECOND CHECK, IS THIS NEEDED::", val)
+				print_deb(T.FIND_BY_VAL, "SECOND CHECK, IS THIS NEEDED", val)
 				continue
 			queue.append({
 				"class_obj": next_class,
@@ -635,10 +648,12 @@ static func print_deb_err(section:String, ...msg:Array):
 		PrintDebug.print_err(msg)
 
 const _PRINT = [
-	T.ACCESS_PATH
+	#T.ACCESS_PATH,
+	T.FIND_BY_VAL,
 	]
 
 
 class T:
 	const ACCESS_PATH = "ACCESS PATH"
+	const FIND_BY_VAL = "FIND_BY_VAL"
 	pass

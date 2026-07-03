@@ -15,6 +15,7 @@ var code_edit:CodeEdit
 
 var use_tree_sitter:bool = ClassDB.class_exists("GDScriptTreeSitter")
 var tree_sitter_manager:Variant
+const TREE_SITTER_MANAGER_PATH = "res://addons/tree_sitter_gd/gdscript_code_edit_tree_parser.gd"
 
 var indent_size:int
 
@@ -44,6 +45,16 @@ func _set_code_edit(new_code_edit:CodeEdit):
 	code_edit = new_code_edit
 	if not code_edit.text_changed.is_connected(_on_text_changed):
 		code_edit.text_changed.connect(_on_text_changed)
+
+## Sync to the parser's code_edit + indent WITHOUT running a full parse_text. Used when a
+## CACHED_RESOLVED parser lazily attaches source so single-line reads (check_member_line /
+## get_type_from_line) work on a resolve-cache miss. Structure stays sourced from the disk cache.
+func sync_code_edit() -> void:
+	var parser:GDScriptParser = _get_parser()
+	if not is_instance_valid(parser) or not is_instance_valid(parser.code_edit):
+		return
+	_set_code_edit(parser.code_edit)
+	indent_size = code_edit.get_tab_size()
 
 
 func _on_text_changed():
@@ -386,7 +397,7 @@ func parse_text_ts(force:=false):
 	
 	
 	if not is_instance_valid(tree_sitter_manager):
-		var code_edit_tree_parser = load("res://addons/tree_sitter_gd/gdscript_code_edit_tree_parser.gd")
+		var code_edit_tree_parser = load(TREE_SITTER_MANAGER_PATH)
 		tree_sitter_manager = code_edit_tree_parser.new()
 	
 	

@@ -338,6 +338,10 @@ func get_member_type_rich(identifier:String):
 	var cached = _resolve_cache.get_or_add(identifier, {})
 	var type_rich:Dictionary
 	if not cache_valid:
+		# resolve-cache miss on a rehydrated parser: lazily attach the source buffer so the live
+		# resolve below can read declaration lines (keeps the cached class structure intact).
+		if parser.state == GDScriptParser.STATE_CACHED_RESOLVED:
+			parser._ensure_source_loaded()
 		#var t = GDScriptParser.TF.new("GET TYPE")
 		if member_data is ParserFunc:
 			cached[Keys.CLASS_CACHE_DEC] = member_data.get_return_type_raw()
@@ -380,6 +384,11 @@ func cached_resolve_valid_for_member(identifier:String):
 		return false
 	
 	var parser = Utils.ParserRef.get_parser(self)
+
+	# CACHED_RESOLVED parser has no live source: validity is deps-only (see ScriptCache).
+	if parser.state == GDScriptParser.STATE_CACHED_RESOLVED:
+		return GDScriptParser.ScriptCache.cached_resolve_valid(self, identifier)
+
 	var is_func = member_data is ParserFunc
 	var declaration:String
 	if is_func:

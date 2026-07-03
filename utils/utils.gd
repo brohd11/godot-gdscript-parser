@@ -356,7 +356,15 @@ class ParserRef:
 		return _get_ref(object, &"_parser")
 	
 	static func get_code_edit_parser(object:Object) -> CodeEditParser:
-		return _get_ref(object, &"_code_edit_parser")
+		var cep:CodeEditParser = _get_ref(object, &"_code_edit_parser")
+		# A rehydrated (CACHED_RESOLVED) parser carries no code_edit until a resolve-cache miss needs
+		# a line read. Attach its source buffer lazily the first time the tokenizer is fetched, so
+		# every line-read path is covered (hits never reach here, so they stay source-free).
+		if is_instance_valid(cep) and not is_instance_valid(cep.code_edit):
+			var parser:GDScriptParser = get_parser(object)
+			if is_instance_valid(parser) and parser.state == GDScriptParser.STATE_CACHED_RESOLVED:
+				parser._ensure_source_loaded()
+		return cep
 	
 	static func get_class_obj(object:Object) -> GDScriptParser.ParserClass:
 		return _get_ref(object, &"_class_obj")
@@ -368,6 +376,36 @@ class ParserRef:
 		return
 
 
+func print_hierarchy(parser:GDScriptParser) -> void:
+	for key:String in parser._class_access.keys():
+		var name:String = key
+		var indent:int = 0
+		if name == "":
+			name = "Script"
+		else:
+			indent = name.count(".") + 1
+			name = UString.get_member_access_back(name)
+		var base_indent_str:String = ""
+		for i:Variant in indent:
+			base_indent_str += "\t"
+		print(base_indent_str + name)
+		var member_indent_str:String = "\t" + base_indent_str
+		
+		var _class:GDScriptParser.ParserClass = parser._class_access.get(key) as GDScriptParser.ParserClass
+		print(base_indent_str + "Constants:")
+		for c:String in _class.constants.keys():
+			print(member_indent_str + c)
+		print("")
+		#
+		#print(base_indent_str + "Members:")
+		#for m in _class.members.keys():
+			#print(member_indent_str + m)
+		#print("")
+		
+		print(base_indent_str + "Functions:")
+		for f:String in _class.functions.keys():
+			print(member_indent_str + f)
+		print("")
 
 
 const PrintDebug = preload("uid://d1ki8cxxh7lvb") #! resolve ALibEditor.PrintDebug

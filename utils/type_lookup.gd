@@ -67,7 +67,11 @@ func _get_parser() -> GDScriptParser:
 	return _parser.get_ref()
 
 func _get_code_edit_parser() -> GDScriptParser.CodeEditParser:
-	return _get_parser().code_edit_parser
+	var parser = _get_parser()
+	# lazily attach source to a rehydrated (CACHED_RESOLVED) parser on the first line-read need.
+	if is_instance_valid(parser) and parser.state == GDScriptParser.STATE_CACHED_RESOLVED and not is_instance_valid(parser.code_edit):
+		parser._ensure_source_loaded()
+	return parser.code_edit_parser
 
 func _get_parser_main_script():
 	return Utils.ParserRef.get_parser(self).get_current_script()
@@ -1712,8 +1716,15 @@ func resolve_preload(preload_call:String, class_obj:ParserClass):
 		return ""
 	#preload_string = preload_string.trim_prefix("(").trim_suffix(")").strip_edges()
 	preload_string = preload_string.trim_prefix("(").substr(0, preload_string.find(")")).strip_edges()
-	
-	var path = Utils.run_expression(preload_string, class_obj.script_resource)
+
+	# rehydrated (cached) classes carry no script_resource; fall back to the parser's main script
+	# (lazily loaded) so preload-typed members still resolve on a cache miss.
+	var script_res = class_obj.script_resource
+	if not is_instance_valid(script_res):
+		var owning_parser = Utils.ParserRef.get_parser(class_obj)
+		if is_instance_valid(owning_parser):
+			script_res = owning_parser.get_current_script()
+	var path = Utils.run_expression(preload_string, script_res)
 	if path == "":
 		return ""
 	if not Utils.is_absolute_path(path):

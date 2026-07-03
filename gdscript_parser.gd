@@ -4,6 +4,13 @@
 const PLUGIN_EXPORTED = false
 const CACHE_TYPES = true
 
+# Whole persistent-cache subsystem lives in ScriptCache. These are aliases for existing references;
+# ScriptCache is the single source of truth for state/version/location + all cache logic.
+const ScriptCache = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/cache.gd")
+const STATE_LIVE = ScriptCache.STATE_LIVE
+const STATE_CACHED_RESOLVED = ScriptCache.STATE_CACHED_RESOLVED
+const PARSE_CACHE_DIR = ScriptCache.DEFAULT_DIR
+
 const TF = preload("uid://ft7o6vspsurv") #! resolve ALibRuntime.Utils.UProfile.TimeFunction
 
 const UString = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_string.gd")
@@ -32,6 +39,9 @@ static var _static_parser_cache:= {}
 var _parser_cache:= {}
 var _get_cached_parser_callable:Callable
 var _max_cache_size:int = 10
+var _parse_cache_dir:String = PARSE_CACHE_DIR
+
+var state:int = STATE_LIVE
 
 var code_edit_parser:CodeEditParser
 var _caret_context:CaretContext
@@ -70,6 +80,9 @@ func set_parser_cache(cache_dict:Dictionary) -> void:
 
 func set_parser_cache_size(size:int) -> void:
 	_max_cache_size = size
+
+func set_parse_cache_dir(dir:String) -> void:
+	_parse_cache_dir = dir
 
 func set_get_parser_callable(callable:Callable) -> void:
 	_get_cached_parser_callable = callable
@@ -110,6 +123,11 @@ func deactivate_parser(path:String) -> void:
 
 func _deactivate_parser(active_cache:Dictionary, inactive_cache:Dictionary, path:String) -> void:
 	var data:Dictionary = active_cache[path]
+	var parser:GDScriptParser = data.get(Keys.CACHE_PARSER) as GDScriptParser
+	# persist before freeing so resolve work survives eviction / restart. Skip a parser that is its
+	# own active_parser (the live editor script) - its buffer may be dirty vs the on-disk mtime.
+	if is_instance_valid(parser) and parser != parser.active_parser:
+		parser.write_cache()
 	data.erase(Keys.CACHE_PARSER) # this should free the parser
 	inactive_cache[path] = data
 	active_cache.erase(path) # move from active to inactive, should they be removed from inactive below?
@@ -118,6 +136,16 @@ func _deactivate_parser(active_cache:Dictionary, inactive_cache:Dictionary, path
 func clear_parser_cache() -> void:
 	_parser_cache.clear()
 	_static_parser_cache.clear()
+
+#region PersistentDiskCache
+## Serialize this parser's parsed+resolved classes to disk. See ScriptCache.write.
+func write_cache() -> bool:
+	return ScriptCache.write(self)
+
+## Rehydrate a headless CACHED_RESOLVED parser from disk, or null. See ScriptCache.read.
+func read_cache(script_path:String) -> GDScriptParser:
+	return ScriptCache.read(self, script_path)
+#endregion
 #endregion
 
 #region ParserSetup
@@ -136,6 +164,10 @@ func set_current_script(script:GDScript) -> void:
 	_script_path = _script_resource.resource_path
 
 func get_current_script() -> GDScript:
+	# resolution reads get_current_script().resource_path (type_lookup); a rehydrated parser has no
+	# _script_resource until first resolve need, so lazily load source (sets _script_resource too).
+	if not is_instance_valid(_script_resource) and state == STATE_CACHED_RESOLVED:
+		_ensure_source_loaded()
 	return _script_resource
 
 func set_code_edit(new_code_edit:CodeEdit, free_existing:=false) -> void:
@@ -179,6 +211,7 @@ func get_global_class_name() -> String:
 	return root_class.class_name_data.get(Keys.MEMBER_NAME, "")
 
 func get_code_edit_parser() -> CodeEditParser:
+	_ensure_source_loaded()
 	return code_edit_parser
 
 func get_type_lookup() -> TypeLookup:
@@ -233,17 +266,19 @@ func set_inference_context(inf:InferenceContext) -> void:
 	get_type_lookup().set_inference_context(inf)
 
 func get_function_data(identifier_name:String, line:int=-1) -> Dictionary:
+	_ensure_source_if_cached()
 	if line == -1:
 		line = code_edit.get_caret_line()
-	
+
 	var result:Dictionary = _type_lookup.get_function_data_at_line(identifier_name, line)
 	#print("GET FUNCTION DATA::", result)
 	return result
 
 func resolve_expression_to_type(identifier_name:String, line:int=-1) -> String:
+	_ensure_source_if_cached()
 	if line == -1:
 		line = code_edit.get_caret_line()
-	
+
 	var result:String = _type_lookup.resolve_expression_to_type_at_line(identifier_name, line)
 	#print("GET IDENTIFIER::TO TYPE::", result)
 	#ALibRuntime.DebugPrint.print_deb(self, "GET ID TYPE", identifier_name, result)
@@ -251,9 +286,10 @@ func resolve_expression_to_type(identifier_name:String, line:int=-1) -> String:
 
 #! keys i-TypeLookup.get_empty_type_rich;
 func resolve_expression_to_type_rich(identifier_name:String, line:int=-1) -> Dictionary:
+	_ensure_source_if_cached()
 	if line == -1:
 		line = code_edit.get_caret_line()
-	
+
 	var result:Dictionary = _type_lookup.resolve_expression_to_var_data_at_line(identifier_name, line)
 	#print("GET IDENTIFIER::TO TYPE::", result)
 	#ALibRuntime.DebugPrint.print_deb(self, "GET ID TYPE", identifier_name, result)
@@ -269,6 +305,7 @@ func resolve_expression_to_type_rich(identifier_name:String, line:int=-1) -> Dic
 
 
 func resolve_to_access_object(identifier:String, line:int=-1) -> TypeLookup.AccessObject:
+	_ensure_source_if_cached()
 	if line == -1:
 		line = code_edit.get_caret_line()
 	return _type_lookup.resolve_expression_to_access_object_at_line(identifier, line)
@@ -387,17 +424,33 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 	var parser_valid:bool = false
 	var parser:Variant = parser_data.get(Keys.CACHE_PARSER) as GDScriptParser
 	if is_instance_valid(parser):
+		if parser.state == STATE_CACHED_RESOLVED:
+			# rehydrated-from-disk parser already in the active cache: serve from cache and never
+			# fall through to parse() (it has no code_edit). Only rebuild if the file changed.
+			if file_changed:
+				parser._upgrade_to_live()
+			_finalize_parser_data(parser, parser_data, active_parsers_cache, script_path)
+			return parser
 		parser_valid = true
 		#print("EXISTING PARSER::", script_path)
 		active_parsers_cache.erase(script_path)
 	else:
+		if not force_cache:
+			parser = read_cache(script_path) # disk cache; null unless the on-disk mtime matches
+		if is_instance_valid(parser):
+			if is_instance_valid(active_parser):
+				parser.active_parser = active_parser
+			parser_data[Keys.CACHE_PARSER] = parser
+			_finalize_parser_data(parser, parser_data, active_parsers_cache, script_path)
+			return parser
 		parser = new()
 		parser.set_parser_cache(_parser_cache)
+		parser.set_parse_cache_dir(_parse_cache_dir)
 		parser_data[Keys.CACHE_PARSER] = parser
 		if is_instance_valid(active_parser):
 			parser.active_parser = active_parser
-	
-	
+
+
 	if not parser_valid or file_changed:
 		#print("NEED UPDATE::", script_path)
 		var script:GDScript
@@ -417,16 +470,28 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 	
 	var need_parse:bool = not parser_valid or file_changed or force_cache
 	parser.parse(need_parse) # i think this should be last so that classes can be updated
-	
-	var tl:TypeLookup = get_type_lookup()
-	var inf:InferenceContext = tl.get_inference_context()
+	_finalize_parser_data(parser, parser_data, active_parsers_cache, script_path)
+	return parser
+
+## Shared tail for get_parser_for_path: share the inference context and write the parser + its
+## classes back into the active cache.
+func _finalize_parser_data(parser:GDScriptParser, parser_data:Dictionary, active_parsers_cache:Dictionary, script_path:String) -> void:
+	var inf:InferenceContext = get_type_lookup().get_inference_context()
 	if is_instance_valid(inf):
 		parser.set_inference_context(inf)
-	
 	parser_data[Keys.CACHE_CLASSES] = parser._class_access
 	active_parsers_cache[script_path] = parser_data
 	_parser_cache[Keys.CACHE_ACTIVE_PARSERS] = active_parsers_cache
-	return parser
+
+# Source-lifecycle hooks -> ScriptCache (logic lives there; these keep call sites thin).
+func _ensure_source_loaded() -> void:
+	ScriptCache.ensure_source(self)
+
+func _ensure_source_if_cached() -> void:
+	ScriptCache.ensure_source_if_cached(self)
+
+func _upgrade_to_live() -> void:
+	ScriptCache.upgrade_to_live(self)
 
 
 # Think this is not used, doesn't make a ton of sense either...
@@ -518,37 +583,6 @@ func _notification(what: int) -> void:
 			if meta:
 				code_edit.queue_free()
 
-
-func print_hierarchy() -> void:
-	for key:String in _class_access.keys():
-		var name:String = key
-		var indent:int = 0
-		if name == "":
-			name = "Script"
-		else:
-			indent = name.count(".") + 1
-			name = UString.get_member_access_back(name)
-		var base_indent_str:String = ""
-		for i:Variant in indent:
-			base_indent_str += "\t"
-		print(base_indent_str + name)
-		var member_indent_str:String = "\t" + base_indent_str
-		
-		var _class:ParserClass = _class_access.get(key) as ParserClass
-		print(base_indent_str + "Constants:")
-		for c:String in _class.constants.keys():
-			print(member_indent_str + c)
-		print("")
-		#
-		#print(base_indent_str + "Members:")
-		#for m in _class.members.keys():
-			#print(member_indent_str + m)
-		#print("")
-		
-		print(base_indent_str + "Functions:")
-		for f:String in _class.functions.keys():
-			print(member_indent_str + f)
-		print("")
 
 static func print_deb_err(...args:Array):
 	if not PLUGIN_EXPORTED:

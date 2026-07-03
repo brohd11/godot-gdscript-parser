@@ -145,6 +145,12 @@ func write_cache() -> bool:
 ## Rehydrate a headless CACHED_RESOLVED parser from disk, or null. See ScriptCache.read.
 func read_cache(script_path:String) -> GDScriptParser:
 	return ScriptCache.read(self, script_path)
+
+## Cache-aware constructor: ready-to-use parser for `script_path`. Pass a CodeEdit for the current,
+## editable script (LIVE, bound to it); omit it for read-only use (disk cache if valid, else LIVE
+## from disk source). See ScriptCache.from_cache.
+static func from_cache(script_path:String, cache_dir:String = "", code_edit = null) -> GDScriptParser:
+	return ScriptCache.from_cache(script_path, cache_dir, code_edit)
 #endregion
 #endregion
 
@@ -194,7 +200,7 @@ func set_source_code(source:String) -> void: # need a version if the script edit
 
 #endregion
 
-func cache_valid():
+func cache_valid() -> bool:
 	if is_instance_valid(code_edit_parser.tree_sitter_manager):
 		return code_edit_parser.tree_sitter_manager.cache_valid()
 	return not code_edit_parser.cache_dirty
@@ -584,7 +590,7 @@ func _notification(what: int) -> void:
 				code_edit.queue_free()
 
 
-static func print_deb_err(...args:Array):
+static func print_deb_err(...args:Array) -> void:
 	if not PLUGIN_EXPORTED:
 		return
 	printerr("::".join(args))

@@ -353,7 +353,6 @@ func _get_extends_out_line(line_text:String):
 		extended = Utils.ensure_absolute_path(extended, _pc.main_script_path)
 	return extended
 
-
 func _line_has_open_bracket(stripped:String):
 	if stripped.count("(") != stripped.count(")"):
 		return true
@@ -393,13 +392,11 @@ func parse_text_ts(force:=false):
 		return
 	
 	var main_script = parser._script_resource
-	var main_script_path = main_script.resource_path
-	
-	
+	var main_script_path = parser.get_script_path()
+
 	if not is_instance_valid(tree_sitter_manager):
 		var code_edit_tree_parser = load(TREE_SITTER_MANAGER_PATH)
 		tree_sitter_manager = code_edit_tree_parser.new()
-	
 	
 	if tree_sitter_manager._edit != code_edit:
 		var t4 = ALibRuntime.Utils.UProfile.TimeFunction.new("PARSE TEXT NEW CODE")

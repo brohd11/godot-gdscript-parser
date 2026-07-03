@@ -239,7 +239,14 @@ static func write(parser) -> bool:
 ## Validation: schema + parser version, stored path (hash-collision guard), and file mtime.
 ## `dispatcher` is the parser doing the lookup - it supplies the cache dict + dir for the new parser.
 static func read(dispatcher, script_path:String) -> GDScriptParser:
-	var dir:String = dispatcher._parse_cache_dir
+	return _read(script_path, dispatcher._parse_cache_dir, dispatcher._parser_cache)
+
+## Dispatcher-less disk read: standalone CACHED_RESOLVED parser with its own empty parser cache.
+static func read_standalone(script_path:String, cache_dir:String) -> GDScriptParser:
+	return _read(script_path, cache_dir, {})
+
+## Core rehydrate: shared by read (dispatched) and read_standalone. Returns null if missing/stale.
+static func _read(script_path:String, dir:String, parser_cache:Dictionary) -> GDScriptParser:
 	if DirAccess.dir_exists_absolute(dir):
 		ensure_version(dir) # boot-time housekeeping wipe if the version changed
 	var file_path:String = cache_file_path(dir, script_path)
@@ -262,13 +269,41 @@ static func read(dispatcher, script_path:String) -> GDScriptParser:
 		return null
 
 	var parser:GDScriptParser = GDScriptParser.new()
-	parser.set_parser_cache(dispatcher._parser_cache)
+	parser.set_parser_cache(parser_cache)
 	parser.set_parse_cache_dir(dir)
 	parser._script_path = script_path
 	parser.state = STATE_CACHED_RESOLVED
 	var classes:Dictionary = data.get(Keys.CACHE_CLASSES, {})
 	for access_path:String in classes.keys():
 		parser._set_class_obj(access_path, deserialize_class(classes[access_path], parser))
+	return parser
+
+## Cache-aware constructor. Builds a ready-to-use parser for `script_path`:
+##   - `code_edit` given (current, editable script): always LIVE, bound to that CodeEdit. The disk
+##     cache still serves this parser's cross-script lookups via the shared dir; the live buffer is
+##     authoritative for its own structure.
+##   - no `code_edit` (read-only use): return the disk-cached CACHED_RESOLVED parser if valid, else
+##     a buffer-backed LIVE parse of the file on disk.
+static func from_cache(script_path:String, cache_dir:String = "", code_edit = null) -> GDScriptParser:
+	if cache_dir.is_empty():
+		cache_dir = DEFAULT_DIR
+	if code_edit == null:
+		var cached:GDScriptParser = read_standalone(script_path, cache_dir)
+		if cached != null:
+			return cached
+	var parser:GDScriptParser = GDScriptParser.new()
+	parser.set_parse_cache_dir(cache_dir)
+	if not FileAccess.file_exists(script_path):
+		return parser
+	var script:GDScript = load(script_path)
+	if not is_instance_valid(script):
+		return parser
+	parser.set_current_script(script)
+	if code_edit != null:
+		parser.set_code_edit(code_edit)
+	else:
+		parser.set_source_code(script.source_code)
+	parser.parse()
 	return parser
 #endregion
 

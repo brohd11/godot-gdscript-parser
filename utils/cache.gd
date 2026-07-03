@@ -25,7 +25,7 @@ const STATE_CACHED_RESOLVED = 1
 
 # --- versioning / location ----------------------------------------------------------------------
 const DEFAULT_DIR = "res://.godot/addons/gdscript_parser/parse_cache"
-const SCHEMA_VERSION = 1 # bump when the on-disk dict layout changes
+const SCHEMA_VERSION = 2 # bump when the on-disk dict layout changes
 const PARSER_VERSION = 1 # bump when parse/resolve logic changes -> invalidates all cache files
 
 # --- on-disk dict keys (cache-local; not in the shared Keys registry) ---------------------------
@@ -47,6 +47,9 @@ const PCACHE_HAS_STATIC_RETURN = &"has_static_return"
 const PCACHE_ARGUMENTS = &"arguments"
 const PCACHE_FUNC_CACHE = &"func_cache"
 const PCACHE_CLASS_INDENT = &"class_indent"
+const PCACHE_INHERITED = &"inherited_members"   # members merged in from base/outer scripts
+const PCACHE_INH_SCRIPTS = &"inherited_scripts" # ancestor script paths the above came from
+const PCACHE_INH_MOD = &"inherited_mod"         # {ancestor_path: mtime} baseline for staleness checks
 const CACHE_DEPS = &"deps" # dependency map key inside a resolve-cache entry
 
 
@@ -57,6 +60,17 @@ static func serialize_class(class_obj) -> Dictionary:
 	var funcs:Dictionary = {}
 	for fname:String in class_obj.functions.keys():
 		funcs[fname] = serialize_func(class_obj.functions[fname])
+	# force inherited members to compute (populates inherited_scripts); persisting them lets a
+	# rehydrated parser answer cross-script inheritance without a re-parse.
+	var inherited:Dictionary = class_obj.get_inherited_members().duplicate(true)
+	# Build the ancestor-mtime baseline deterministically from inherited_scripts (the live parser's
+	# _inherited_script_mod_cache lags a call behind due to get_inherited_members ordering, so it's not
+	# stable to serialize directly). Keyed exactly as _check_inherited_valid keys it, so on rehydrate
+	# the monitor matches unchanged parents and only clears when one actually changed.
+	var inh_mod:Dictionary = {}
+	for isp in class_obj.inherited_scripts:
+		var sp:String = GDScriptParser.UString.get_script_path_and_suffix(String(isp))[0]
+		inh_mod[sp] = FileAccess.get_modified_time(sp)
 	return {
 		Keys.ACCESS_PATH: class_obj.access_path,
 		Keys.EXTENDS: class_obj.extended,
@@ -71,6 +85,9 @@ static func serialize_class(class_obj) -> Dictionary:
 		PCACHE_CONSTANTS: _members_to_cache(class_obj, class_obj.constants),
 		PCACHE_INNER: class_obj.inner_classes.duplicate(true),
 		PCACHE_FUNCTIONS: funcs,
+		PCACHE_INHERITED: inherited,
+		PCACHE_INH_SCRIPTS: class_obj.inherited_scripts.duplicate(),
+		PCACHE_INH_MOD: inh_mod,
 	}
 
 static func _members_to_cache(class_obj, dict:Dictionary) -> Dictionary:
@@ -105,6 +122,14 @@ static func deserialize_class(data:Dictionary, parser) -> GDScriptParser.ParserC
 	var funcs:Dictionary = data.get(PCACHE_FUNCTIONS, {})
 	for fname:String in funcs.keys():
 		obj.functions[fname] = deserialize_func(funcs[fname], parser, obj)
+
+	# Restore inherited data directly - do NOT recompute here: get_inherited_members() walks to parent
+	# / outer classes that may not be deserialized yet. Restoring inherited_scripts + the mtime baseline
+	# lets the existing _check_inherited_valid() monitor (run lazily at query time) detect a changed
+	# parent and recompute then, when every class is present.
+	obj.inherited_members = data.get(PCACHE_INHERITED, {})
+	obj.inherited_scripts = data.get(PCACHE_INH_SCRIPTS, [])
+	obj._inherited_script_mod_cache = data.get(PCACHE_INH_MOD, {})
 	return obj
 
 static func _members_from_cache(class_obj, dict:Dictionary) -> Dictionary:
@@ -211,6 +236,33 @@ static func wipe_dir(dir:String) -> void:
 		if file_name.ends_with(".bin"):
 			d.remove(file_name)
 
+## Remove cache files whose source script no longer exists (deleted / renamed / moved). The filename
+## is a hash, so the origin path is recovered from each file's stored Keys.SCRIPT_PATH. Unreadable /
+## malformed files are reclaimed too. Stale-but-present files are left alone (read-side mtime/version
+## checks already reject them). Returns the number removed. No caller wired - invoke from wherever.
+static func prune(cache_dir:String = "") -> int:
+	if cache_dir.is_empty():
+		cache_dir = DEFAULT_DIR
+	var d:DirAccess = DirAccess.open(cache_dir)
+	if d == null:
+		return 0
+	var removed:int = 0
+	for fname:String in d.get_files():
+		if not fname.ends_with(".bin"):
+			continue # skip the .version marker and anything else
+		var keep:bool = false
+		var f:FileAccess = FileAccess.open(cache_dir.path_join(fname), FileAccess.READ)
+		if f != null:
+			var data:Variant = f.get_var(false)
+			f.close()
+			if data is Dictionary:
+				var sp:String = str(data.get(Keys.SCRIPT_PATH, ""))
+				keep = sp != "" and FileAccess.file_exists(sp)
+		if not keep: # orphaned source, or unreadable/corrupt -> reclaim
+			d.remove(fname)
+			removed += 1
+	return removed
+
 ## Serialize a parser's parsed+resolved classes to disk. Returns true on success.
 static func write(parser) -> bool:
 	if parser._script_path.is_empty() or parser._class_access.is_empty():
@@ -276,6 +328,11 @@ static func _read(script_path:String, dir:String, parser_cache:Dictionary) -> GD
 	var classes:Dictionary = data.get(Keys.CACHE_CLASSES, {})
 	for access_path:String in classes.keys():
 		parser._set_class_obj(access_path, deserialize_class(classes[access_path], parser))
+	# Eager staleness check now that every class is present: drops inherited_members whose ancestor
+	# scripts changed since the cache was written (mtime-only - no cross-script re-derive here; that
+	# happens lazily on the next get_inherited_members()). Ordering-safe: all classes exist.
+	for c in parser._class_access.values():
+		c._check_inherited_valid()
 	return parser
 
 ## Cache-aware constructor. Builds a ready-to-use parser for `script_path`:

@@ -84,7 +84,7 @@ func get_function_data_at_line(identifier:String, line:int):
 	return _get_function_data(identifier, class_data.class_obj, line)
 
 func _get_function_data(identifier:String, class_obj:ParserClass, line:int=-1):
-	#print("GET FUNC DATA::", identifier , "::IN::", class_obj.get_script_class_path())
+	print("GET FUNC DATA::", identifier , "::IN::", class_obj.get_script_class_path())
 	var parser = Utils.ParserRef.get_parser(self)
 	
 	# if this is passed with a "()" on the last member, it would need to be stripped
@@ -104,8 +104,8 @@ func _get_function_data(identifier:String, class_obj:ParserClass, line:int=-1):
 	elif BuiltInChecker.is_global_method(stripped_identifier):
 		return BuiltInChecker.get_global_func_data(stripped_identifier)
 	
+	print(T.RESOLVE, "::FUNC DATA TEST::", "NO RESULT::", identifier, " -> ", type_rich.origin, "::", type_rich)
 	print_deb(T.RESOLVE, "FUNC DATA TEST", "NO RESULT", identifier, " -> ", type_rich.origin)
-	
 	return {}
 
 #endregion

@@ -684,7 +684,9 @@ func _check_inherited_valid():
 		valid_scripts[script_path] = mod_time
 	
 	_inherited_script_mod_cache = valid_scripts
-	await Engine.get_main_loop().root.get_tree().process_frame
+	#await Engine.get_main_loop().root.get_tree().process_frame
+	var def = func(): _check_inherited_debounce = false
+	def.call_deferred()
 	_check_inherited_debounce = false
 
 

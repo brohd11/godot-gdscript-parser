@@ -257,13 +257,15 @@ func get_local_var_type_rich(member_name:String) -> Dictionary:
 	
 	var cache_string:String = _get_cache_string(member_name, type_hint)
 	for i:int in range(1): # single loop for early break
-		break # ALERT
+		#break # ALERT
 		if not GDScriptParser.CACHE_TYPES:
 			break
 		if not _cache.has(cache_string):
 			break
 		var cache_data:Dictionary = _cache[cache_string]
 		if cache_data.get(Keys.CLASS_CACHE_DEC) != type_hint:
+			break
+		if not cache_data.has(Keys.CLASS_CACHE_DEPENDENCIES):
 			break
 		var cached_deps:Variant = cache_data.get(Keys.CLASS_CACHE_DEPENDENCIES)
 		if not GDScriptParser.InferenceContext.validate_dependencies(cached_deps, parser.get_script_path()):
@@ -278,8 +280,9 @@ func get_local_var_type_rich(member_name:String) -> Dictionary:
 	
 	dec_line += 1 # +1 forces the var to be in scope
 	var type_rich:Dictionary = parser.resolve_expression_to_type_rich(member_name, dec_line)
-	cached_data[Keys.CLASS_CACHE_DEPENDENCIES] = GDScriptParser.InferenceContext.get_dependencies_from_member_stack(type_rich)
-	cached_data[Keys.CLASS_CACHE_TYPE] = type_rich
+	if type_rich.type != "" and type_rich.origin != "":
+		cached_data[Keys.CLASS_CACHE_DEPENDENCIES] = GDScriptParser.InferenceContext.get_dependencies_from_member_stack(type_rich)
+		cached_data[Keys.CLASS_CACHE_TYPE] = type_rich
 	return type_rich
 
 func is_local_var_static_typed(member_name:String) -> bool:

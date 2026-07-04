@@ -277,7 +277,7 @@ func get_function_data(identifier_name:String, line:int=-1) -> Dictionary:
 		line = code_edit.get_caret_line()
 
 	var result:Dictionary = _type_lookup.get_function_data_at_line(identifier_name, line)
-	print("GET FUNCTION DATA::", result)
+	#print("GET FUNCTION DATA::", result)
 	return result
 
 func resolve_expression_to_type(identifier_name:String, line:int=-1) -> String:

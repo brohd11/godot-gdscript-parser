@@ -831,8 +831,8 @@ class FunctionCallData:
 		var current_arg_data = _func_get_current_arg_data()
 		var function_object = get_function_script()
 		
-		print("ARG DATA::", current_arg_data)
-		print("FUNC OBJ::", function_object) 
+		#print("ARG DATA::", current_arg_data)
+		#print("FUNC OBJ::", function_object) 
 		
 		if current_arg_data == null:
 			return ""

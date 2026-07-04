@@ -1113,3 +1113,5 @@ func _initialize_regex_map():
 	if not is_instance_valid(_map_regex):
 		_map_regex = RegEx.new()
 		_map_regex.compile("^(?:(static)\\s+)?(var|func|enum|const|signal|class_name|class)\\s+([a-zA-Z_]\\w*)")
+
+	

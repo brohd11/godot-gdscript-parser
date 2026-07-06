@@ -44,6 +44,8 @@ var _parse_cache_dir:String = PARSE_CACHE_DIR
 var state:int = STATE_LIVE
 
 var code_edit_parser:CodeEditParser
+# this set's children props, allows tests for non ts parsing
+var use_tree_sitter:bool = ClassDB.class_exists("GDScriptTreeSitter")
 var _caret_context:CaretContext
 var _type_lookup:TypeLookup
 var _access:Access
@@ -61,6 +63,7 @@ var active_parser:GDScriptParser
 
 func _init() -> void:
 	code_edit_parser = CodeEditParser.new()
+	code_edit_parser.use_tree_sitter = use_tree_sitter
 	_type_lookup = TypeLookup.new()
 	_access = Access.new()
 	
@@ -198,6 +201,13 @@ func set_source_code(source:String) -> void: # need a version if the script edit
 	_create_buffer_code_edit()
 	code_edit.text = source
 
+## Force tree-sitter on/off (default: GDScriptTreeSitter registered). call before parse()
+## for tests exercising both tree-sitter and plain-text parse paths.
+func set_use_tree_sitter(value:bool) -> void:
+	use_tree_sitter = value
+	if is_instance_valid(code_edit_parser):
+		code_edit_parser.use_tree_sitter = value
+
 #endregion
 
 func cache_valid() -> bool:
@@ -300,15 +310,6 @@ func resolve_expression_to_type_rich(identifier_name:String, line:int=-1) -> Dic
 	#print("GET IDENTIFIER::TO TYPE::", result)
 	#ALibRuntime.DebugPrint.print_deb(self, "GET ID TYPE", identifier_name, result)
 	return result
-
-#func resolve_expression_to_value(identifier_name:String, line:int=-1) -> String:
-	#if line == -1:
-		#line = code_edit.get_caret_line()
-	#
-	#var result = _type_lookup.resolve_expression_to_value_at_line(identifier_name, line)
-	##print("GET IDENTIFIER::TO VALUE::", result)
-	#return result
-
 
 func resolve_to_access_object(identifier:String, line:int=-1) -> TypeLookup.AccessObject:
 	_ensure_source_if_cached()

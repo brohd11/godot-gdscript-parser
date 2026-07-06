@@ -143,7 +143,7 @@ func map_variables() -> void:
 	_set_function_data()
 	end_line = func_lines[func_lines.size() - 1]
 	var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
-	for i:int in range(declaration_line + 1, end_line):
+	for i:int in range(declaration_line + 1, end_line + 1): # +1 to ensure last line is carried over
 		if not code_edit_parser.is_valid_code(i, -1):
 			continue
 		
@@ -278,8 +278,24 @@ func get_local_var_type_rich(member_name:String) -> Dictionary:
 	if member_name.contains("-"):
 		member_name = member_name.get_slice("-", 0)
 	
-	dec_line += 1 # +1 forces the var to be in scope
-	var type_rich:Dictionary = parser.resolve_expression_to_type_rich(member_name, dec_line)
+	var probe_line := dec_line + 1   # +1 forces the var to be in scope
+	var seeded := false
+	if not func_lines.has(probe_line) and not _in_scope_local_vars_set:
+		# Terminal var: probe_line escaped this func (EOF / next-decl no-blank).
+		# Resolve on the var's OWN line (which IS in func_lines, so ClassData -> self),
+		# pre-seeding an in-scope set that includes this var itself.
+		var scope: Dictionary = get_in_scope_local_vars(dec_line)          # priors + args
+		var line_text: String = ParserRef.get_code_edit_parser(self).get_line(dec_line)
+		Utils.add_var_to_dict(line_text.strip_edges(), dec_line, 0, scope) # add the terminal var
+		set_in_scope_local_vars(scope)
+		seeded = true
+		probe_line = dec_line
+	
+	var type_rich: Dictionary = parser.resolve_expression_to_type_rich(member_name, probe_line)
+	if seeded:
+		_in_scope_local_vars_set = false
+		in_scope_local_vars.clear()
+	
 	if type_rich.type != "" and type_rich.origin != "":
 		cached_data[Keys.CLASS_CACHE_DEPENDENCIES] = GDScriptParser.InferenceContext.get_dependencies_from_member_stack(type_rich)
 		cached_data[Keys.CLASS_CACHE_TYPE] = type_rich

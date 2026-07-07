@@ -248,7 +248,7 @@ static func add_var_to_dict(stripped_line:String, line:int, column:int, dict:Dic
 	elif member_type == Keys.MEMBER_TYPE_FOR:
 		var_data = get_for_loop_info(stripped_line)
 	else:
-		print_deb(T.LOCAL_VAR, "UNHANDLED MEMBER TYPE::Utils.add_var_to_dict - ", stripped_line, "::", member_type)
+		print_deb(T.LOCAL_VAR, ["UNHANDLED MEMBER TYPE::Utils.add_var_to_dict - ", stripped_line, "::", member_type])
 		return []
 	if var_data != null:
 		var var_name:String = var_data[0]
@@ -411,7 +411,7 @@ func print_hierarchy(parser:GDScriptParser) -> void:
 const PrintDebug = preload("uid://d1ki8cxxh7lvb") #! resolve ALibEditor.PrintDebug
 
 #! arg_location section:T
-static func print_deb(section:String, ...msg:Array):
+static func print_deb(section:String, msg:Array):
 	if section in _PRINT:
 		msg.push_front(section)
 		PrintDebug.print(msg)

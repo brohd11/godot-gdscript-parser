@@ -79,7 +79,7 @@ func _set_function_data() -> void:
 	var column:int = member_data.get(Keys.COLUMN_INDEX, 0)
 	var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
 	if not code_edit_parser.check_member_line(member_data.get(Keys.MEMBER_TYPE), name, declaration_line, column):
-		GDScriptParser.print_deb_err("FUNCTION DATA: NOT VALID")
+		GDScriptParser.print_deb_err(["FUNCTION DATA: NOT VALID"])
 		return
 	
 	_has_static_return = true
@@ -93,7 +93,7 @@ func _set_function_data() -> void:
 		_return_type_raw = ""
 		return
 	if not result is Dictionary:
-		GDScriptParser.print_deb_err(result, "::", name)
+		GDScriptParser.print_deb_err([result, "::", name])
 		#_cache_dirty = true # should this reset? this shouldn't happen
 		return
 	
@@ -344,7 +344,7 @@ func get_arguments_raw() -> Dictionary:
 		var func_data:Dictionary = code_edit_parser.get_type_from_line(declaration_line, column)
 		var result:Variant = func_data.get("result")
 		if not result is Dictionary:
-			GDScriptParser.print_deb_err("GET ARG RAW",result, name)
+			GDScriptParser.print_deb_err(["GET ARG RAW", result, name])
 			return {}
 		if result:
 			var func_args:Dictionary = result.get(Keys.FUNC_ARGS, {})

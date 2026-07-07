@@ -35,19 +35,19 @@ func find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, second
 
 func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secondary_access:AccessObject, to_find:String, secondary_path:String):
 	if secondary_access == null or symbol_access == secondary_access: # if no valid argument access or is our main object, can just do the operation func
-		print_deb(T.ACCESS_PATH, "FUNCTION -> OPERATION", "secondary not valid")
+		print_deb(T.ACCESS_PATH, ["FUNCTION -> OPERATION", "secondary not valid"])
 		return _find_path_to_type_simple(class_obj, symbol_access, to_find)
 	if symbol_access.declaration_symbol == secondary_access.declaration_symbol and symbol_access.declaration_type == secondary_access.declaration_type:
-		print_deb(T.ACCESS_PATH, "FUNCTION -> OPERATION", "current and secondary data is same")
+		print_deb(T.ACCESS_PATH, ["FUNCTION -> OPERATION", "current and secondary data is same"])
 		return _find_path_to_type_simple(class_obj, symbol_access, to_find)
 	
 	var current_script_path:String = class_obj.main_script_path
-	print_deb(T.ACCESS_PATH, "FUNCTION", "----------------------------------------")
-	print_deb(T.ACCESS_PATH,"FROM", current_script_path, "TO FIND",to_find)
+	print_deb(T.ACCESS_PATH, ["FUNCTION", "----------------------------------------"])
+	print_deb(T.ACCESS_PATH, ["FROM", current_script_path, "TO FIND",to_find])
 	
-	print_deb(T.ACCESS_PATH, "DEC",  symbol_access.declaration_symbol, symbol_access.declaration_type)
-	print_deb(T.ACCESS_PATH, "DEC-SEC",  secondary_access.declaration_symbol, secondary_access.declaration_type)
-	print_deb(T.ACCESS_PATH, "FUNCTION", secondary_path)
+	print_deb(T.ACCESS_PATH, ["DEC",  symbol_access.declaration_symbol, symbol_access.declaration_type])
+	print_deb(T.ACCESS_PATH, ["DEC-SEC",  secondary_access.declaration_symbol, secondary_access.declaration_type])
+	print_deb(T.ACCESS_PATH, ["FUNCTION", secondary_path])
 	
 	var parser:GDScriptParser = Utils.ParserRef.get_parser(self)
 	
@@ -104,7 +104,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 		var back = UString.get_member_access_back(secondary_access.declaration_symbol)
 		var member_data = secondary_class_obj.get_member_data(back, true)
 		if member_data:
-			print_deb_err(T.ACCESS_PATH, "SEC DEC == TO_FIND")
+			print_deb_err(T.ACCESS_PATH, ["SEC DEC == TO_FIND"])
 			var access_path = member_data.get(Keys.ACCESS_PATH)
 			access_options.standard = UString.dot_joinv([dec_trimmed, access_path, back])
 			return access_options
@@ -116,7 +116,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 		var back = UString.get_member_access_back(symbol_access.declaration_symbol)
 		var member_data = current_access_class_obj.get_member_data(back, true)
 		if member_data:
-			print_deb_err(T.ACCESS_PATH, "CURRENT DEC == TO_FIND")
+			print_deb_err(T.ACCESS_PATH, ["CURRENT DEC == TO_FIND"])
 			var access_path = member_data.get(Keys.ACCESS_PATH)
 			access_options.standard = UString.dot_joinv([dec_trimmed, access_path, back])
 			return access_options
@@ -131,7 +131,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 		if sec_member_data != null:
 			var type = symbol_access_class_obj.get_member_type(secondary_dec_front, true)
 			if type == sec_front_type:
-				print_deb_err(T.ACCESS_PATH, "IN MY FIRST CHECK")
+				print_deb_err(T.ACCESS_PATH, ["IN MY FIRST CHECK"])
 				var access_path = sec_member_data.get(Keys.ACCESS_PATH)
 				var full_access_path = UString.dot_joinv([dec_trimmed, access_path, secondary_access.declaration_symbol])
 				access_options.standard = full_access_path
@@ -139,7 +139,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 		
 		var pre_check = symbol_access_class_obj.has_preload(to_find)
 		if pre_check:
-			print_deb_err(T.ACCESS_PATH, "PRELOAD CHECK")
+			print_deb_err(T.ACCESS_PATH, ["PRELOAD CHECK"])
 			var preload_member_data = symbol_access_class_obj.get_member_data(pre_check, true)
 			var access_path = preload_member_data.get(Keys.ACCESS_PATH)
 			var full_access_path = UString.dot_joinv([dec_trimmed, access_path, pre_check])
@@ -165,7 +165,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 			#^r haven't seen these firing either, may be covered above? This whole branch may be un-needed
 			var current_class_member_data = class_obj.get_member_data(symbol_front)
 			if current_class_member_data: # this is the current script class obj searching for "current_access", need some better names
-				print_deb_err(T.ACCESS_PATH, "SECONDARY CURRENT CLASS CHECK")
+				print_deb_err(T.ACCESS_PATH, ["SECONDARY CURRENT CLASS CHECK"])
 				#var access_path = current_class_member_data.get(Keys.ACCESS_PATH)
 				var type = class_obj.get_member_type(symbol_front)
 				if symbol_front_type == type:
@@ -174,13 +174,13 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 			
 			var global_name = UClassDetail.get_global_class_name(secondary_script_path)
 			if global_name:
-				print_deb_err(T.ACCESS_PATH, "SECONDARY GLOBAL CHECK")
+				print_deb_err(T.ACCESS_PATH, ["SECONDARY GLOBAL CHECK"])
 				var full_access_path = UString.dot_joinv([global_name, access_path, secondary_access.declaration_symbol])
 				access_options.standard = full_access_path
 				return access_options
 			#^r
 	
-	print_deb_err(T.ACCESS_PATH, "Un Resolved Access - Find Path To Type")
+	print_deb_err(T.ACCESS_PATH, ["Un Resolved Access - Find Path To Type"])
 	return access_options
 
 
@@ -199,10 +199,10 @@ func _find_path_to_type_hardened(class_obj:ParserClass, symbol_access:AccessObje
 	secondary_access.clean_symbols()
 	secondary_path = secondary_path.trim_suffix(Keys.INS_DELIM)
 
-	print_deb(T.ACCESS_PATH, "HARDENED FUNCTION", "----------------------------------------")
-	print_deb(T.ACCESS_PATH, "FROM", class_obj.main_script_path, "TO FIND", to_find)
-	print_deb(T.ACCESS_PATH, "DEC", symbol_access.declaration_symbol, symbol_access.declaration_type)
-	print_deb(T.ACCESS_PATH, "DEC-SEC", secondary_access.declaration_symbol, secondary_access.declaration_type)
+	print_deb(T.ACCESS_PATH, ["HARDENED FUNCTION", "----------------------------------------"])
+	print_deb(T.ACCESS_PATH, ["FROM", class_obj.main_script_path, "TO FIND", to_find])
+	print_deb(T.ACCESS_PATH, ["DEC", symbol_access.declaration_symbol, symbol_access.declaration_type])
+	print_deb(T.ACCESS_PATH, ["DEC-SEC", secondary_access.declaration_symbol, secondary_access.declaration_type])
 
 	var access_options = AccessOptions.new()
 	get_global_name_and_script_alias(to_find, class_obj, access_options) # solid, reused verbatim
@@ -224,9 +224,9 @@ func find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject,
 
 func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject, to_find:String) -> AccessOptions:
 	var parser = Utils.ParserRef.get_parser(self)
-	print_deb(T.ACCESS_PATH, "OPERATION", "----------------------------------------")
-	print_deb(T.ACCESS_PATH,"FROM", class_obj.get_script_class_path(), "TO FIND",to_find)
-	print_deb(T.ACCESS_PATH,"DEC", access_object.declaration_symbol, access_object.declaration_type)
+	print_deb(T.ACCESS_PATH, ["OPERATION", "----------------------------------------"])
+	print_deb(T.ACCESS_PATH, ["FROM", class_obj.get_script_class_path(), "TO FIND",to_find])
+	print_deb(T.ACCESS_PATH, ["DEC", access_object.declaration_symbol, access_object.declaration_type])
 	
 	var access_options = AccessOptions.new()
 	get_global_name_and_script_alias(to_find, class_obj, access_options)
@@ -253,11 +253,11 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 	
 	if class_obj.inherits_script(UString.dot_join(to_find_script_path, to_find_class_path)):
 		if class_obj.get_member_data(dec_front, true) != null:
-			print_deb(T.ACCESS_PATH, "INH EXIT")
+			print_deb(T.ACCESS_PATH, ["INH EXIT"])
 			access_options.standard = access_object.declaration_symbol
 			return access_options
 		
-		print_deb(T.ACCESS_PATH, "INHERITED")
+		print_deb(T.ACCESS_PATH, ["INHERITED"])
 	
 	
 	var dec_front_type = access_object.declaration_type
@@ -280,7 +280,7 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 			if to_find_is_current_script:
 				access_path = access_path.trim_prefix(class_obj.access_path)
 			var full_access_path = UString.dot_joinv([access_path, access_object.declaration_symbol])
-			print_deb_err(T.ACCESS_PATH, "IN MY FIRST CHECK::", full_access_path)
+			print_deb_err(T.ACCESS_PATH, ["IN MY FIRST CHECK::", full_access_path])
 			access_options.standard = full_access_path
 			return access_options
 	
@@ -299,9 +299,9 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 ## Hardened single-access finder. Same shape as the dual version with no secondary symbol.
 func _find_path_to_type_simple_hardened(class_obj:ParserClass, access_object:AccessObject, to_find:String) -> AccessOptions:
 	var parser = Utils.ParserRef.get_parser(self)
-	print_deb(T.ACCESS_PATH, "HARDENED OPERATION", "----------------------------------------")
-	print_deb(T.ACCESS_PATH, "FROM", class_obj.get_script_class_path(), "TO FIND", to_find)
-	print_deb(T.ACCESS_PATH, "DEC", access_object.declaration_symbol, access_object.declaration_type)
+	print_deb(T.ACCESS_PATH, ["HARDENED OPERATION", "----------------------------------------"])
+	print_deb(T.ACCESS_PATH, ["FROM", class_obj.get_script_class_path(), "TO FIND", to_find])
+	print_deb(T.ACCESS_PATH, ["DEC", access_object.declaration_symbol, access_object.declaration_type])
 
 	var access_options = AccessOptions.new()
 	get_global_name_and_script_alias(to_find, class_obj, access_options) # solid, reused verbatim
@@ -320,17 +320,17 @@ func _resolve_standard_path(class_obj:ParserClass, access_object:AccessObject, t
 		if candidate == "":
 			continue
 		if _standard_candidate_valid(candidate, to_find, class_obj, parser):
-			print_deb(T.ACCESS_PATH, "STANDARD (fast-path)", candidate)
+			print_deb(T.ACCESS_PATH, ["STANDARD (fast-path)", candidate])
 			return candidate
 
 	# Accurate but slower fallback. has_preload matches on the full type path, so the returned
 	# const-name chain is canonical by construction (no chain blending, no duplicate segments).
 	var search = find_constant_by_value(to_find, class_obj)
 	if search != "":
-		print_deb(T.ACCESS_PATH, "STANDARD (const search)", search)
+		print_deb(T.ACCESS_PATH, ["STANDARD (const search)", search])
 		return search
 
-	print_deb_err(T.ACCESS_PATH, "STANDARD UNRESOLVED", to_find)
+	print_deb_err(T.ACCESS_PATH, ["STANDARD UNRESOLVED", to_find])
 	return ""
 
 
@@ -455,7 +455,7 @@ func get_global_name_and_script_alias(to_find:String, class_obj:ParserClass, acc
 	
 	var rev_search = reverse_path_chain_search(to_find, class_obj)
 	if rev_search != "":
-		print_deb(T.ACCESS_PATH, "SCRIPT ALIAS", "->", rev_search)
+		print_deb(T.ACCESS_PATH, ["SCRIPT ALIAS", "->", rev_search])
 		access_options.script_alias = rev_search
 		return
 
@@ -482,12 +482,12 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass):
 		else:
 			working_script_access_path = ""
 		
-		print_deb(T.ACCESS_PATH, "WorkingAcess", working_script_access_path)
-		print_deb(T.ACCESS_PATH, "CheckedAccess", checked_access)
-		print_deb(T.ACCESS_PATH, "SEARCHING FOR", search_path)
+		print_deb(T.ACCESS_PATH, ["WorkingAcess", working_script_access_path])
+		print_deb(T.ACCESS_PATH, ["CheckedAccess", checked_access])
+		print_deb(T.ACCESS_PATH, ["SEARCHING FOR", search_path])
 		var check = class_obj.has_preload(search_path)
 		if check != null:
-			print_deb(T.ACCESS_PATH, "FOUND", check, working_script_access_path)
+			print_deb(T.ACCESS_PATH, ["FOUND", check, working_script_access_path])
 			#if to_find.ends_with(ENUM_SUFFIX):
 				#working_script_access_path = UString.dot_join(working_script_access_path, Utils.type_path_get_member(to_find))
 			#var return_val = UString.dot_join(check, working_script_access_path)
@@ -495,7 +495,7 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass):
 			if to_find.ends_with(ENUM_SUFFIX):
 				checked_access = UString.dot_join(checked_access, Utils.type_path_get_member(to_find))
 			var return_val = UString.dot_join(check, checked_access)
-			print_deb(T.ACCESS_PATH, "FINAL", return_val)
+			print_deb(T.ACCESS_PATH, ["FINAL", return_val])
 			return return_val
 		
 		checked_access = UString.dot_join(back, checked_access)
@@ -582,14 +582,14 @@ func _find_constant_by_value_bf(type_to_find:String, initial_class_obj:ParserCla
 			if val.ends_with(ENUM_SUFFIX):
 				continue
 			if checked.has(val):
-				print_deb(T.FIND_BY_VAL, "ALREADY CHECKED", class_path, val)
+				print_deb(T.FIND_BY_VAL, ["ALREADY CHECKED", class_path, val])
 				continue
 			var next_parser = parser.get_parser_and_class_obj_for_script(gdscript_constants[key])
 			if not next_parser:
 				continue
 			var next_class = next_parser.class_obj as GDScriptParser.ParserClass
 			if checked.has(next_class.get_script_class_path()):
-				print_deb(T.FIND_BY_VAL, "SECOND CHECK, IS THIS NEEDED", val)
+				print_deb(T.FIND_BY_VAL, ["SECOND CHECK, IS THIS NEEDED", val])
 				continue
 			queue.append({
 				"class_obj": next_class,
@@ -632,7 +632,7 @@ class AccessUtils:
 
 const PrintDebug = preload("uid://d1ki8cxxh7lvb") #! resolve ALibEditor.PrintDebug
 #! arg_location section:T
-static func print_deb(section:String, ...msg:Array):
+static func print_deb(section:String, msg:Array):
 	if not PRINT_DEBUG:
 		return
 	if section in _PRINT:
@@ -640,7 +640,7 @@ static func print_deb(section:String, ...msg:Array):
 		PrintDebug.print(msg)
 
 #! arg_location section:T
-static func print_deb_err(section:String, ...msg:Array):
+static func print_deb_err(section:String, msg:Array):
 	if not PRINT_DEBUG:
 		return
 	if section in _PRINT:

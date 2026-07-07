@@ -440,7 +440,7 @@ func is_member_static_typed(identifier:String):
 	if result is Array and result.size() == 4:
 		return result[1] != "" or result[3]
 	else:
-		GDScriptParser.print_deb_err("NOT AN ARRAY IN MEMBER STATIC TYPED", result)
+		GDScriptParser.print_deb_err(["NOT AN ARRAY IN MEMBER STATIC TYPED", result])
 		return false
 	return true
 

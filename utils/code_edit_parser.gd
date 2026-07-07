@@ -282,7 +282,7 @@ func _parse_line(stripped:String, line:int, column:int=0):
 		var keyword:StringName = result.get_string(2)
 		if result.get_string(1) != "":
 			if result.get_string(1) != "static":
-				GDScriptParser.print_deb_err("REGEX MISTAKE SHOULD BE STATIC ", result.get_string(1))
+				GDScriptParser.print_deb_err(["REGEX MISTAKE SHOULD BE STATIC ", result.get_string(1)])
 			keyword = "static " + keyword
 		var member_name = StringName(result.get_string(3))
 		
@@ -984,7 +984,7 @@ func get_type_from_line_text(stripped_line_text:String):
 			elif dec == &"func " or dec == &"static func ":
 				data["result"] = Utils.get_func_info(stripped_line_text)
 			elif dec == &"class ":
-				GDScriptParser.print_deb_err("GET TYPE FROM LINE CLASS - IF THIS CALLS NEED TO MANAGE EXTENDING PATHS")
+				GDScriptParser.print_deb_err(["GET TYPE FROM LINE CLASS - IF THIS CALLS NEED TO MANAGE EXTENDING PATHS"])
 				data["result"] = Utils.get_class_info(stripped_line_text)
 			elif dec == &"signal ":
 				data["result"] = Utils.get_signal_info(stripped_line_text)
@@ -1002,7 +1002,7 @@ func get_member_name_from_line(line:int):
 		var keyword:String = result.get_string(2)
 		if result.get_string(1) != "":
 			if result.get_string(1) != "static":
-				GDScriptParser.print_deb_err("REGEX MISTAKE SHOULD BE STATIC ", result.get_string(1))
+				GDScriptParser.print_deb_err(["REGEX MISTAKE SHOULD BE STATIC ", result.get_string(1)])
 			keyword = "static " + keyword
 		return result.get_string(3)
 	return ""

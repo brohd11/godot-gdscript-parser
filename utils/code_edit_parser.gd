@@ -399,7 +399,7 @@ func parse_text_ts(force:=false):
 		tree_sitter_manager = code_edit_tree_parser.new()
 	
 	if tree_sitter_manager._edit != code_edit:
-		var t4 = ALibRuntime.Utils.UProfile.TimeFunction.new("PARSE TEXT NEW CODE")
+		var t4 = GDScriptParser.TF.new("PARSE TEXT NEW CODE")
 		tree_sitter_manager.detach()
 		tree_sitter_manager.attach(code_edit, main_script_path)
 		if PRINT_DEBUG:
@@ -407,7 +407,7 @@ func parse_text_ts(force:=false):
 	elif not tree_sitter_manager.cache_valid(): # only re-parse if needed
 		tree_sitter_manager.parse_text()
 	
-	var t2 = ALibRuntime.Utils.UProfile.TimeFunction.new("PARSE TO DATA")
+	var t2 = GDScriptParser.TF.new("PARSE TO DATA")
 	var full_parse_data = tree_sitter_manager.parse()
 	if PRINT_DEBUG:
 		t2.stop()

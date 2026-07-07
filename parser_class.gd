@@ -132,6 +132,7 @@ func _create_function(_name, data:Dictionary):
 	function.member_data = data
 	function.declaration_line = data.get(Keys.LINE_INDEX, -1)
 	function.func_lines = data.get(Keys.FUNC_LINES)
+	function.end_line = function.func_lines[function.func_lines.size() - 1]
 
 func _create_function_ts(_name, data:Dictionary):
 	#print(data)

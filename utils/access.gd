@@ -649,7 +649,7 @@ static func print_deb_err(section:String, msg:Array):
 
 const _PRINT = [
 	#T.ACCESS_PATH,
-	T.FIND_BY_VAL,
+	#T.FIND_BY_VAL,
 	]
 
 

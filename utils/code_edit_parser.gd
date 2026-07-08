@@ -86,7 +86,8 @@ func ensure_first_parse():
 
 func parse_text(force:=false):
 	if use_tree_sitter:
-		return parse_text_ts()
+		#return parse_text_ts()
+		return parse_text_ts(force)
 	
 	_initialize_regex_map()
 	_initialize_regex_annotation()
@@ -405,6 +406,9 @@ func parse_text_ts(force:=false):
 		if PRINT_DEBUG:
 			t4.stop()
 	elif not tree_sitter_manager.cache_valid(): # only re-parse if needed
+		tree_sitter_manager.parse_text()
+	elif force:
+		tree_sitter_manager._prev_version = -1
 		tree_sitter_manager.parse_text()
 	
 	var t2 = GDScriptParser.TF.new("PARSE TO DATA")

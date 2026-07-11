@@ -224,7 +224,9 @@ func parse(force:=false) -> void:
 
 func get_global_class_name() -> String:
 	var root_class:ParserClass = get_class_object() as ParserClass
-	return root_class.class_name_data.get(Keys.MEMBER_NAME, "")
+	if is_instance_valid(root_class):
+		return root_class.class_name_data.get(Keys.MEMBER_NAME, "")
+	return ""
 
 func get_code_edit_parser() -> CodeEditParser:
 	_ensure_source_loaded()

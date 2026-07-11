@@ -1196,6 +1196,8 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 				if not is_local:
 					var script_path = Utils.get_class_access_path_from_member_data(member_data)
 					var target_parser_data = parser.get_parser_and_class_obj_for_script(script_path)
+					if not target_parser_data.has(&"class_obj"):
+						return ".".join(resolved_parts) # not sure about this one, was catching an error on no class_obj
 					target_class = target_parser_data.class_obj
 					local = {}
 				

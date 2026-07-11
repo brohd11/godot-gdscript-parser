@@ -402,7 +402,7 @@ func parse_text_ts(force:=false):
 	if tree_sitter_manager._edit != code_edit:
 		var t4 = GDScriptParser.TF.new("PARSE TEXT NEW CODE")
 		tree_sitter_manager.detach()
-		tree_sitter_manager.attach(code_edit, main_script_path)
+		tree_sitter_manager.attach(code_edit)#, main_script_path) -- previously was passing script, causes load from script intead of code edit, dirty does not reflect
 		if PRINT_DEBUG:
 			t4.stop()
 	elif not tree_sitter_manager.cache_valid(): # only re-parse if needed
@@ -454,6 +454,8 @@ func parse_text_ts(force:=false):
 		
 		
 		var class_start = cls_data.get("line_index")
+		if path.is_empty():
+			class_start = 0 # forcing root to 0, if no class or extends declared, acts weird
 		var class_end = cls_data.get("end_line")
 		var class_lines = range(class_start, class_end + 1)
 		_class_obj.set_lines(class_lines)

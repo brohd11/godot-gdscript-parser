@@ -476,7 +476,9 @@ func get_symbol_data(chain_text:String, class_obj:GDScriptParser.ParserClass, li
 	var class_data = type_lookup.get_class_data_at_line(line)
 	
 	# infer type of entire chain
-	symbol_data.type = parser.resolve_expression_to_type(chain_text, line)
+	var type_rich = parser.resolve_expression_to_type_rich(chain_text, line)
+	symbol_data.type = type_rich.type
+	symbol_data.origin = type_rich.origin
 	
 	var string_map = parser.get_string_map(chain_text)
 	var front = UString.get_member_access_front(chain_text, string_map)
@@ -676,6 +678,7 @@ class SymbolData:
 	var name:String
 	var type:String
 	
+	var origin:String
 	
 	var current_script_access_object:AccessObject
 	var symbol_script_path:String

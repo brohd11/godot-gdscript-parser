@@ -402,7 +402,10 @@ func parse_text_ts(force:=false):
 	if tree_sitter_manager._edit != code_edit:
 		var t4 = GDScriptParser.TF.new("PARSE TEXT NEW CODE")
 		tree_sitter_manager.detach()
-		tree_sitter_manager.attach(code_edit)#, main_script_path) -- previously was passing script, causes load from script intead of code edit, dirty does not reflect
+		# the path is only a label - parse() stamps it into every member dict as Keys.SCRIPT_PATH.
+		# The text must keep coming from the code_edit (prefer_code_edit), or an unsaved buffer is
+		# never reflected and cache_dirty stops meaning anything.
+		tree_sitter_manager.attach(code_edit, main_script_path)
 		if PRINT_DEBUG:
 			t4.stop()
 	elif not tree_sitter_manager.cache_valid(): # only re-parse if needed
@@ -410,7 +413,11 @@ func parse_text_ts(force:=false):
 	elif force:
 		tree_sitter_manager._prev_version = -1
 		tree_sitter_manager.parse_text()
-	
+
+	# same code_edit, different script (set_script_path / upgrade_to_live) - re-label before parsing
+	# so members are not stamped with the previous script's path.
+	tree_sitter_manager.set_script_path(main_script_path)
+
 	var t2 = GDScriptParser.TF.new("PARSE TO DATA")
 	var full_parse_data = tree_sitter_manager.parse()
 	if PRINT_DEBUG:

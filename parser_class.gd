@@ -10,7 +10,6 @@ const Keys = Utils.Keys
 const UString = GDScriptParser.UString
 const UClassDetail = GDScriptParser.UClassDetail
 
-
 @warning_ignore_start("unused_private_class_variable")
 var _parser:WeakRef
 var _code_edit_parser:WeakRef
@@ -458,9 +457,6 @@ func has_preload(path:String) -> Variant: # doesnt handle inherited, should cach
 		var script_path = data.get(Keys.SCRIPT_PATH) #ALERT if script path is moved out of member data, will need to change this
 		
 		var script_parser = parser.get_parser_for_path(script_path)
-		if not is_instance_valid(script_parser):
-			#print("NOPE:", c, ";", data)
-			continue
 		var class_object = script_parser.get_class_object(data.get(Keys.ACCESS_PATH, ""))
 		var type = class_object.get_member_type(c) # this will cache it in the proper class
 		#print("PRELOAD TYPE::", type)
@@ -580,8 +576,8 @@ func get_gdscript_constants(as_dict:=false):
 			if inh_script_path != main_script_path:
 				var full_script_path = UString.dot_join(inh_script_path, member_data[Keys.ACCESS_PATH])
 				var inh_parser = main_parser.get_parser_and_class_obj_for_script(full_script_path)
-				if not inh_parser.has(&"class_obj"):
-					continue
+				#if not inh_parser.has(&"class_obj"): # this was due to script path being dropped, should be irrelevant
+					#continue
 				target_class_obj = inh_parser.class_obj
 			var type = target_class_obj.get_member_type(member)
 			if Utils.is_absolute_path(type) and (not type.contains(Keys.MEMBER_DELIM) or Utils.type_path_get_type(type, true) == "Enum"):

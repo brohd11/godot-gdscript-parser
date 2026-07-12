@@ -26,7 +26,7 @@ const STATE_CACHED_RESOLVED = 1
 # --- versioning / location ----------------------------------------------------------------------
 const DEFAULT_DIR = "res://.godot/addons/gdscript_parser/parse_cache"
 const SCHEMA_VERSION = 2 # bump when the on-disk dict layout changes
-const PARSER_VERSION = 1 # bump when parse/resolve logic changes -> invalidates all cache files
+const PARSER_VERSION = 2 # bump when parse/resolve logic changes -> invalidates all cache files
 
 # --- on-disk dict keys (cache-local; not in the shared Keys registry) ---------------------------
 const PCACHE_SCHEMA = &"schema_version"

@@ -41,7 +41,6 @@ const PCACHE_CLASS_NAME_DATA = &"class_name_data"
 const PCACHE_INDENT_LEVEL = &"indent_level"
 const PCACHE_MAIN_SCRIPT_PATH = &"main_script_path"
 const PCACHE_SCRIPT_BASE_TYPE = &"script_base_type"
-const PCACHE_SCRIPT_ACCESS_PATH = &"script_access_path"
 const PCACHE_RETURN_TYPE_RAW = &"return_type_raw"
 const PCACHE_HAS_STATIC_RETURN = &"has_static_return"
 const PCACHE_ARGUMENTS = &"arguments"
@@ -80,10 +79,12 @@ static func serialize_class(class_obj) -> Dictionary:
 		PCACHE_CLASS_NAME_DATA: class_obj.class_name_data.duplicate(true),
 		PCACHE_MAIN_SCRIPT_PATH: class_obj.main_script_path,
 		PCACHE_SCRIPT_BASE_TYPE: class_obj.script_base_type,
-		PCACHE_SCRIPT_ACCESS_PATH: class_obj.script_access_path,
 		PCACHE_MEMBERS: _members_to_cache(class_obj, class_obj.members),
 		PCACHE_CONSTANTS: _members_to_cache(class_obj, class_obj.constants),
-		PCACHE_INNER: class_obj.inner_classes.duplicate(true),
+		# inner classes resolve through _resolve_cache like any other member, so they fold the same
+		# way - a plain duplicate here drops their resolve entries and the rehydrated parser has to
+		# attach source and re-resolve every inner-class lookup.
+		PCACHE_INNER: _members_to_cache(class_obj, class_obj.inner_classes),
 		PCACHE_FUNCTIONS: funcs,
 		PCACHE_INHERITED: inherited,
 		PCACHE_INH_SCRIPTS: class_obj.inherited_scripts.duplicate(),
@@ -115,8 +116,7 @@ static func deserialize_class(data:Dictionary, parser) -> GDScriptParser.ParserC
 	obj.class_name_data = data.get(PCACHE_CLASS_NAME_DATA, {})
 	obj.main_script_path = data.get(PCACHE_MAIN_SCRIPT_PATH, "")
 	obj.script_base_type = data.get(PCACHE_SCRIPT_BASE_TYPE, "RefCounted")
-	obj.script_access_path = data.get(PCACHE_SCRIPT_ACCESS_PATH, "")
-	obj.inner_classes = data.get(PCACHE_INNER, {})
+	obj.inner_classes = _members_from_cache(obj, data.get(PCACHE_INNER, {}))
 	obj.members = _members_from_cache(obj, data.get(PCACHE_MEMBERS, {}))
 	obj.constants = _members_from_cache(obj, data.get(PCACHE_CONSTANTS, {}))
 	var funcs:Dictionary = data.get(PCACHE_FUNCTIONS, {})
@@ -175,6 +175,8 @@ static func deserialize_func(data:Dictionary, parser, class_obj) -> GDScriptPars
 	f.member_data = data.get(Keys.MEMBER_TYPE, {})
 	f.declaration_line = data.get(Keys.LINE_INDEX, -1)
 	f.func_lines = data.get(Keys.FUNC_LINES, PackedInt32Array())
+	if not f.func_lines.is_empty(): # derived, not stored - the live parser sets it the same way
+		f.end_line = f.func_lines[f.func_lines.size() - 1]
 	f.class_indent = data.get(PCACHE_CLASS_INDENT, 0)
 	f._return_type_raw = data.get(PCACHE_RETURN_TYPE_RAW, "")
 	f._return_type = data.get(Keys.TYPE, "")

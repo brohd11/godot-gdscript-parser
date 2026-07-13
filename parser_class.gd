@@ -27,7 +27,6 @@ var _members_hash:int=-1
 var access_path:String
 var script_resource:GDScript
 var script_base_type:String
-var script_access_path:String
 
 var extended:String = "RefCounted"
 
@@ -355,7 +354,11 @@ func get_member_type_rich(identifier:String):
 			type_rich = GDScriptParser.TypeLookup.get_empty_type_rich()
 			type_rich.origin = class_type
 			type_rich.type = class_type # should this be different?
-			
+			# member_stack is empty here, but origin is the inner class's own absolute path, so deps
+			# come out as {own_script: mtime} - which is what this structural type actually depends on.
+			# Without deps the two validity checks disagree: a live parser calls the entry permanently
+			# invalid (no deps -> re-resolve every call), a rehydrated one permanently valid.
+			cached["deps"] = GDScriptParser.InferenceContext.get_dependencies_from_member_stack(type_rich)
 		else:
 			cached[Keys.CLASS_CACHE_DEC] = parser.get_type_lookup().get_class_obj_member_type(identifier, self, {})
 			

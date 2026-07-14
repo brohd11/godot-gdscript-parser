@@ -131,7 +131,7 @@ static func _load_extension_api() -> void:
 		for v:Dictionary in dict.get("values"):
 			_extension_api[""][v.get("name")] = {
 				MEMBER_TYPE: ENUMS,
-				"type": "enum::" + enum_name
+				"type": Keys.API_ENUM_PREFIX + enum_name
 			}
 			pass
 	
@@ -178,16 +178,18 @@ static func get_func_data(class_nm:String, func_name:String) -> Dictionary:
 	for class_data:Dictionary in all_class_data:
 		var api_data:Dictionary = class_data.get(func_name, {})
 		if not api_data.is_empty():
+			# convert to full Node.ProccessMode##Enum here, cover's places that do not go through
+			# type_lookup.gd ie. get_function_data
 			var data:Dictionary = {Keys.FUNC_ARGS:{}, Keys.FUNC_RETURN: "void"}
 			for arg:Dictionary in api_data.get("arguments", []):
 				data[Keys.FUNC_ARGS][arg.get("name")] = {
-					Keys.TYPE: arg.get("type", ""),
+					Keys.TYPE: Utils.type_path_from_api_enum(arg.get("type", "")),
 					Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_FUNC_ARG
 				}
 			if api_data.has("return_type"):
-				data[Keys.FUNC_RETURN] = api_data["return_type"]
+				data[Keys.FUNC_RETURN] = Utils.type_path_from_api_enum(api_data["return_type"])
 			elif api_data.has("return_value"):
-				data[Keys.FUNC_RETURN] = api_data["return_value"].get("type")
+				data[Keys.FUNC_RETURN] = Utils.type_path_from_api_enum(api_data["return_value"].get("type"))
 			return data
 	return {}
 
@@ -288,11 +290,14 @@ static func _get_member_type(class_nm:String, member_name:String) -> String:
 		elif api_data.has("return_value"):
 			return api_data.get("return_value", {}).get("type", "void")
 		elif api_data.has("type"):
+			var getter_enum:String = _property_getter_enum(class_nm, api_data)
+			if getter_enum != "":
+				return getter_enum
 			return api_data.get("type", "Nil")
 		elif api_data.has("value"): # integer constants, this may be handled by ClassDB
 			return api_data.get("value")
-		elif api_data.has("values"): # the enum NAME itself convert to "enum::<EnumName>"
-			return "enum::" + member_name
+		elif api_data.has("values"): # the enum NAME itself - report it in the api's own enum notation
+			return Keys.API_ENUM_PREFIX + member_name
 		elif api_data.has("arguments"):
 			var signal_args:Array = api_data.get("arguments",[])
 			if signal_args.size() == 1:
@@ -302,6 +307,22 @@ static func _get_member_type(class_nm:String, member_name:String) -> String:
 			
 		return "void"
 	return ""
+
+# use enum properties getter method to infer type from int/bool -> enum
+static func _property_getter_enum(class_nm:String, api_data:Dictionary) -> String:
+	var getter_name:String = api_data.get("getter", "")
+	if getter_name == "":
+		return ""
+	var class_data:Dictionary = _extension_api.get(class_nm, {})
+	var getter_data:Dictionary = class_data.get(getter_name, {})
+	if getter_data.is_empty():
+		# ~88 properties name a getter declared in a PARENT class - resolve those up the chain.
+		getter_data = get_member_data(class_nm, getter_name)
+	var return_type:String = getter_data.get("return_value", {}).get("type", "")
+	if return_type.begins_with(Keys.API_ENUM_PREFIX):
+		return return_type
+	return ""
+
 
 
 

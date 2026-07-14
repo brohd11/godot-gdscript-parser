@@ -629,16 +629,8 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 					
 					if resolved_type != "":
 						class_member_resolved = true
-						if resolved_type.begins_with("enum::"): # handle returns from functions
-							var enum_name = resolved_type.trim_prefix("enum::")
-							if not enum_name.contains("."):
-								resolved_type = enum_name
-							else:
-								var split = enum_name.split(".", false)
-								resolved_type = Utils.type_path_add_member(split[0], split[1])
-							if not resolved_type.ends_with(ENUM_SUFFIX):
-								resolved_type = resolved_type + ENUM_SUFFIX
-							
+						if resolved_type.begins_with(Keys.API_ENUM_PREFIX): # handle returns from functions
+							resolved_type = Utils.type_path_from_api_enum(resolved_type)
 							print_deb(T.RESOLVE, ["ID", identifier, " -- ::enum -- ", resolved_type])
 					
 					print_deb(T.RESOLVE, ["BUILT IN RESOLVE BRANCH", "RES", resolved_type])

@@ -147,6 +147,15 @@ static func type_path_add_member(string:String, member:String) -> String:
 		return member
 	return string + Keys.MEMBER_DELIM + member
 
+## TypePath Structure:  [script][.Inner][::member]##Type[$$INS]
+##
+## The "##Type" tail is TERMINAL: it may not itself contain another "##". This reads slice 1, so a
+## nested delimiter is silently truncated to the middle segment - e.g. a member wrapped as
+## "res://x.gd::_err##Error##Enum" returns "Error", quietly dropping the "Enum" marker, and every
+## consumer downstream stops seeing an enum. Enum/Callable/Signal paths already name their own
+## declaration, so they must never be wrapped as `owner::member##<type>` (see type_lookup.gd, the
+## ENUM_SUFFIX branch before the member wrap). tests/gdscript_parser/inference_tests.gd asserts this
+## invariant on every resolved type and origin.
 static func type_path_get_type(string:String, allow_all:bool=false) -> String:
 	if not string.contains(Keys.TYPE_DELIM):
 		return ""
@@ -159,6 +168,32 @@ static func type_path_get_type(string:String, allow_all:bool=false) -> String:
 
 static func type_path_add_type(string:String, type:String) -> String:
 	return string + Keys.TYPE_DELIM + type
+
+
+## Convert the engine api's enum notation into a type path:
+## Anything that is not api enum notation is returned untouched, safe to call on any type.
+## "enum::Node.ProcessMode" -> "Node::ProcessMode##Enum"
+## "enum::Error"            -> "Error##Enum"
+static func type_path_from_api_enum(api_type:String) -> String:
+	if not api_type.begins_with(Keys.API_ENUM_PREFIX):
+		return api_type
+	var enum_name:String = api_type.trim_prefix(Keys.API_ENUM_PREFIX)
+	var type_path:String = enum_name
+	if enum_name.contains("."): # "Class.Enum" - the enum belongs to a class
+		var split:PackedStringArray = enum_name.split(".", false)
+		type_path = type_path_add_member(split[0], split[1])
+	if not type_path.ends_with(Keys.ENUM_PATH_SUFFIX):
+		type_path += Keys.ENUM_PATH_SUFFIX
+	return type_path
+
+
+## A type path as code would display
+## "Node::ProcessMode##Enum" -> "Node.ProcessMode".
+## For code hints and other display, never for resolution.
+static func type_path_to_display(type_path:String) -> String:
+	var display:String = type_path.trim_suffix(Keys.INS_DELIM)
+	display = type_path_remove_type(display)
+	return display.replace(Keys.MEMBER_DELIM, ".")
 
 static func type_path_remove_type(string:String) -> String:
 	if string.contains(Keys.TYPE_DELIM):

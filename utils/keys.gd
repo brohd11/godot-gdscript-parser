@@ -58,6 +58,10 @@ const ENUM_PATH_SUFFIX = TYPE_DELIM + &"Enum"
 const CALLABLE_SUFFIX = TYPE_DELIM + &"Callable"
 const SIGNAL_SUFFIX = TYPE_DELIM + &"Signal"
 
+## How the engine's api dump names an enum ("enum::Node.ProcessMode"), and how BuiltInChecker tags its
+## own synthesized entries. NOT a type path - Utils.type_path_from_api_enum() converts it into one.
+const API_ENUM_PREFIX = &"enum" + &"::"
+
 
 
 # map keys

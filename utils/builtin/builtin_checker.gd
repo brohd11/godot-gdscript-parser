@@ -229,7 +229,7 @@ static func class_has_method(class_nm:String, member_name:String, include_inheri
 		var member_data:Variant = class_data.get(member_name)
 		if member_data:
 			return member_data.get(MEMBER_TYPE) == METHODS
-			#return member_data.has("return_value") or member_data.has("return_type")
+		
 	if not include_inheritance or not ClassDB.class_exists(class_nm):
 		return false
 	var inherited:StringName = ClassDB.get_parent_class(class_nm)
@@ -239,7 +239,7 @@ static func class_has_method(class_nm:String, member_name:String, include_inheri
 			var member_data:Variant = class_data.get(member_name)
 			if member_data:
 				return member_data.get(MEMBER_TYPE) == METHODS
-				#return member_data.has("return_value") or member_data.has("return_type")
+			
 		inherited = ClassDB.get_parent_class(inherited)
 	return false
 
@@ -291,9 +291,8 @@ static func _get_member_type(class_nm:String, member_name:String) -> String:
 			return api_data.get("type", "Nil")
 		elif api_data.has("value"): # integer constants, this may be handled by ClassDB
 			return api_data.get("value")
-		elif api_data.has("values"): # enum has this, may be handled by ClassDB
-			#return api_data.get("value")
-			return "enum" # not sure about this
+		elif api_data.has("values"): # the enum NAME itself convert to "enum::<EnumName>"
+			return "enum::" + member_name
 		elif api_data.has("arguments"):
 			var signal_args:Array = api_data.get("arguments",[])
 			if signal_args.size() == 1:

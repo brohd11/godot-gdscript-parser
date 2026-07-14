@@ -726,6 +726,9 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		var non_member_part = Utils.type_path_get_non_member(resolved_type)
 		if non_member_part != "" and BuiltInChecker.is_builtin_class(non_member_part):
 			pass # these can be passed and will be set below
+		elif resolved_type.trim_suffix(Keys.INS_DELIM).ends_with(ENUM_SUFFIX):
+			# enum type path already names its own declaration ("Error##Enum", "res://x.gd::State##Enum").
+			pass # wrapping as owner::member##<type> nests a second "##", breaks type_path_get_type checks
 		elif resolved_member and not Utils.is_absolute_path(resolved_type):
 			var member_path = Utils.get_or_add_current_type_path(current_type_path, current_class_obj)
 			if local_vars.has(identifier):
@@ -1957,9 +1960,6 @@ class T:
 
 
 
-
-
-
 func _find_inheriting_script(identifier:String, class_obj:ParserClass):
 	var inherited_scripts = class_obj.get_inherited_scripts()
 	for path in inherited_scripts:
@@ -2039,62 +2039,3 @@ func _simple_type_check(type_hint:String, exit_check:=false):
 		return UString.dot_join(base, type_hint)
 	
 	return ""
-
-
-#^r BELOW ARE FOR SURE
-
-### Get script member info, ignores Godot Native class inheritance properties.
-#func get_script_member_info_by_path(script:GDScript, member_path:String, member_hints:=UClassDetail._MEMBER_ARGS, check_global:=true):
-	#return UClassDetail.get_member_info_by_path(script, member_path, member_hints, false, false, false, check_global)
-
-#func _find_member_inheriting_script(identifier:String, script:GDScript):
-	#var last_script = script
-	#if get_script_member_info_by_path(script, identifier) == null:
-		#return ""
-	#var current_script = script.get_base_script()
-	#while current_script != null:
-		#if get_script_member_info_by_path(current_script, identifier) == null:
-			#break
-		#last_script = current_script
-		#current_script = current_script.get_base_script()
-	#return last_script.resource_path
-
-
-#func _var_to_const_get_inh_func_return(identifier:String, class_obj:ParserClass, first_const:=false):
-	#var inh_script_path = _find_inheriting_script(identifier, class_obj)
-	#var parser_data = _get_parser_and_class_for_script(inh_script_path)
-	#var inh_class_obj = parser_data.get(Keys.GET_CLASS_OBJ)
-	#
-	##var script_data = UString.get_script_path_and_suffix(inh_script_path)
-	##var parser = _get_parser_for_script(script_data[0])
-	##var inh_class_obj = parser.get_class_object(script_data[1])
-	#var function = inh_class_obj.get_function(identifier) as ParserFunc
-	#var return_type = function.get_return_type_raw()
-	#print_deb(T.VAR_TO_CONST, return_type)
-	#return return_type
-
-#func _get_inherited_func_return(identifier:String, class_obj:ParserClass, inferred:=true):
-	#
-	#var member_data = class_obj.get_inherited_member(identifier)
-	#if member_data != null:
-		#var script_path = member_data.get(Keys.SCRIPT_PATH)
-		#if script_path != null:
-			#var access_path = member_data.get(Keys.ACCESS_PATH)
-			#var parser = _get_parser_for_script(script_path)
-			#var next_class = parser.get_class_object(access_path)
-			#var funct = next_class.get_function(identifier)
-			#if is_instance_valid(funct):
-				#return funct.get_return_type(inferred)
-			#return ""
-	#
-	#var inh_script_path = _find_member_inheriting_script(identifier, class_obj.script_resource)
-	#var parser_data = _get_parser_and_class_for_script(inh_script_path)
-	##var parser = _get_parser_for_script(inh_script_path)
-	##var inh_class_obj = parser.get_class_object()
-	#var inh_class_obj = parser_data.get(Keys.GET_CLASS_OBJ)
-	#var function = inh_class_obj.get_function(identifier) as ParserFunc
-	#if is_instance_valid(function):
-		#return function.get_return_type(inferred)
-	#return ""
-
-#^r THESE MAY BE OBSOLETE

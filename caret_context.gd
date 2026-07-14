@@ -835,7 +835,7 @@ class FunctionCallData:
 		return arg
 	
 	func get_current_arg_declaration(): # ALERT only used in the above
-		var current_arg_data = _func_get_current_arg_data()
+		var current_arg_data = _get_current_arg_data()
 		if current_arg_data == null:
 			return ""
 		return current_arg_data.get(Keys.TYPE, "")
@@ -847,7 +847,7 @@ class FunctionCallData:
 			return t
 		# script type funcs should all be handled above
 		
-		var current_arg_data = _func_get_current_arg_data()
+		var current_arg_data = _get_current_arg_data()
 		if current_arg_data == null:
 			return ""
 		var function_script = get_function_script()
@@ -862,9 +862,7 @@ class FunctionCallData:
 		return parser.resolve_expression_in_script_full(arg_type, function_script)
 	
 	
-	func _func_get_current_arg_data():
-		var arg_data = function_data.get(Keys.FUNC_ARGS, {})
-		return arg_data.get(get_current_arg_name())
+	
 	
 	
 	func get_current_arg_name():
@@ -873,6 +871,10 @@ class FunctionCallData:
 		if current_arg_index >= arg_names.size():
 			return ""
 		return arg_names[current_arg_index]
+	
+	func _get_current_arg_data():
+		var arg_data = function_data.get(Keys.FUNC_ARGS, {})
+		return arg_data.get(get_current_arg_name())
 	
 	func get_type_access_path(type_path:String="", argument_object:AccessObject=null):
 		if type_path == "":

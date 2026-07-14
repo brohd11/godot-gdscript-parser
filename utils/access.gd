@@ -402,22 +402,25 @@ func _gather_standard_candidates(class_obj:ParserClass, access_object:AccessObje
 	if secondary_access != null:
 		var sec_sym = secondary_access.declaration_symbol
 		var sym_front = UString.get_member_access_front(access_object.declaration_symbol)
-		# The correct candidate order depends on WHERE the method's arg is declared. secondary_path is
-		# the script of the object being operated on (caret_context passes symbol_script_path).
+		# The candidate order turns on whether the secondary symbol is usable VERBATIM from the caller.
+		# That is a reachability question, not a declaration one: an inherited member's arg is spelled in
+		# the ancestor's scope, yet a caller that inherits that script can still write it as-typed.
 		var secondary_script = Utils.type_path_get_script_data(secondary_path)[0]
-		var secondary_in_caller_script = class_obj.main_script_path == secondary_script
+		var secondary_in_caller_script = class_obj.main_script_path == secondary_script \
+			or class_obj.inherits_script(secondary_script)
 
 		if secondary_in_caller_script:
-			# In-script: the arg is declared in the caller's own script, so the secondary symbol is
-			# written in the caller's scope and is reachable as-typed. Prefer the verbatim secondary;
-			# the object-prefixed forms follow only for a within-object member that verbatim can't reach.
+			# Reachable as-typed: the secondary symbol is written in a scope the caller owns or inherits.
+			# Prefer the verbatim secondary; the object-prefixed forms follow only for a within-object
+			# member that verbatim can't reach.
 			candidates.append(sec_sym)                                       # verbatim first
 			if sym_front != access_object.declaration_symbol:
 				candidates.append(UString.dot_join(sym_front, sec_sym))     # front prefix (outer-scope members)
 			candidates.append(UString.dot_join(access_object.declaration_symbol, sec_sym))  # full-symbol prefix
 		else:
-			# Cross-script: the arg is written in a foreign script's scope, so it must be reached
-			# through the object's path. Front prefix (reaches the object's class at script scope) is
+			# Out of reach: the arg is written in a foreign script's scope the caller neither owns nor
+			# inherits, so it must be reached through the object's path. Front prefix (reaches the
+			# object's class at script scope) is
 			# tried before the full-symbol prefix so a within-class member falls through to it. The bare
 			# verbatim secondary comes LAST - a bare identifier is almost never a valid standalone path
 			# from another script's scope, so it only wins when it is already a caller-usable path (a

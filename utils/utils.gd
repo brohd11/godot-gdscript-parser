@@ -159,7 +159,11 @@ static func type_path_get_type(string:String, allow_all:bool=false) -> String:
 
 static func type_path_add_type(string:String, type:String) -> String:
 	return string + Keys.TYPE_DELIM + type
-	
+
+static func type_path_remove_type(string:String) -> String:
+	if string.contains(Keys.TYPE_DELIM):
+		string = string.get_slice(Keys.TYPE_DELIM, 0)
+	return string
 	
 
 static func member_is_const_class_enum(member_type:String) -> bool:
@@ -312,8 +316,9 @@ static func run_expression(expression:String, script:GDScript) -> String:
 	var expr:Expression = Expression.new()
 	var err:Error = expr.parse(expression)
 	var result:Variant = null
+	var printerror = not GDScriptParser.PLUGIN_EXPORTED and not false# don't show error for now
 	if err == OK: # first bool is to show errors, these should probably be turned off
-		result = expr.execute([], script, true, true)
+		result = expr.execute([], script, printerror, true)
 	if result == null:
 		result = ""
 	return str(result)

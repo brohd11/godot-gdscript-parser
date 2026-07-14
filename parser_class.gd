@@ -325,6 +325,7 @@ func get_member_type(identifier:String, include_inherited:=false) -> String:
 		return next_class.get_member_type(identifier)
 	return ""
 
+#! keys i-GDScriptParser.resolve_expression_to_type_rich;
 func get_member_type_rich(identifier:String):
 	var t = GDScriptParser.TF.new("GET MEMBER::" + identifier)
 	var member_data = get_member(identifier)

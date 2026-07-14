@@ -233,6 +233,7 @@ func get_local_var_type(member_name:String) -> String:
 		return type_rich.type
 	return ""
 
+#! keys i-GDScriptParser.resolve_expression_to_type_rich;
 func get_local_var_type_rich(member_name:String) -> Dictionary:
 	var is_arg:bool = arguments.has(member_name)
 	var std_local:bool = local_vars.has(member_name)

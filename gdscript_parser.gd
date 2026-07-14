@@ -382,6 +382,11 @@ func get_member_data_from_origin(origin_type_path:String) -> Variant:
 func get_line_context(line:int, column:int=0, insert_caret:=false) -> String:
 	return code_edit_parser.get_line_context(line, column, insert_caret).get(Keys.CONTEXT_TEXT, "")
 
+func resolve_expression_in_script_full(expression:String, full_access_path:String) -> String:
+	var script_data = Utils.type_path_get_script_data(full_access_path)
+	return resolve_expression_in_script(expression, script_data[0], script_data[1])
+
+
 func resolve_expression_in_script(expression:String, script_path:String, class_path:String) -> String:
 	var target_parser:Dictionary = get_parser_and_class_obj(script_path, class_path)
 	if not target_parser or not target_parser.class_obj:
@@ -389,6 +394,10 @@ func resolve_expression_in_script(expression:String, script_path:String, class_p
 		return ""
 	return target_parser.parser.resolve_expression_to_type(expression, target_parser.class_obj.line_indexes[0])
 
+func resolve_to_access_object_in_script_full(expression:String, full_access_path:String) -> Variant:
+	var script_data = Utils.type_path_get_script_data(full_access_path)
+	return resolve_to_access_object_in_script(expression, script_data[0], script_data[1])
+	
 func resolve_to_access_object_in_script(expression:String, script_path:String, class_path:String) -> Variant:
 	var target_parser:Dictionary = get_parser_and_class_obj(script_path, class_path)
 	if not target_parser or not target_parser.class_obj:

@@ -379,6 +379,12 @@ func get_function_call_data() -> FunctionCallData:
 		_active_function_call.function_data = func_obj.get_function_data()
 	else:
 		_active_function_call.function_data = parser.get_function_data(expression, caret_line)
+		if expression.contains("."):
+			_active_function_call.function_class_base_type = parser.resolve_expression_to_type(UString.trim_member_access_back(expression), get_current_class_object().declaration_line)
+		else:
+			if not GDScriptParser.TypeLookup.BuiltInChecker.is_global_method(_active_function_call.get_function_name()):
+				_active_function_call.function_class_base_type = get_current_class_object().script_base_type
+		
 	
 	_active_function_call.inferred = true
 	return _active_function_call
@@ -477,6 +483,7 @@ func _is_in_type_hint():
 
 #endregion
 
+#region SetSymbolData
 func get_symbol_data(chain_text:String, line:int=caret_line) -> SymbolData:
 	var symbol_data = SymbolData.new()
 	var parser = Utils.ParserRef.get_parser(self)
@@ -507,6 +514,7 @@ func get_symbol_data(chain_text:String, line:int=caret_line) -> SymbolData:
 	symbol_data.line = line
 	return symbol_data
 
+#endregion
 
 # was just being used to make sure this was being freed
 func _notification(what: int) -> void:
@@ -778,6 +786,7 @@ class FunctionCallData:
 	var _code_edit_parser:WeakRef
 	
 	var function_object:GDScriptParser.ParserFunc
+	var function_class_base_type:String
 	
 	var is_valid:=false
 	var inferred:=false
@@ -801,7 +810,11 @@ class FunctionCallData:
 		return symbol_data.declaring_script_path.trim_suffix(Keys.INS_DELIM)
 	
 	func get_function_origin():
-		return Utils.type_path_remove_type(symbol_data.origin)
+		if Utils.is_absolute_path(symbol_data.origin):
+			return Utils.type_path_remove_type(symbol_data.origin)
+		if not symbol_data.chain_text.contains("."):
+			return class_obj.script_base_type
+		return function_class_base_type
 	
 	func get_current_arg_text() -> String:
 		if current_arg_index == -1:

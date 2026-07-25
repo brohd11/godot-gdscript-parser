@@ -4,6 +4,11 @@ const Utils = GDScriptParser.Utils
 const Keys = Utils.Keys
 const UFile = GDScriptParser.UFile
 
+# bump version if parsed layout data changes
+const API_SCHEMA_VERSION = 1
+const _VERSION = &"version"
+const _DATA = &"data"
+
 const CLASS_NAME = &"<%class_name%>"
 const MEMBER_TYPE = &"member_type"
 const METHODS = &"methods"
@@ -89,6 +94,13 @@ const _VARIANTS: Dictionary = {
 static var _extension_api:Dictionary = {}
 
 static func _load_extension_api() -> void:
+	var bin_path = EXTENSION_API_PATH.path_join("extension_api.bin")
+	if FileAccess.file_exists(bin_path):
+		var bin_data = UFile.get_data_bin(bin_path)
+		if bin_data.get(_VERSION, -1) == API_SCHEMA_VERSION:
+			_extension_api = bin_data.get(_DATA)
+			return
+	
 	var target_path:String = EXTENSION_API_PATH.path_join("extension_api.json")
 	if not FileAccess.file_exists(target_path):
 		var exe_path:String = OS.get_executable_path()
@@ -106,8 +118,8 @@ static func _load_extension_api() -> void:
 	if not FileAccess.file_exists(target_path):
 		printerr("Failed to generate extension_api.json for GDScriptParser - This should not happen, file an issue on GitHub")
 		return
+		
 	var data:Dictionary = UFile.read_from_json(target_path)
-	
 	_extension_api.clear()
 	_extension_api[""] = {}
 	
@@ -153,6 +165,11 @@ static func _load_extension_api() -> void:
 		_add_to_dict(class_nm, MEMBERS, class_dict)
 		_add_to_dict(class_nm, SIGNALS, class_dict)
 		_add_to_dict(class_nm, PROPERTIES, class_dict)
+	
+	UFile.store_data_bin({
+		_VERSION: API_SCHEMA_VERSION,
+		_DATA: _extension_api,
+		}, bin_path)
 
 static func _add_to_dict(class_nm:String, member_string:String, class_dict:Dictionary) -> void:
 	var member_dict_array:Array = class_dict.get(member_string, [])
@@ -298,7 +315,8 @@ static func _get_member_type(class_nm:String, member_name:String) -> String:
 			return api_data.get("value")
 		elif api_data.has("values"): # the enum NAME itself - report it in the api's own enum notation
 			return Keys.API_ENUM_PREFIX + member_name
-		elif api_data.has("arguments"):
+		elif api_data.has("arguments") and api_data.get(MEMBER_TYPE) == SIGNALS:
+			# void methods omit return_value but keep `arguments` - only signals type from args here
 			var signal_args:Array = api_data.get("arguments",[])
 			if signal_args.size() == 1:
 				return signal_args[0].get("type")

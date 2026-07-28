@@ -146,7 +146,8 @@ func parse():
 	code_context_string_map = parser.get_string_map(code_context)
 	
 	current_class = parser.get_class_at_line(caret_line)
-	current_function = parser.get_function_at_line(caret_line)
+	#current_function = parser.get_function_at_line(caret_line)
+	current_function = code_context_start_data.get(Keys.CONTEXT_FUNC, "")
 	if current_function != Keys.CLASS_BODY and current_function != "":
 		var current_class_obj = parser._class_access.get(current_class) as GDScriptParser.ParserClass
 		if is_instance_valid(current_class_obj):
@@ -600,6 +601,9 @@ func get_index_access_identifier():
 
 func is_declaration():
 	return line_declaration != ""
+
+func is_in_string():
+	return token_state == TokenState.STRING or token_state == TokenState.STRING_NAME or token_state == TokenState.NODE_PATH_LITERAL
 
 func is_in_enum():
 	return closest_bracket_type == "{" and line_declaration == "enum"

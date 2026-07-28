@@ -501,6 +501,7 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 	var all_blocks_array:Array = Keywords.CONTROL_FLOW_KEYWORDS
 	var map_blocks_array:Array = params.get(Keys.CONTEXT_BLOCKS, [])
 	var has_blocks:bool = not map_blocks_array.is_empty()
+	var func_name:String
 	var map_local_vars:bool = params.get(Keys.CONTEXT_LOCAL_VARS, true)
 	
 	var respect_scope = has_blocks or map_local_vars
@@ -549,9 +550,10 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 							if control_flow in map_blocks_array:
 								if control_flow == Keywords.FOR:
 									var var_data = Utils.add_var_to_dict(stripped, context_start_line, 0, local_vars, Keys.MEMBER_TYPE_FOR)
-									blocks.append({"type":"for",
-									"indent": line_indent,
-									"var":{"name": var_data[0], "type": var_data[1]}})
+									if var_data:
+										blocks.append({"type":"for",
+										"indent": line_indent,
+										"var":{"name": var_data[0], "type": var_data[1]}})
 								else:
 									blocks.append({"type":control_flow.strip_edges(),
 									"indent": line_indent,
@@ -559,14 +561,15 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 				
 				if map_local_vars:
 					if context_start_line < target_line_index:
+						var line_text = code_edit.get_line(context_start_line)
 						if not stripped.contains(";"):
-							var var_data = Utils.add_var_to_dict(stripped, context_start_line, 0, local_vars)
+							var col = line_text.find(stripped)
+							var var_data = Utils.add_var_to_dict(stripped, context_start_line, col, local_vars)
 							if var_data != null:
 								#print("MAP LOCAL::", var_data, "::IND::CUR::", current_indent, "::LINE::", line_indent)
 								continue
 						else:
 							var assigns = [stripped]
-							var line_text = code_edit.get_line(context_start_line)
 							assigns = UString.string_safe_split(stripped, ";")
 							if stripped.begins_with("var my"):
 								print("has sem---",assigns)
@@ -582,14 +585,17 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 						continue
 					if not stripped.begins_with("func "):
 						break
+				# applies to both
 				if Utils.get_func_name_in_line(stripped) != "":
+					func_name = Utils.get_func_name_in_line(stripped)
 					break
 	
 	return {
 		Keys.CONTEXT_SEMI_COLON: has_semi_col,
 		Keys.CONTEXT_START: context_start_line,
 		Keys.CONTEXT_BLOCKS: blocks,
-		Keys.CONTEXT_LOCAL_VARS:local_vars
+		Keys.CONTEXT_FUNC: func_name,
+		Keys.CONTEXT_LOCAL_VARS:local_vars,
 	}
 
 

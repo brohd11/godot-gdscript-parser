@@ -28,6 +28,7 @@ const CONTEXT_TEXT = &"context_text"
 const CONTEXT_START = &"context_start"
 const CONTEXT_END = &"context_end"
 const CONTEXT_BLOCKS = &"context_blocks"
+const CONTEXT_FUNC = &"context_func"
 const CONTEXT_LOCAL_VARS = &"context_local_vars"
 const CONTEXT_SEMI_COLON = &"context_semi_colon"
 

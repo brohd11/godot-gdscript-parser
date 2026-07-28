@@ -458,6 +458,13 @@ func _infer_return_type() -> String:
 	#print("FUNC INFER::", _return_type)
 	return raw_result
 
+static func get_local_var_unique_name(var_name:String, line:int, col:int):
+	return "%s-%s-%s" % [var_name, line, col]
+
+static func get_local_var_unique_name_from_data(var_name:String, data:Dictionary):
+	if data.get(Keys.MEMBER_TYPE) == Keys.MEMBER_TYPE_FUNC_ARG:
+		return var_name
+	return get_local_var_unique_name(var_name, data.get(Keys.LINE_INDEX), data.get(Keys.COLUMN_INDEX))
 
 func _get_cache_string(member_name:String, type_hint:String) -> String:
 	return member_name + "::" + type_hint

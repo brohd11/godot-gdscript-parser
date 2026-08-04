@@ -476,7 +476,13 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass) -> String:
 		return pc
 	
 	var checked_access = ""
-	for i in range(script_access_path.count(".") + 1):
+	# The chain must be walked all the way down to script scope (an empty access path) - that is
+	# where a plain `const X = preload(...)` matches. Without the extra step an inner class could
+	# only ever match a const aliasing the inner class itself, never `Alias.Inner`.
+	var steps := script_access_path.count(".") + 1
+	if script_access_path != "":
+		steps += 1
+	for i in range(steps):
 		var search_path = UString.dot_join(script_path,working_script_access_path)
 		var back = working_script_access_path # i think this would be right vs an empty string
 		if working_script_access_path.contains("."):

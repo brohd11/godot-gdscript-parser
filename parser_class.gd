@@ -451,6 +451,7 @@ func is_member_static_typed(identifier:String):
 func has_preload(path:String) -> Variant: # doesnt handle inherited, should cache this somehow
 	var all_const = get_inherited_members().duplicate()
 	all_const.merge(constants.duplicate())
+	all_const.merge(inner_classes.duplicate())
 	#print("TO FIND::", path)
 	var parser = Utils.ParserRef.get_parser(self)
 	for c in all_const.keys():

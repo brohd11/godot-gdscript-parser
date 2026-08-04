@@ -127,3 +127,12 @@ const SCRIPT_DECLARATIONS_TEXT = &"ScriptDeclarationsText"
 const SCRIPT_DECLARATIONS_DATA = &"ScriptDeclarationsData"
 const IN_SCOPE_VARS = &"InScopeVars"
 const SCRIPT_FULL_PRELOAD_MAP = &"FullPreloadMap"
+
+
+class Delim:
+	const INS = &"$$I" + &"NS"
+	const MEMBER = &":" + &":"
+	const TYPE = &"#" + &"#"
+	const MEMBER_INFER = &":;" + &";:"
+	const MEMBER_ASSIGN = &"@" + &"@"
+	const MEMBER_STACK = &">>" + &">"

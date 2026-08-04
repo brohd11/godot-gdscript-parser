@@ -7,6 +7,7 @@ const ParserRef = Utils.ParserRef
 const Keys = Utils.Keys
 const UString = GDScriptParser.UString
 const UClassDetail = GDScriptParser.UClassDetail
+const AccessOptions = GDScriptParser.Access.AccessOptions
 const AccessObject = GDScriptParser.Access.AccessObject
 
 const _MAP_BLOCKS = [Keywords.FOR, Keywords.MATCH]
@@ -743,7 +744,7 @@ class OperationData:
 	var operator:String
 	var right_text:String
 	
-	func get_type_access_path(to_find:String=""):
+	func get_type_access_path(to_find:String="") -> GDScriptParser.Access.AccessOptions:
 		if to_find == "":
 			to_find = left_symbol_data.type
 		
@@ -923,9 +924,9 @@ class DataUtils:
 
 	## Shared by OperationData / MatchBlockData / FunctionCallData: same call into the access resolver,
 	## differing only in what they hand it as `to_find` and as the secondary access object.
-	static func find_type_access_path(class_obj:GDScriptParser.ParserClass, symbol_data:SymbolData, to_find:String, secondary:AccessObject, parser):
+	static func find_type_access_path(class_obj:GDScriptParser.ParserClass, symbol_data:SymbolData, to_find:String, secondary:AccessObject, parser:GDScriptParser) -> AccessOptions:
 		if not Utils.is_absolute_path(to_find):
-			return to_find
+			return AccessOptions.new()
 		var access = parser.get_access()
 		return access.find_path_to_type(class_obj, symbol_data.get_current_script_access_object(), secondary, to_find,
 			symbol_data.declaring_script_path)

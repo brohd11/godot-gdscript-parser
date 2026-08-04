@@ -33,7 +33,7 @@ func find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, second
 	return result
 
 
-func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secondary_access:AccessObject, to_find:String, secondary_path:String):
+func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secondary_access:AccessObject, to_find:String, secondary_path:String) -> AccessOptions:
 	if secondary_access == null or symbol_access == secondary_access: # if no valid argument access or is our main object, can just do the operation func
 		print_deb(T.ACCESS_PATH, ["FUNCTION -> OPERATION", "secondary not valid"])
 		return _find_path_to_type_simple(class_obj, symbol_access, to_find)
@@ -445,7 +445,7 @@ func _normalize_type(type_path:String) -> String:
 	return type_path.trim_suffix(Keys.INS_DELIM)
 
 
-func get_global_name_and_script_alias(to_find:String, class_obj:ParserClass, access_options:AccessOptions):
+func get_global_name_and_script_alias(to_find:String, class_obj:ParserClass, access_options:AccessOptions) -> void:
 	var to_find_script_data = GDScriptParser.Utils.type_path_get_script_data(to_find)
 	var to_find_script_path = to_find_script_data[0]
 	var to_find_class_path = to_find_script_data[1]
@@ -463,11 +463,11 @@ func get_global_name_and_script_alias(to_find:String, class_obj:ParserClass, acc
 		return
 
 
-func reverse_path_chain_search(to_find:String, class_obj:ParserClass):
-	var script_data = Utils.type_path_get_script_data(to_find)
-	var script_path = script_data[0]
-	var script_access_path = script_data[1]
-	var working_script_access_path = script_access_path
+func reverse_path_chain_search(to_find:String, class_obj:ParserClass) -> String:
+	var script_data:Array[String] = Utils.type_path_get_script_data(to_find)
+	var script_path:String = script_data[0]
+	var script_access_path:String = script_data[1]
+	var working_script_access_path:String = script_access_path
 	#if to_find.ends_with(ENUM_SUFFIX):
 		#script_access_path = UString.dot_join(script_access_path, Utils.type_path_get_member(to_find))
 	
@@ -555,7 +555,8 @@ func _find_constant_by_value(type_to_find:String, initial_class_obj:ParserClass,
 		if rec_check != "":
 			return rec_check
 	
-	t.stop()
+	if PRINT_DEBUG:
+		t.stop()
 	return ""
 
 # maybe add a depth param to this? check '.' count and abort if too many slices
@@ -576,7 +577,8 @@ func _find_constant_by_value_bf(type_to_find:String, initial_class_obj:ParserCla
 		var access = class_data.get("access")
 		var pc = class_obj.has_preload(type_to_find)
 		if pc:
-			t.stop()
+			if PRINT_DEBUG:
+				t.stop()
 			return UString.dot_join(access, pc)
 		
 		var gdscript_constants = class_obj.get_gdscript_constants(true)
@@ -598,7 +600,9 @@ func _find_constant_by_value_bf(type_to_find:String, initial_class_obj:ParserCla
 				"class_obj": next_class,
 				"access": UString.dot_join(access, key)
 			})
-	t.stop()
+	
+	if PRINT_DEBUG:
+		t.stop()
 	return ""
 
 
@@ -606,6 +610,26 @@ class AccessOptions:
 	var standard:String
 	var script_alias:String
 	var global:String
+	
+	func has_valid():
+		if standard != "":
+			return true
+		if script_alias != "":
+			return true
+		if global != "":
+			return true
+		return false
+	
+	func get_nearest():
+		if script_alias != "":
+			return script_alias
+		if standard != "":
+			return standard
+		if global != "":
+			return global
+		return ""
+	
+	
 
 
 class AccessObject:

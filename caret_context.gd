@@ -1,4 +1,6 @@
 
+const PRINT_DEBUG = false
+
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 const CodeEditParser = GDScriptParser.CodeEditParser
 const Keywords = CodeEditParser.Keywords
@@ -158,6 +160,10 @@ func parse():
 				local_vars = code_context_start_data.get(Keys.CONTEXT_LOCAL_VARS, {})
 				#print("LOCAL VARS::", local_vars)
 				current_func_obj.set_in_scope_local_vars(local_vars)
+	
+	if PRINT_DEBUG:
+		print("class: " ,current_class)
+		print("func: ", current_function)
 	
 	word_before_caret = code_edit_parser.parse_identifier_at_position(caret_left, caret_left.length() - 1)
 	expression_before_caret = code_edit_parser.parse_expression_at_position(code_context, code_context_caret_pos - 1, code_context_string_map)

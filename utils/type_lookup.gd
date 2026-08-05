@@ -1877,6 +1877,7 @@ class ClassData:
 	var initial_type_path:String = ""
 	var initial_line:int
 	var class_obj:ParserClass
+	var classname:String = ""
 	var func_obj:ParserFunc
 	var func_name:String = ""
 	var local_vars:Dictionary = {}
@@ -1884,7 +1885,8 @@ class ClassData:
 	func _init(parser:GDScriptParser, line:int) -> void:
 		initial_line = line
 		#initial_line = min(line, parser.get_code_edit_parser().code_edit.get_line_count() - 1)
-		class_obj = parser.get_class_object(parser.get_class_at_line(initial_line))
+		classname = parser.get_class_at_line(initial_line)
+		class_obj = parser.get_class_object(classname)
 		if not is_instance_valid(class_obj):
 			valid_data = false
 			return

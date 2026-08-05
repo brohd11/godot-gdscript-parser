@@ -265,13 +265,24 @@ func get_classes() -> Array:
 func get_class_object(identifier:String="") -> Variant:
 	return _class_access.get(identifier)
 
+## Innermost class containing `line`. Classes that share a line are always strictly nested, so the
+## latest-starting match is the innermost one. Must NOT be first-match: the tree-sitter parse gives
+## every class a full contiguous range, so the root also contains every inner class's lines, and
+## _class_access key order is not parse order (it survives re-parses through _set_class_obj).
 func get_class_at_line(line:int) -> String:
+	var best:String = ""
+	var best_start:int = -1
 	for access_path:String in _class_access.keys():
 		var _class:ParserClass = _class_access[access_path] as ParserClass
-		if line in _class.line_indexes:
-			return access_path
-	#print("get_class_at_line - LINE NOT FOUND ", line)
-	return ""
+		if not line in _class.line_indexes:
+			continue
+		var start:int = _class.line_indexes[0]
+		if start > best_start:
+			best_start = start
+			best = access_path
+	
+	#print("get_class_at_line - %s:%s" % [line, best])
+	return best
 
 func get_function_at_line(line:int) -> String:
 	var access_path:String = get_class_at_line(line)

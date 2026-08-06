@@ -868,6 +868,7 @@ class FunctionCallData:
 		var arg_name = get_current_arg_name()
 		if is_instance_valid(function_object):
 			var t = function_object.get_local_var_type(arg_name)
+			#print("GET FROM FUNC::", arg_name, "::", t)
 			return t
 		# script type funcs should all be handled above
 		

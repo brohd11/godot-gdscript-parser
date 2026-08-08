@@ -33,6 +33,7 @@ var _annotation_regex:RegEx
 
 var _first_parse_complete:=false
 var cache_dirty:=true
+var _line_sync_version:int = -1 # code_edit version the line ranges were last synced to
 
 func _set_code_edit(new_code_edit:CodeEdit):
 	if is_instance_valid(code_edit):
@@ -41,6 +42,7 @@ func _set_code_edit(new_code_edit:CodeEdit):
 				code_edit.text_changed.disconnect(_on_text_changed)
 			cache_dirty = true
 			_first_parse_complete = false
+			_line_sync_version = -1 # versions are per code_edit, never compare across buffers
 	
 	code_edit = new_code_edit
 	if not code_edit.text_changed.is_connected(_on_text_changed):
@@ -57,6 +59,10 @@ func sync_code_edit() -> void:
 	indent_size = code_edit.get_tab_size()
 
 
+## Only ever fires for a code_edit the user types into: TextEdit emits text_changed for incremental
+## edits while in the tree, but NEVER for `code_edit.text = ...` (set_text emits text_set instead).
+## A buffer code_edit is only ever filled by that assignment, so those parsers never go dirty here -
+## every such site pairs its assignment with an empty _class_access or an explicit force instead.
 func _on_text_changed():
 	cache_dirty = true
 
@@ -487,8 +493,80 @@ func parse_text_ts(force:=false):
 	#print("CLASSES ",temp_class_access.keys())
 	cache_dirty = false
 	_first_parse_complete = true
+	_line_sync_version = code_edit.get_version() # ranges are fresh, next sync_line_ranges() no-ops
 	#_pc = null
 	return temp_class_access
+
+
+## Refresh only class/function LINE RANGES from the (already incremental) tree-sitter tree. Cheap
+## enough to run per keystroke; the debounced full parse still owns members, types and resolve caches,
+## so a sync deliberately leaves line_indexes newer than members - a pairing no full parse produces,
+## and the next one reconciles it. Gated on tree-sitter plus an attached, already-parsed buffer, NOT
+## on being the editor's parser (it drives the headless suite fine); the per-keystroke policy belongs
+## to the caller, EditorGDScriptParser._on_text_changed. Returns true when a range actually moved.
+func sync_line_ranges() -> bool:
+	if not use_tree_sitter or not _first_parse_complete:
+		return false
+	var parser:GDScriptParser = _get_parser()
+	if not is_instance_valid(parser) or not is_instance_valid(parser.code_edit):
+		return false
+	# a code_edit we never parsed, or a manager pointed at another buffer, is the full parse's job
+	if not is_instance_valid(code_edit) or code_edit != parser.code_edit:
+		return false
+	if not is_instance_valid(tree_sitter_manager) or tree_sitter_manager._edit != code_edit:
+		return false
+
+	var version:int = code_edit.get_version()
+	if version == _line_sync_version:
+		return false
+
+	tree_sitter_manager.parse_text() # free no-op when the tree already matches this version
+	var line_data:Dictionary = tree_sitter_manager.parser.sparse_parse().get("lines", {})
+
+	var changed:bool = false
+	for path:String in line_data.keys():
+		# a class typed mid-edit has no ParserClass yet (it needs member data) - the full parse adds it
+		var class_obj:ParserClass = parser._class_access.get(path)
+		if not is_instance_valid(class_obj):
+			continue
+
+		var cls_data:Dictionary = line_data[path]
+		var class_start:int = cls_data.get(Keys.LINE_INDEX, -1)
+		if path.is_empty():
+			class_start = 0 # same root normalisation as parse_text_ts, or the two paths disagree
+		var class_end:int = cls_data.get(Keys.END_LINE, class_start)
+		if class_start >= 0 and class_end >= class_start:
+			var lines:PackedInt32Array = range(class_start, class_end + 1)
+			if lines != class_obj.line_indexes:
+				class_obj.set_lines(lines)
+				changed = true
+
+		var func_line_data:Dictionary = cls_data.get("functions", {})
+		for func_name:String in func_line_data.keys():
+			var func_obj = class_obj.functions.get(func_name)
+			if not is_instance_valid(func_obj):
+				continue
+			var fn_data:Dictionary = func_line_data[func_name]
+			var start:int = fn_data.get(Keys.LINE_INDEX, -1)
+			var end:int = fn_data.get(Keys.END_LINE, start)
+			if start < 0 or end < start:
+				continue
+			# compare against func_lines, not end_line - _create_function_ts never assigns end_line
+			var cur_end:int = -1
+			if not func_obj.func_lines.is_empty():
+				cur_end = func_obj.func_lines[func_obj.func_lines.size() - 1]
+			if func_obj.declaration_line == start and cur_end == end:
+				continue
+			if func_obj.declaration_line != start:
+				func_obj._cache_dirty = true # signature moved, re-read it lazily
+			func_obj.declaration_line = start
+			func_obj.end_line = end
+			func_obj.func_lines = range(start, end + 1)
+			func_obj.invalidate_line_caches()
+			changed = true
+
+	_line_sync_version = version
+	return changed
 
 
 

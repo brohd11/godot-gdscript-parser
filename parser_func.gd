@@ -48,7 +48,12 @@ func is_static() -> bool:
 
 func queue_refresh() -> void:
 	_cache_dirty = true
-	
+	invalidate_line_caches()
+
+## Drop only what is keyed by absolute line number. Local var keys embed the line
+## ("%s-%s-%s" % [name, line, col], see _process_local_var), so a shifted func range voids them all.
+## Split out of queue_refresh() so a line-range sync can skip the declaration re-read.
+func invalidate_line_caches() -> void:
 	_in_scope_local_vars_set = false
 	in_scope_local_vars.clear() # not sure how this will interact with parse
 	

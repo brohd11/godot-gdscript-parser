@@ -222,6 +222,11 @@ func parse(force:=false) -> void:
 	
 	#print_hierarchy()
 
+## Cheap per-keystroke refresh of class/function line ranges only - keeps get_class_at_line() and
+## get_function_at_line() correct between the debounced full parses. See CodeEditParser.
+func sync_line_ranges() -> bool:
+	return code_edit_parser.sync_line_ranges()
+
 func get_global_class_name() -> String:
 	var root_class:ParserClass = get_class_object() as ParserClass
 	if is_instance_valid(root_class):

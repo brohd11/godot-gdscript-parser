@@ -520,8 +520,9 @@ func sync_line_ranges() -> bool:
 	if version == _line_sync_version:
 		return false
 
-	tree_sitter_manager.parse_text() # free no-op when the tree already matches this version
-	var line_data:Dictionary = tree_sitter_manager.parser.sparse_parse().get("lines", {})
+	# through the manager, not its parser: it reparses first (free no-op at the matching version) and
+	# caches per tree revision, so the highlighter's call in the same frame costs nothing. Read-only.
+	var line_data:Dictionary = tree_sitter_manager.sparse_parse().get("lines", {})
 
 	var changed:bool = false
 	for path:String in line_data.keys():

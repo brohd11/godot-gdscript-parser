@@ -121,6 +121,9 @@ func parse_text(force:=false):
 		return
 	
 	var main_script = parser._script_resource
+	if not is_instance_valid(main_script):
+		cache_dirty = true
+		return
 	var main_script_path = main_script.resource_path
 	
 	_pc = _ParserContext.new()

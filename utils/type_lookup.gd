@@ -1,6 +1,6 @@
 
 const PLUGIN_EXPORTED = false
-const PRINT_DEBUG = true # not PLUGIN_EXPORTED
+const PRINT_DEBUG = false # not PLUGIN_EXPORTED
 
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 

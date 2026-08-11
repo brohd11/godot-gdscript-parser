@@ -14,7 +14,7 @@ const SUFFIXES = [ENUM_SUFFIX]
 
 
 const PLUGIN_EXPORTED = false
-const PRINT_DEBUG = true # not PLUGIN_EXPORTED
+const PRINT_DEBUG = false # not PLUGIN_EXPORTED
 
 var _parser:WeakRef
 

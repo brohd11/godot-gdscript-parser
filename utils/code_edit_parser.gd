@@ -15,7 +15,7 @@ var code_edit:CodeEdit
 
 var use_tree_sitter:bool = false # set by the owning GDScriptParser (source of truth) in its _init
 var tree_sitter_manager:Variant
-const TREE_SITTER_MANAGER_PATH = "res://addons/tree_sitter_gd/gdscript_code_edit_tree_parser.gd"
+const TREE_SITTER_MANAGER_PATH = "res://addons/addon_lib/tree_sitter_gd/gdscript_code_edit_tree_parser.gd"
 
 var indent_size:int
 

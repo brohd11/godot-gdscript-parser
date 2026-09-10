@@ -8,6 +8,7 @@ const AccessObject = GDScriptParser.TypeLookup.AccessObject
 
 const UFile = GDScriptParser.UFile
 const UString = GDScriptParser.UString
+const GDScriptParse = GDScriptParser.UStringGDScriptParse
 const UClassDetail = GDScriptParser.UClassDetail
 
 const ENUM_SUFFIX = Keys.ENUM_PATH_SUFFIX
@@ -208,31 +209,31 @@ static func member_is_valid_static(member_type:String) -> bool:
 	return member_type in VALID_STATIC_MEMBER_TYPES
 
 static func is_absolute_path(string:String) -> bool:
-	return UString.GDScriptParse.is_absolute_path(string)
+	return GDScriptParse.is_absolute_path(string)
 
 static func get_func_name_in_line(stripped_line_text:String) -> String:
-	return UString.GDScriptParse.get_func_name_in_line(stripped_line_text)
+	return GDScriptParse.get_func_name_in_line(stripped_line_text)
 
 static func get_class_name_in_line(stripped_line_text:String) -> String:
-	return UString.GDScriptParse.get_class_name_in_line(stripped_line_text)
+	return GDScriptParse.get_class_name_in_line(stripped_line_text)
 
 static func get_class_info(stripped_line: String) -> Variant:
-	return UString.GDScriptParse.get_class_info(stripped_line)
+	return GDScriptParse.get_class_info(stripped_line)
 
 static func get_var_or_const_info(stripped_line:String) -> Variant:
-	return UString.GDScriptParse.get_var_or_const_info(stripped_line)
+	return GDScriptParse.get_var_or_const_info(stripped_line)
 
 static func get_for_loop_info(stripped_line:String) -> Variant:
-	return UString.GDScriptParse.get_for_loop_info(stripped_line)
+	return GDScriptParse.get_for_loop_info(stripped_line)
 
 static func get_enum_info(stripped_line: String) -> Array:
-	return UString.GDScriptParse.get_enum_info(stripped_line)
+	return GDScriptParse.get_enum_info(stripped_line)
 
 static func get_func_info(stripped_text: String) -> Dictionary:
-	return UString.GDScriptParse.get_func_info(stripped_text)
+	return GDScriptParse.get_func_info(stripped_text)
 
 static func get_signal_info(stripped_text: String) -> Dictionary:
-	return UString.GDScriptParse.get_signal_info(stripped_text)
+	return GDScriptParse.get_signal_info(stripped_text)
 
 static func get_type_from_var_info(var_data:Array) -> String:
 	#if var_data[2] == "":

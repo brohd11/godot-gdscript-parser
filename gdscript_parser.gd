@@ -13,10 +13,13 @@ const PARSE_CACHE_DIR = ScriptCache.DEFAULT_DIR
 
 const TF = preload("uid://ft7o6vspsurv") #! resolve ALibRuntime.Utils.UProfile.TimeFunction
 
-const UString = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_string.gd")
-const UClassDetail = preload("res://addons/addon_lib/brohd/alib_editor/utils/src/u_class_detail.gd")
-const UFile = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_file.gd")
-const UResource = preload("uid://72uu8yngsoht") #! resolve ALibRuntime.Utils.UResource
+const UString = preload("uid://bbk1yedqm7a6a") #! resolve ALibRuntime.Utils.UString.Methods
+const UStringGDScriptParse = preload("uid://djphen6jtpagy") #! resolve ALibRuntime.Utils.UString.GDScriptParse
+const StringMap = preload("uid://mhebqdb72dqn") #! resolve ALibRuntime.Utils.UString.StringMap
+const UClassDetail = preload("uid://dpmubecadgfk8") #! resolve ALibRuntime.Utils.UGDScript.UClassDetail
+const UFile = preload("uid://bl33psa06nv1e") #! resolve ALibRuntime.Utils.UFile.Methods
+const UResource = preload("uid://brjrqxh2smivn") #! resolve ALibRuntime.Utils.UResource.Methods
+const UPackedScene = preload("uid://44xrh5kbrpaa") #! resolve ALibRuntime.Utils.UResource.UPackedScene
 
 const CacheHelper = preload("res://addons/addon_lib/brohd/alib_runtime/cache_helper/cache_helper.gd")
 

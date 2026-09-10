@@ -8,6 +8,7 @@ const UString = GDScriptParser.UString
 const UFile = GDScriptParser.UFile
 const UClassDetail = GDScriptParser.UClassDetail
 const UResource = GDScriptParser.UResource
+const UPackedScene = GDScriptParser.UPackedScene
 
 const ParserClass = GDScriptParser.ParserClass
 const ParserFunc = GDScriptParser.ParserFunc
@@ -1775,7 +1776,7 @@ func set_autoload_cache():
 		elif autoload_path.get_extension() == "cs":
 			continue
 		else:
-			autoload_path = UResource.UPackedScene.ReadFile.get_root_script_path(autoload_path)
+			autoload_path = UPackedScene.ReadFile.get_root_script_path(autoload_path)
 			if autoload_path == "":
 				continue
 		

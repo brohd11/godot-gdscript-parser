@@ -650,10 +650,13 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 	var original_indent = get_indent_code_edit(target_line_index)
 	var current_indent = original_indent
 	
+	var stop_line:int = params.get(Keys.CONTEXT_STOP_LINE, -1)
 	var has_semi_col:=false
 	var context_start_line = target_line_index + 1
 	while context_start_line > 0:
 		context_start_line -= 1
+		if context_start_line <= stop_line: # a lambda's own scope ends at its declaration line
+			break
 		if _line_has_semi_colon(context_start_line):
 			has_semi_col = true
 			#break # originally this just breaks.

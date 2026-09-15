@@ -151,15 +151,21 @@ func parse():
 	current_class = parser.get_class_at_line(caret_line)
 	#current_function = parser.get_function_at_line(caret_line)
 	current_function = code_context_start_data.get(Keys.CONTEXT_FUNC, "")
-	if current_function != Keys.CLASS_BODY and current_function != "":
-		var current_class_obj = parser._class_access.get(current_class) as GDScriptParser.ParserClass
-		if is_instance_valid(current_class_obj):
-			var current_func_obj = current_class_obj.functions.get(current_function) as GDScriptParser.ParserFunc
-			if is_instance_valid(current_func_obj):
-				#current_func_obj.parse() # I think handled if func data functions called or setting vars, local vars already scanned
-				local_vars = code_context_start_data.get(Keys.CONTEXT_LOCAL_VARS, {})
-				#print("LOCAL VARS::", local_vars)
-				current_func_obj.set_in_scope_local_vars(local_vars)
+	var scope_class_obj = parser._class_access.get(current_class) as GDScriptParser.ParserClass
+	var scope_func_obj:GDScriptParser.ParserFunc
+	if current_function != Keys.CLASS_BODY and current_function != "" and is_instance_valid(scope_class_obj):
+		scope_func_obj = scope_class_obj.functions.get(current_function) as GDScriptParser.ParserFunc
+	# the single caret scan can't see lambda args or shadowing, so inside a lambda use the layered scope
+	var scope_lambda_obj = scope_class_obj.get_lambda_at_line(caret_line) if is_instance_valid(scope_class_obj) else null
+	if scope_lambda_obj != null:
+		local_vars = scope_class_obj.get_in_scope_vars_at_line(caret_line)
+		scope_lambda_obj.set_in_scope_local_vars(local_vars)
+		if is_instance_valid(scope_func_obj): # consumers read the function's snapshot
+			scope_func_obj.set_in_scope_local_vars(local_vars)
+	elif is_instance_valid(scope_func_obj):
+		#scope_func_obj.parse() # I think handled if func data functions called or setting vars, local vars already scanned
+		local_vars = code_context_start_data.get(Keys.CONTEXT_LOCAL_VARS, {})
+		scope_func_obj.set_in_scope_local_vars(local_vars)
 	
 	if PRINT_DEBUG:
 		print("class: " ,current_class)

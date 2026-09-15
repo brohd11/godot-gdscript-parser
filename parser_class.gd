@@ -189,21 +189,53 @@ func _create_function_ts(_name, data:Dictionary):
 func get_lambda(var_name:String):
 	return lambdas.get(var_name)
 
-## Innermost lambda containing `line`: member lambdas, plus those in the function at `line`.
+## Innermost lambda containing `line`, or null.
 func get_lambda_at_line(line:int):
+	var stack:Array = get_lambda_stack_at_line(line)
+	return null if stack.is_empty() else stack.back()
+
+## Lambdas containing `line`, outer to inner: a member lambda or one in the function at `line`,
+## then each nested lambda down to the innermost.
+func get_lambda_stack_at_line(line:int) -> Array:
+	var stack:Array = []
 	var candidates:Array = lambdas.values()
 	var func_obj = functions.get(get_function_at_line(line))
 	if func_obj != null:
 		candidates.append_array(func_obj.get_lambdas().values())
-	var best = null
 	while not candidates.is_empty():
-		var lambda = candidates.pop_back()
-		if not lambda.func_lines.has(line):
-			continue
-		if best == null or lambda.declaration_line >= best.declaration_line:
-			best = lambda
-		candidates.append_array(lambda.get_lambdas().values())
-	return best
+		var found = null
+		for lambda in candidates:
+			if lambda.func_lines.has(line):
+				found = lambda
+				break
+		if found == null:
+			break
+		stack.append(found)
+		candidates = found.get_lambdas().values()
+	return stack
+
+## Names in scope at a line inside a lambda. Each scope level is scanned on its own and layered outer
+## to inner, so a lambda's args and locals shadow the same names in outer lambdas and the function.
+func get_in_scope_vars_at_line(line:int, stack:Array = []) -> Dictionary:
+	if stack.is_empty():
+		stack = get_lambda_stack_at_line(line)
+	var func_obj = functions.get(get_function_at_line(line))
+	if stack.is_empty():
+		return {} if func_obj == null else func_obj._scan_in_scope_vars(line)
+
+	# member lambdas start empty: class members resolve through the normal member path
+	var vars:Dictionary = {} if func_obj == null else func_obj._scan_in_scope_vars(stack[0].declaration_line)
+	var code_edit_parser = Utils.ParserRef.get_code_edit_parser(self)
+	for i:int in stack.size():
+		var lambda = stack[i]
+		if lambda.name.contains("-"): # local lambda: keep its owning var resolvable from inside the body
+			var dec_text:String = code_edit_parser.get_line(lambda.declaration_line)
+			var stripped:String = dec_text.strip_edges()
+			Utils.add_var_to_dict(stripped, lambda.declaration_line, dec_text.find(stripped), vars)
+		vars.merge(lambda.get_arguments(), true)
+		var next_line:int = line if i == stack.size() - 1 else stack[i + 1].declaration_line
+		vars.merge(lambda._scan_in_scope_vars(next_line, lambda.declaration_line, false), true)
+	return vars
 
 func set_constants(const_dict:Dictionary):
 	constants = const_dict

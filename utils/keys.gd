@@ -31,6 +31,7 @@ const CONTEXT_BLOCKS = &"context_blocks"
 const CONTEXT_FUNC = &"context_func"
 const CONTEXT_LOCAL_VARS = &"context_local_vars"
 const CONTEXT_SEMI_COLON = &"context_semi_colon"
+const CONTEXT_STOP_LINE = &"context_stop_line" # local scan reads only lines below this one
 
 # var type
 

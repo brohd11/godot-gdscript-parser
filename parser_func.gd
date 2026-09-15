@@ -348,12 +348,24 @@ func get_in_scope_local_vars(line:int) -> Dictionary:
 	if _in_scope_local_vars_set:
 		return in_scope_local_vars
 	
+	var class_obj = ParserRef.get_class_obj(self)
+	if is_instance_valid(class_obj):
+		var stack:Array = class_obj.get_lambda_stack_at_line(line)
+		if not stack.is_empty():
+			return class_obj.get_in_scope_vars_at_line(line, stack)
+	return _scan_in_scope_vars(line)
+
+## One upward indent scan for the locals at `line`. `stop_line` bounds it to a lambda body;
+## `include_args` merges this func's args underneath the locals.
+func _scan_in_scope_vars(line:int, stop_line:int = -1, include_args:bool = true) -> Dictionary:
 	var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
 	var context_data:Dictionary = code_edit_parser.get_line_context_start_data(line, {
-		Keys.CONTEXT_BLOCKS: [Utils.Keywords.FOR]
+		Keys.CONTEXT_BLOCKS: [Utils.Keywords.FOR],
+		Keys.CONTEXT_STOP_LINE: stop_line,
 		})
 	var in_scope_vars:Dictionary = context_data.get(Keys.CONTEXT_LOCAL_VARS, {})
-	in_scope_vars.merge(arguments)
+	if include_args:
+		in_scope_vars.merge(arguments)
 	return in_scope_vars
 
 func get_function_data() -> Dictionary:

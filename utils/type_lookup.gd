@@ -1902,7 +1902,11 @@ class ClassData:
 			func_obj = class_obj.get_function(function_name)
 			if is_instance_valid(func_obj):
 				func_obj.parse()
-				local_vars = func_obj.get_in_scope_local_vars(initial_line)
+		# the innermost lambda owns the scope; func_obj stays the enclosing function for static context
+		var lambda_obj = class_obj.get_lambda_at_line(initial_line)
+		var scope_obj:ParserFunc = lambda_obj if lambda_obj != null else func_obj
+		if is_instance_valid(scope_obj):
+			local_vars = scope_obj.get_in_scope_local_vars(initial_line)
 	
 	func in_static_function() -> bool:
 		if is_instance_valid(func_obj):

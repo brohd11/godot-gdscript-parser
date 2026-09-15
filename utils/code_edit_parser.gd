@@ -286,7 +286,12 @@ func _parse_line(stripped:String, line:int, column:int=0):
 	
 	if not (stripped.begins_with("class") or _pc.current_indentation_level == indentation_level):
 		return
-	
+
+	if is_nameless_enum_declaration(stripped): # _map_regex needs a name
+		_pc.pending_annotations.clear()
+		_parse_nameless_enum(line, column)
+		return
+
 	var result = _map_regex.search(stripped)
 	if result:
 		var keyword:StringName = result.get_string(2)
@@ -341,10 +346,58 @@ func _parse_line(stripped:String, line:int, column:int=0):
 			elif keyword.begins_with("c") or keyword == &"enum":
 				_pc.constant_map.get_or_add(_pc.access_path, {})[member_name] = data
 			else:
+				if keyword.ends_with(&"var") and stripped.contains("func"):
+					var var_info:Variant = Utils.get_var_or_const_info(stripped)
+					if var_info != null and Utils.is_lambda_assignment(var_info[2]):
+						data[Keys.LAMBDA] = {Keys.LINE_INDEX: line, Keys.END_LINE: get_indent_block_end(line)}
 				_pc.member_map.get_or_add(_pc.access_path, {})[member_name] = data
 	elif stripped.begins_with("extends "):
 		var extended = _get_extends_out_line(stripped)
 		_pc.member_map.get_or_add(_pc.access_path, {})["extends"] = extended
+
+
+## Nameless enum entries are int consts in the class scope, one per entry, shaped like tree-sitter's
+## so both parse paths fold into `constants` the same way.
+func _parse_nameless_enum(line:int, column:int) -> void:
+	var end_index:int = get_line_context(line, 0, false, {Keys.CONTEXT_START: line}).get(Keys.CONTEXT_END, line)
+	end_index = clampi(end_index, line, code_edit.get_line_count() - 1)
+	var lines:PackedStringArray = []
+	for i:int in range(line, end_index + 1):
+		lines.append(get_line(i, true))
+	if column > 0: # a `;`-split part: blank what precedes it, keeping columns
+		lines[0] = " ".repeat(column) + lines[0].substr(column)
+	for i:int in range(line + 1, end_index + 1):
+		_pc.extended_lines.append(i)
+
+	var constants:Dictionary = _pc.constant_map.get_or_add(_pc.access_path, {})
+	for entry:Array in Utils.get_nameless_enum_entries(lines, line):
+		var entry_name:StringName = StringName(entry[0])
+		constants[entry_name] = {
+			Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_CONST,
+			Keys.MEMBER_NAME: entry_name,
+			Keys.LINE_INDEX: entry[1],
+			Keys.COLUMN_INDEX: entry[2],
+			Keys.SCRIPT_PATH: _pc.main_script_path,
+			Keys.ACCESS_PATH: _pc.access_path,
+			Keys.TYPE: &"int",
+			Keys.HAS_STATIC_TYPE: true,
+			Keys.ASSIGNMENT: entry[3],
+		}
+
+## Last line of the indented block opened on `line`, e.g. a multi-line lambda body. Starts from the
+## line's bracket context end so a signature spanning lines is covered.
+func get_indent_block_end(line:int) -> int:
+	var count:int = code_edit.get_line_count()
+	var end:int = get_line_context(line, 0, false, {Keys.CONTEXT_START: line}).get(Keys.CONTEXT_END, line)
+	end = clampi(end, line, count - 1)
+	var base_indent:int = get_indent_code_edit(line)
+	for i:int in range(end + 1, count):
+		if get_line(i, true, true) == "":
+			continue
+		if get_indent_code_edit(i) <= base_indent:
+			break
+		end = i
+	return end
 
 
 func _get_extends_out_line(line_text:String):
@@ -1052,11 +1105,41 @@ func check_member_line(member_type:String, member_name:String, line:int, column:
 	if line_text.begins_with(member_type):
 		var stripped = line_text.trim_prefix(member_type).strip_edges(true, false)
 		#t.stop()
-		return stripped.begins_with(member_name)
+		if stripped.begins_with(member_name):
+			return true
+		# a lowercase entry name can also start with "const" (enum {constant_a})
+		return member_type == Keys.MEMBER_TYPE_CONST and is_enum_entry_line(member_name, line, column)
+	# nameless enum entries are consts declared by the entry itself, not `const NAME`
+	if member_type == Keys.MEMBER_TYPE_CONST and is_enum_entry_line(member_name, line, column):
+		return true
 	#t.stop()
 	if rebuild:
 		parse_text()
 	return false
+
+## True when `line` at `column` is the entry `member_name` of a nameless enum. Walks up to the
+## owning declaration, which must be `enum {`; a declaration or closed brace on the way means it isn't.
+func is_enum_entry_line(member_name:String, line:int, column:int=0) -> bool:
+	var text:String = get_line(line, true).substr(column).strip_edges(true, false)
+	if not text.begins_with(member_name):
+		return false
+	var after:String = text.substr(member_name.length(), 1)
+	if after != "" and (after.is_valid_ascii_identifier() or after.is_valid_int()):
+		return false
+	var i:int = line
+	while i >= 0:
+		var stripped:String = strip_annotations(get_line(i, true, true))
+		if is_nameless_enum_declaration(stripped):
+			return true
+		if i < line and stripped.contains("}"):
+			return false
+		if Utils.line_has_any_declaration(stripped):
+			return false
+		i -= 1
+	return false
+
+static func is_nameless_enum_declaration(stripped:String) -> bool:
+	return stripped.begins_with("enum") and stripped.substr(4).strip_edges(true, false).begins_with("{")
 
 
 func get_type_from_line(line:int, column:int=0):

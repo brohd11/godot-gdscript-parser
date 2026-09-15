@@ -1319,7 +1319,12 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 					print_deb(T.RESOLVE, ["ABORT CHECK MEMBER DATA"])
 					return "" # this should be handled by the above member_data check
 		
-		type_declaration = _get_script_member_type(line_index, column)
+		# a nameless enum entry's line is the entry itself; reading it as a declaration yields the whole enum
+		if member_type == Keys.MEMBER_TYPE_CONST and member_data.get(Keys.TYPE, &"") == &"int" \
+				and _get_code_edit_parser().is_enum_entry_line(member_name, line_index, column):
+			type_declaration = "int"
+		else:
+			type_declaration = _get_script_member_type(line_index, column)
 		print_deb(T.RESOLVE, ["MEMBER GET TYPE", member_name, " -> ", type_declaration])
 		#if type_declaration == "Signal":
 			#type_declaration = UString.dot_join(class_obj.get_script_class_path(), member_name + SIGNAL_SUFFIX)

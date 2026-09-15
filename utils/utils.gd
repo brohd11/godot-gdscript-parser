@@ -229,6 +229,21 @@ static func get_for_loop_info(stripped_line:String) -> Variant:
 static func get_enum_info(stripped_line: String) -> Array:
 	return GDScriptParse.get_enum_info(stripped_line)
 
+static func get_nameless_enum_entries(lines:PackedStringArray, first_line:int) -> Array:
+	return GDScriptParse.get_nameless_enum_entries(lines, first_line)
+
+## A var value that is a lambda: `func(`, `func (` or a named `func name(`.
+static func is_lambda_assignment(assignment:String) -> bool:
+	if not assignment.begins_with("func"):
+		return false
+	var rest:String = assignment.substr(4)
+	if rest.begins_with("("):
+		return true
+	if not (rest.begins_with(" ") or rest.begins_with("\t")) or not rest.contains("("):
+		return false
+	var lambda_name:String = rest.get_slice("(", 0).strip_edges()
+	return lambda_name.is_empty() or lambda_name.is_valid_ascii_identifier()
+
 static func get_func_info(stripped_text: String) -> Dictionary:
 	return GDScriptParse.get_func_info(stripped_text)
 

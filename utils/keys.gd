@@ -45,6 +45,7 @@ const MEMBER_TYPE_SIGNAL = &"signal"
 
 const MEMBER_TYPE_FUNC_ARG = &"func_arg"
 const MEMBER_TYPE_FOR = &"for"
+const MEMBER_TYPE_LAMBDA = &"lambda"
 
 
 # type lookup - These are split so that they don't create false positives
@@ -76,6 +77,7 @@ const END_LINE = &"end_line"
 const COLUMN_INDEX = &"column_index"
 const FUNC_LINES = &"func_lines"
 const ANNOTATIONS = &"annotations"
+const LAMBDA = &"lambda" # sub-dict on a var whose value is a lambda (same key tree-sitter emits)
 const ACCESS_PATH = &"access_path"
 const SCRIPT_PATH = &"script_path"
 

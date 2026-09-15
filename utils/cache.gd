@@ -25,8 +25,8 @@ const STATE_CACHED_RESOLVED = 1
 
 # --- versioning / location ----------------------------------------------------------------------
 const DEFAULT_DIR = "res://.godot/addons/gdscript_parser/parse_cache"
-const SCHEMA_VERSION = 2 # bump when the on-disk dict layout changes
-const PARSER_VERSION = 2 # bump when parse/resolve logic changes -> invalidates all cache files
+const SCHEMA_VERSION = 3 # bump when the on-disk dict layout changes
+const PARSER_VERSION = 3 # bump when parse/resolve logic changes -> invalidates all cache files
 
 # --- on-disk dict keys (cache-local; not in the shared Keys registry) ---------------------------
 const PCACHE_SCHEMA = &"schema_version"
@@ -49,6 +49,8 @@ const PCACHE_CLASS_INDENT = &"class_indent"
 const PCACHE_INHERITED = &"inherited_members"   # members merged in from base/outer scripts
 const PCACHE_INH_SCRIPTS = &"inherited_scripts" # ancestor script paths the above came from
 const PCACHE_INH_MOD = &"inherited_mod"         # {ancestor_path: mtime} baseline for staleness checks
+const PCACHE_LAMBDAS = &"lambdas" # lambda ParserFuncs, serialized like functions
+const PCACHE_IS_LAMBDA = &"is_lambda"
 const CACHE_DEPS = &"deps" # dependency map key inside a resolve-cache entry
 
 
@@ -86,6 +88,7 @@ static func serialize_class(class_obj) -> Dictionary:
 		# attach source and re-resolve every inner-class lookup.
 		PCACHE_INNER: _members_to_cache(class_obj, class_obj.inner_classes),
 		PCACHE_FUNCTIONS: funcs,
+		PCACHE_LAMBDAS: _serialize_lambdas(class_obj.lambdas),
 		PCACHE_INHERITED: inherited,
 		PCACHE_INH_SCRIPTS: class_obj.inherited_scripts.duplicate(),
 		PCACHE_INH_MOD: inh_mod,
@@ -122,6 +125,7 @@ static func deserialize_class(data:Dictionary, parser) -> GDScriptParser.ParserC
 	var funcs:Dictionary = data.get(PCACHE_FUNCTIONS, {})
 	for fname:String in funcs.keys():
 		obj.functions[fname] = deserialize_func(funcs[fname], parser, obj)
+	obj.lambdas = _deserialize_lambdas(data.get(PCACHE_LAMBDAS, {}), parser, obj)
 
 	# Restore inherited data directly - do NOT recompute here: get_inherited_members() walks to parent
 	# / outer classes that may not be deserialized yet. Restoring inherited_scripts + the mtime baseline
@@ -157,7 +161,21 @@ static func serialize_func(func_obj) -> Dictionary:
 		PCACHE_ARGUMENTS: func_obj.arguments.duplicate(true),
 		Keys.LOCAL_VARS: func_obj.local_vars.duplicate(true),
 		PCACHE_FUNC_CACHE: _serialize_func_cache(func_obj),
+		PCACHE_IS_LAMBDA: func_obj.is_lambda,
+		PCACHE_LAMBDAS: _serialize_lambdas(func_obj.lambdas),
 	}
+
+static func _serialize_lambdas(lambdas:Dictionary) -> Dictionary:
+	var out:Dictionary = {}
+	for lambda_name:String in lambdas.keys():
+		out[lambda_name] = serialize_func(lambdas[lambda_name])
+	return out
+
+static func _deserialize_lambdas(data:Dictionary, parser, class_obj) -> Dictionary:
+	var out:Dictionary = {}
+	for lambda_name:String in data.keys():
+		out[lambda_name] = deserialize_func(data[lambda_name], parser, class_obj)
+	return out
 
 static func _serialize_func_cache(func_obj) -> Dictionary:
 	var out:Dictionary = {}
@@ -184,6 +202,8 @@ static func deserialize_func(data:Dictionary, parser, class_obj) -> GDScriptPars
 	f.arguments = data.get(PCACHE_ARGUMENTS, {})
 	f.local_vars = data.get(Keys.LOCAL_VARS, {})
 	f._cache = data.get(PCACHE_FUNC_CACHE, {})
+	f.is_lambda = data.get(PCACHE_IS_LAMBDA, false)
+	f.lambdas = _deserialize_lambdas(data.get(PCACHE_LAMBDAS, {}), parser, class_obj)
 	# data was already fully parsed + resolved when cached; mark clean so no live re-read is needed.
 	f._local_vars_mapped = true
 	f._cache_dirty = false

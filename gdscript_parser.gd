@@ -361,7 +361,14 @@ func _set_class_obj(access_name:String, class_obj:ParserClass) -> void:
 	Utils.ParserRef.set_refs(class_obj, self)
 	for f:ParserFunc in class_obj.functions.values():
 		Utils.ParserRef.set_refs(f, self, class_obj)
+		_set_lambda_refs(f.lambdas, class_obj)
+	_set_lambda_refs(class_obj.lambdas, class_obj)
 	_class_access[access_name] = class_obj
+
+func _set_lambda_refs(lambdas:Dictionary, class_obj:ParserClass) -> void:
+	for lambda:ParserFunc in lambdas.values():
+		Utils.ParserRef.set_refs(lambda, self, class_obj)
+		_set_lambda_refs(lambda.lambdas, class_obj)
 
 func get_member_info_from_script(full_script_path:String) -> Variant:
 	var script_data:Array[String] = Utils.type_path_get_script_data(full_script_path)
@@ -486,8 +493,8 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 		parser_data[Keys.CACHE_PARSER] = parser
 		if is_instance_valid(active_parser):
 			parser.active_parser = active_parser
-
-
+	
+	
 	if not parser_valid or file_changed:
 		#print("NEED UPDATE::", script_path)
 		var script:GDScript
@@ -496,6 +503,7 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 		else: # some type of caching issue with out of fs scripts. Full reload to ensure changes are reflected
 			script = ResourceLoader.load(script_path, "", ResourceLoader.CACHE_MODE_IGNORE_DEEP)
 		if not is_instance_valid(script):
+			print("NOT VALID:", script_path)
 			return
 		parser.set_current_script(script)
 		parser.set_source_code(script.source_code)

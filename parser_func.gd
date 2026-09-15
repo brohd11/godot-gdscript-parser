@@ -42,6 +42,13 @@ var _local_vars_mapped:bool =false
 var in_scope_local_vars:Dictionary = {}
 var _in_scope_local_vars_set:=false
 
+## Lambda assigned to a var: `name` is the owning member name or local unique name, and the
+## signature is read from the `func(...)` inside the var line.
+var is_lambda:bool = false
+## Lambdas assigned to this func's local vars, keyed by local unique name. Plain-text fills this
+## lazily in map_variables(); read through get_lambdas().
+var lambdas:Dictionary = {}
+
 
 func is_static() -> bool:
 	return member_data.get(Keys.MEMBER_TYPE, "").begins_with("static")
@@ -60,6 +67,9 @@ func invalidate_line_caches() -> void:
 	# these are not related to type lookup local vars
 	_local_vars_mapped = false
 	local_vars.clear()
+	lambdas.clear() # keyed by local unique name, which embeds the line
+
+var _map_lambda_end:int = -1 # last body line of a local lambda seen by map_variables()
 
 func set_in_scope_local_vars(new_vars:Dictionary) -> void:
 	_in_scope_local_vars_set = true
@@ -81,15 +91,18 @@ func _set_function_data() -> void:
 		return
 	_return_type = "" # ensure this doesn't get stuck
 	
-	var column:int = member_data.get(Keys.COLUMN_INDEX, 0)
-	var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
-	if not code_edit_parser.check_member_line(member_data.get(Keys.MEMBER_TYPE), name, declaration_line, column):
-		GDScriptParser.print_deb_err(["FUNCTION DATA: NOT VALID"])
-		return
-	
+	var func_data:Dictionary
+	if is_lambda:
+		func_data = {"result": Utils.get_func_info(_get_lambda_parts()[0])}
+	else:
+		var column:int = member_data.get(Keys.COLUMN_INDEX, 0)
+		var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
+		if not code_edit_parser.check_member_line(member_data.get(Keys.MEMBER_TYPE), name, declaration_line, column):
+			GDScriptParser.print_deb_err(["FUNCTION DATA: NOT VALID"])
+			return
+		func_data = code_edit_parser.get_type_from_line(declaration_line, column)
+
 	_has_static_return = true
-	
-	var func_data:Dictionary = code_edit_parser.get_type_from_line(declaration_line, column)
 	
 	arguments.clear()
 	var result:Variant = func_data.get("result")
@@ -148,7 +161,10 @@ func map_variables() -> void:
 	_set_function_data()
 	end_line = func_lines[func_lines.size() - 1]
 	var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
+	_map_lambda_end = -1
 	for i:int in range(declaration_line + 1, end_line + 1): # +1 to ensure last line is carried over
+		if i <= _map_lambda_end: # a local lambda's body belongs to it, not this func (tree-sitter parity)
+			continue
 		if not code_edit_parser.is_valid_code(i, -1):
 			continue
 		
@@ -223,6 +239,13 @@ func _process_local_var(stripped:String, line:int, col:int, found_vars:Dictionar
 		var unique_name:String = "%s-%s-%s" % [var_name, line, col]
 		local_vars[unique_name] = data
 		found_vars[_get_cache_string(unique_name, type_hint)] = true
+		if not is_for and Utils.is_lambda_assignment(var_data[2]):
+			var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
+			var lambda_data:Dictionary = {Keys.LINE_INDEX: line, Keys.END_LINE: code_edit_parser.get_indent_block_end(line)}
+			var lambda:Variant = create_lambda(unique_name, lambda_data, ParserRef.get_parser(self), ParserRef.get_class_obj(self),
+				code_edit_parser.get_indent_code_edit(line), lambdas.get(unique_name))
+			lambdas[unique_name] = lambda
+			_map_lambda_end = maxi(_map_lambda_end, lambda.end_line)
 	
 
 func get_local_var_member_data(member_name:String) -> Variant:
@@ -406,6 +429,14 @@ func get_return_type_rich() -> Dictionary:
 # this may be slowww, possibly do it in the mapping step
 # other option would be to set a limit for indent, check only func level
 func _infer_return_type() -> String:
+	if is_lambda and func_lines.size() <= 1: # one-liner: the body shares the declaration line
+		_return_type_raw_line = declaration_line
+		var body:String = _get_lambda_parts()[1]
+		if body == "return" or body.begins_with("return "):
+			var returned:String = body.trim_prefix("return").strip_edges()
+			if returned != "":
+				return returned
+		return "Variant" if empty_return_as_variant else "void"
 	var code_edit_parser:CodeEditParser = Utils.ParserRef.get_code_edit_parser(self)
 	var func_indent:int = class_indent + code_edit_parser.indent_size
 	# technically this should be Variant, but this will behave similar to a return of a Variant where a return is necessary even if null
@@ -473,3 +504,85 @@ static func get_local_var_unique_name_from_data(var_name:String, data:Dictionary
 
 func _get_cache_string(member_name:String, type_hint:String) -> String:
 	return member_name + "::" + type_hint
+
+
+#region Lambdas
+## Build or refresh a lambda ParserFunc. `owner_indent` is the owning var line's indent, so body
+## scans stop where the lambda does. Args are always read from source (see _set_function_data).
+static func create_lambda(owner_name:String, lambda_data:Dictionary, parser:GDScriptParser, class_obj, owner_indent:int, existing:Variant = null) -> Variant:
+	var lambda:Variant = existing
+	if is_instance_valid(lambda):
+		lambda.queue_refresh()
+	else:
+		lambda = GDScriptParser.ParserFunc.new()
+		lambda.is_lambda = true
+		lambda.name = owner_name
+		ParserRef.set_refs(lambda, parser, class_obj)
+	var start:int = lambda_data.get(Keys.LINE_INDEX, -1)
+	var end:int = maxi(lambda_data.get(Keys.END_LINE, start), start)
+	lambda.declaration_line = start
+	lambda.func_lines = range(start, end + 1)
+	lambda.end_line = end
+	lambda.class_indent = owner_indent
+	lambda.member_data = {Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_LAMBDA, Keys.MEMBER_NAME: owner_name, Keys.LINE_INDEX: start}
+	var locals:Variant = lambda_data.get("locals")
+	if locals is Dictionary: # tree-sitter collected the body already, nested lambdas included
+		lambda.local_vars = locals
+		lambda._local_vars_mapped = true
+		lambda._create_lambdas_from_locals()
+	return lambda
+
+## Tree-sitter hands locals over pre-collected; lift their `lambda` sub-dicts into ParserFuncs.
+func _create_lambdas_from_locals() -> void:
+	var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
+	for unique_name:String in local_vars.keys():
+		var data:Dictionary = local_vars[unique_name]
+		var lambda_data:Variant = data.get(Keys.LAMBDA)
+		if lambda_data == null:
+			continue
+		data.erase(Keys.LAMBDA)
+		var indent:int = code_edit_parser.get_indent_code_edit(data.get(Keys.LINE_INDEX, declaration_line))
+		lambdas[unique_name] = create_lambda(unique_name, lambda_data, ParserRef.get_parser(self), ParserRef.get_class_obj(self), indent)
+
+## Lambdas assigned to this func's local vars. Maps the body first when it hasn't been.
+func get_lambdas() -> Dictionary:
+	map_variables()
+	return lambdas
+
+func get_lambda(unique_name:String) -> Variant:
+	return get_lambdas().get(unique_name)
+
+## [signature, body]: the signature rewritten as `func _lambda(args) -> T` so Utils.get_func_info
+## normalizes it like a real func; body is the text after its `:` (used for one-liners).
+func _get_lambda_parts() -> Array:
+	var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
+	var text:String = code_edit_parser.get_line_context_text(declaration_line)
+	var string_map = code_edit_parser.get_string_map(text)
+	var eq:int = UString.string_safe_find(text, "=", 0, string_map)
+	var start:int = UString.string_safe_find(text, "func", maxi(eq, 0), string_map)
+	var open:int = -1 if start == -1 else text.find("(", start)
+	if open == -1:
+		return ["", ""]
+	var depth:int = 0
+	var close:int = -1
+	for i:int in range(open, text.length()):
+		if string_map.string_mask[i] == 1:
+			continue
+		if text[i] == "(":
+			depth += 1
+		elif text[i] == ")":
+			depth -= 1
+			if depth == 0:
+				close = i
+				break
+	if close == -1:
+		return ["", ""]
+	var rest:String = text.substr(close + 1)
+	var colon:int = rest.find(":")
+	var ret:String = rest.strip_edges() if colon == -1 else rest.substr(0, colon).strip_edges()
+	var signature:String = "func _lambda(%s)" % text.substr(open + 1, close - open - 1)
+	if ret.begins_with("->"):
+		signature += " " + ret
+	var body:String = "" if colon == -1 else rest.substr(colon + 1).strip_edges()
+	return [signature, body]
+#endregion

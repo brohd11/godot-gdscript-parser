@@ -38,6 +38,7 @@ var inner_classes:= {}
 var constants:= {}
 var members:= {}
 var functions:={}
+var lambdas:={} # member var name -> lambda ParserFunc
 
 var _check_inherited_debounce:=false
 var inherited_members:Dictionary = {}
@@ -51,6 +52,8 @@ func queue_refresh(): # need to figure out a cache for this
 	_check_inherited_valid() # if any of inherited have changed, clear inh members dict
 	for f in functions.values():
 		f.queue_refresh()
+	for l in lambdas.values():
+		l.queue_refresh()
 	
 	_clean_resolve_cache()
 
@@ -106,8 +109,23 @@ func set_members(members_dict:Dictionary):
 		if not members.has(f): # delete deleted funcs, these are in a seperate dict so they must be manually cleaned
 			functions.erase(f)
 	
+	for l in lambdas.keys():
+		if not members.has(l):
+			lambdas.erase(l)
+
 	for m in members.keys():
 		_create_function(m, members[m])
+		_create_lambda(m, members[m])
+
+
+## Member vars whose value is a lambda. The `lambda` sub-dict is consumed so member data stays plain.
+func _create_lambda(_name, data:Dictionary):
+	var lambda_data = data.get(Keys.LAMBDA)
+	if lambda_data == null:
+		lambdas.erase(_name)
+		return
+	data.erase(Keys.LAMBDA)
+	lambdas[_name] = ParserFunc.create_lambda(_name, lambda_data, ParserRef.get_parser(self), self, indent_level, lambdas.get(_name))
 
 
 func _create_function(_name, data:Dictionary):
@@ -165,7 +183,27 @@ func _create_function_ts(_name, data:Dictionary):
 	function.local_vars = locals
 	# setting mapped to true stops redundant reads, seems to work ok...
 	function._local_vars_mapped = true
+	function._create_lambdas_from_locals()
 	
+
+func get_lambda(var_name:String):
+	return lambdas.get(var_name)
+
+## Innermost lambda containing `line`: member lambdas, plus those in the function at `line`.
+func get_lambda_at_line(line:int):
+	var candidates:Array = lambdas.values()
+	var func_obj = functions.get(get_function_at_line(line))
+	if func_obj != null:
+		candidates.append_array(func_obj.get_lambdas().values())
+	var best = null
+	while not candidates.is_empty():
+		var lambda = candidates.pop_back()
+		if not lambda.func_lines.has(line):
+			continue
+		if best == null or lambda.declaration_line >= best.declaration_line:
+			best = lambda
+		candidates.append_array(lambda.get_lambdas().values())
+	return best
 
 func set_constants(const_dict:Dictionary):
 	constants = const_dict
@@ -519,6 +557,10 @@ func _get_inherited_members() -> void:
 	var inherited_script_paths = get_inherited_scripts()
 	for script_path in inherited_script_paths:
 		var script_parser_data = parser.get_parser_and_class_obj_for_script(script_path)
+		if script_parser_data.is_empty():
+			_set_inherited_scripts()
+			# if a file is deleted, the cached inheritance must be cleared.
+			return # is this the best spot? not sure, but it will clear the blockage..
 		var class_obj = script_parser_data.get(Keys.GET_CLASS_OBJ)
 		inherited_members.merge(class_obj.get_members())
 	
@@ -677,6 +719,11 @@ func _check_inherited_valid():
 	if is_instance_valid(script_resource):
 		if script_base_type != script_resource.get_instance_base_type():
 			inherited_members.clear()
+	
+	for path in inherited_scripts:
+		if path != "" and not FileAccess.file_exists(path):
+			inherited_members.clear()
+			_set_inherited_scripts()
 	
 	var valid_scripts = {}
 	for path in inherited_scripts:

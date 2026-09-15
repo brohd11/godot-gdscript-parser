@@ -132,12 +132,12 @@ func resolve_inner_class_at_line(expression:String, line:int):
 	return result
 
 
-func resolve_expression_to_type_at_line(expression:String, line:int):
+func resolve_expression_to_type_at_line(expression:String, line:int, column:int = -1):
 	if class_resolution == true:
 		print_deb_err(T.RESOLVE, ["CLASS RES TRUE"])
 	class_resolution = false
 	
-	var class_data = get_class_data_at_line(line)
+	var class_data = get_class_data_at_line(line, column)
 	return _resolve_expression_to_type(expression, class_data, true) # true means resolve will change to first type mode
 
 func resolve_expression_to_type_at_line_respect_inf_context(expression:String, line:int):
@@ -149,16 +149,16 @@ func resolve_expression_to_type_at_line_respect_inf_context(expression:String, l
 	return _resolve_expression_to_type(expression, class_data, false) # false means resolve will respect current mode
 
 
-func resolve_expression_to_var_data_at_line(expression:String, line:int):
-	return _resolve_expression_to_var_data_at_line_simple(expression, line)
+func resolve_expression_to_var_data_at_line(expression:String, line:int, column:int = -1):
+	return _resolve_expression_to_var_data_at_line_simple(expression, line, column)
 
-func _resolve_expression_to_var_data_at_line_simple(expression:String, line:int):
+func _resolve_expression_to_var_data_at_line_simple(expression:String, line:int, column:int = -1):
 	if class_resolution == true:
 		print_deb_err(T.RESOLVE, ["CLASS RES TRUE"])
 	class_resolution = false
 	var t = GDScriptParser.TF.new("GET VAR DATA")
 	
-	var class_data = get_class_data_at_line(line)
+	var class_data = get_class_data_at_line(line, column)
 	if not class_data.valid_data:
 		return get_empty_type_rich()
 	if expression == "you":
@@ -1802,9 +1802,9 @@ func _get_parser_and_class_for_script(full_script_path:String):
 	return parser.get_parser_and_class_obj(script_path, class_access)
 
 
-func get_class_data_at_line(line:int) -> ClassData:
+func get_class_data_at_line(line:int, column:int = -1) -> ClassData:
 	var parser = Utils.ParserRef.get_parser(self)
-	var class_data = ClassData.new(parser, line)
+	var class_data = ClassData.new(parser, line, column)
 	return class_data
 
 
@@ -1824,7 +1824,7 @@ func _get_or_instance_inf_context():
 	return inf_context
 
 func _get_inf_expression(class_data:ClassData, expression:String):
-	return class_data.class_obj.get_script_class_path() + "::" + class_data.func_name + "::" + expression
+	return class_data.class_obj.get_script_class_path() + "::" + class_data.func_name + "::" + class_data.lambda_scope + "::" + expression
 
 func _check_inf_expression(inf_context:InferenceContext, inf_expression:String):
 	if inf_context.has_expression(inf_expression):
@@ -1886,9 +1886,10 @@ class ClassData:
 	var classname:String = ""
 	var func_obj:ParserFunc
 	var func_name:String = ""
+	var lambda_scope:String = ""
 	var local_vars:Dictionary = {}
 	
-	func _init(parser:GDScriptParser, line:int) -> void:
+	func _init(parser:GDScriptParser, line:int, column:int = -1) -> void:
 		initial_line = line
 		#initial_line = min(line, parser.get_code_edit_parser().code_edit.get_line_count() - 1)
 		classname = parser.get_class_at_line(initial_line)
@@ -1903,10 +1904,12 @@ class ClassData:
 			if is_instance_valid(func_obj):
 				func_obj.parse()
 		# the innermost lambda owns the scope; func_obj stays the enclosing function for static context
-		var lambda_obj = class_obj.get_lambda_at_line(initial_line)
+		var lambda_obj = class_obj.get_lambda_at_line(initial_line, column)
+		if lambda_obj != null:
+			lambda_scope = lambda_obj.name
 		var scope_obj:ParserFunc = lambda_obj if lambda_obj != null else func_obj
 		if is_instance_valid(scope_obj):
-			local_vars = scope_obj.get_in_scope_local_vars(initial_line)
+			local_vars = scope_obj.get_in_scope_local_vars(initial_line, column)
 	
 	func in_static_function() -> bool:
 		if is_instance_valid(func_obj):

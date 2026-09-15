@@ -42,12 +42,32 @@ var _local_vars_mapped:bool =false
 var in_scope_local_vars:Dictionary = {}
 var _in_scope_local_vars_set:=false
 
-## Lambda assigned to a var: `name` is the owning member name or local unique name, and the
-## signature is read from the `func(...)` inside the var line.
+## Assigned lambdas retain their binding key; inline callbacks use a source-position key.
 var is_lambda:bool = false
-## Lambdas assigned to this func's local vars, keyed by local unique name. Plain-text fills this
-## lazily in map_variables(); read through get_lambdas().
+var declaration_column:int = -1
+var end_column:int = -1
+var owner_variable:String = ""
+## Immediate closures. Plain-text fills these lazily; read through get_lambdas().
 var lambdas:Dictionary = {}
+
+func contains_position(line:int, column:int = -1) -> bool:
+	if line < declaration_line or line > end_line:
+		return false
+	if column < 0:
+		return true
+	return (line != declaration_line or column >= declaration_column) and \
+		(line != end_line or end_column < 0 or column < end_column)
+
+func set_lambdas(data:Dictionary) -> void:
+	for local:Dictionary in local_vars.values():
+		local.erase(Keys.LAMBDA)
+	var updated:Dictionary = {}
+	var code_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
+	for key:String in data:
+		var entry:Dictionary = data[key]
+		updated[key] = create_lambda(key, entry, ParserRef.get_parser(self), ParserRef.get_class_obj(self),
+			code_parser.get_indent_code_edit(entry.get(Keys.LINE_INDEX, declaration_line)), lambdas.get(key))
+	lambdas = updated
 
 
 func is_static() -> bool:
@@ -69,7 +89,6 @@ func invalidate_line_caches() -> void:
 	local_vars.clear()
 	lambdas.clear() # keyed by local unique name, which embeds the line
 
-var _map_lambda_end:int = -1 # last body line of a local lambda seen by map_variables()
 
 func set_in_scope_local_vars(new_vars:Dictionary) -> void:
 	_in_scope_local_vars_set = true
@@ -161,9 +180,37 @@ func map_variables() -> void:
 	_set_function_data()
 	end_line = func_lines[func_lines.size() - 1]
 	var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
-	_map_lambda_end = -1
+	if not is_lambda:
+		set_lambdas(code_edit_parser.get_plain_lambdas(ParserRef.get_class_obj(self), self))
+	if is_lambda and declaration_line == end_line:
+		var body:String = _get_lambda_parts()[1]
+		var body_column:int = code_edit_parser.get_line(declaration_line).find(body, declaration_column)
+		var boundaries:Array[int] = []
+		for token:Dictionary in CodeEditParser.LambdaScanner._tokens(body):
+			if token.text != ";" or token.depth != 0:
+				continue
+			var inside_child:bool = false
+			for child in lambdas.values():
+				if child.contains_position(declaration_line, body_column + token.offset):
+					inside_child = true
+			if not inside_child:
+				boundaries.append(token.offset)
+		boundaries.append(body.length())
+		var statement_start:int = 0
+		for boundary:int in boundaries:
+			var statement:String = body.substr(statement_start, boundary - statement_start)
+			var stripped_statement:String = statement.strip_edges()
+			if stripped_statement.begins_with("var "):
+				var col:int = body_column + statement_start + statement.find(stripped_statement)
+				_process_local_var(stripped_statement, declaration_line, col, found_for_local_vars)
+			statement_start = boundary + 1
 	for i:int in range(declaration_line + 1, end_line + 1): # +1 to ensure last line is carried over
-		if i <= _map_lambda_end: # a local lambda's body belongs to it, not this func (tree-sitter parity)
+		var inside_child:bool = false
+		for child in lambdas.values():
+			if i > child.declaration_line and i <= child.end_line:
+				inside_child = true
+				break
+		if inside_child:
 			continue
 		if not code_edit_parser.is_valid_code(i, -1):
 			continue
@@ -208,6 +255,9 @@ func map_variables() -> void:
 	_local_vars_mapped = true
 
 func _process_local_var(stripped:String, line:int, col:int, found_vars:Dictionary) -> void:
+	for child in lambdas.values():
+		if child.contains_position(line, col):
+			return
 	var member_type:StringName = Keys.MEMBER_TYPE_VAR
 	var is_for:bool = stripped.begins_with("for ")
 	if is_for: # this should be regex
@@ -231,6 +281,7 @@ func _process_local_var(stripped:String, line:int, col:int, found_vars:Dictionar
 		var data:Dictionary = {
 			Keys.MEMBER_NAME: var_name,
 			Keys.LINE_INDEX: line,
+			Keys.COLUMN_INDEX: col,
 			Keys.MEMBER_TYPE: member_type,
 			Keys.TYPE: type_hint,
 			Keys.ASSIGNMENT: var_data[2],
@@ -239,13 +290,6 @@ func _process_local_var(stripped:String, line:int, col:int, found_vars:Dictionar
 		var unique_name:String = "%s-%s-%s" % [var_name, line, col]
 		local_vars[unique_name] = data
 		found_vars[_get_cache_string(unique_name, type_hint)] = true
-		if not is_for and Utils.is_lambda_assignment(var_data[2]):
-			var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
-			var lambda_data:Dictionary = {Keys.LINE_INDEX: line, Keys.END_LINE: code_edit_parser.get_indent_block_end(line)}
-			var lambda:Variant = create_lambda(unique_name, lambda_data, ParserRef.get_parser(self), ParserRef.get_class_obj(self),
-				code_edit_parser.get_indent_code_edit(line), lambdas.get(unique_name))
-			lambdas[unique_name] = lambda
-			_map_lambda_end = maxi(_map_lambda_end, lambda.end_line)
 	
 
 func get_local_var_member_data(member_name:String) -> Variant:
@@ -344,26 +388,40 @@ func is_local_var_static_typed(member_name:String) -> bool:
 	return var_data.get(Keys.HAS_STATIC_TYPE, false)
 
 
-func get_in_scope_local_vars(line:int) -> Dictionary:
-	if _in_scope_local_vars_set:
+func get_in_scope_local_vars(line:int, column:int = -1) -> Dictionary:
+	if _in_scope_local_vars_set and column < 0:
 		return in_scope_local_vars
 	
 	var class_obj = ParserRef.get_class_obj(self)
 	if is_instance_valid(class_obj):
-		var stack:Array = class_obj.get_lambda_stack_at_line(line)
+		var stack:Array = class_obj.get_lambda_stack_at_line(line, column)
 		if not stack.is_empty():
-			return class_obj.get_in_scope_vars_at_line(line, stack)
-	return _scan_in_scope_vars(line)
+			return class_obj.get_in_scope_vars_at_line(line, stack, column)
+	return _scan_in_scope_vars(line, -1, true, column)
 
 ## One upward indent scan for the locals at `line`. `stop_line` bounds it to a lambda body;
 ## `include_args` merges this func's args underneath the locals.
-func _scan_in_scope_vars(line:int, stop_line:int = -1, include_args:bool = true) -> Dictionary:
+func _scan_in_scope_vars(line:int, stop_line:int = -1, include_args:bool = true, column:int = -1) -> Dictionary:
 	var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
 	var context_data:Dictionary = code_edit_parser.get_line_context_start_data(line, {
 		Keys.CONTEXT_BLOCKS: [Utils.Keywords.FOR],
 		Keys.CONTEXT_STOP_LINE: stop_line,
 		})
 	var in_scope_vars:Dictionary = context_data.get(Keys.CONTEXT_LOCAL_VARS, {})
+	if column >= 0:
+		map_variables()
+		var tokens:Array = CodeEditParser.LambdaScanner._tokens(code_edit_parser.get_line(line))
+		for data:Dictionary in local_vars.values():
+			if data.get(Keys.LINE_INDEX, -1) != line:
+				continue
+			var start:int = data.get(Keys.COLUMN_INDEX, -1)
+			if ParserRef.get_class_obj(self).use_ts:
+				start = _character_column(code_edit_parser, line, start)
+			# A same-line declaration is visible after its terminating semicolon.
+			for token:Dictionary in tokens:
+				if token.text == ";" and token.offset > start and token.offset < column:
+					in_scope_vars[data[Keys.MEMBER_NAME]] = data
+					break
 	if include_args:
 		in_scope_vars.merge(arguments)
 	return in_scope_vars
@@ -519,8 +577,7 @@ func _get_cache_string(member_name:String, type_hint:String) -> String:
 
 
 #region Lambdas
-## Build or refresh a lambda ParserFunc. `owner_indent` is the owning var line's indent, so body
-## scans stop where the lambda does. Args are always read from source (see _set_function_data).
+## Build or refresh a closure, translating extension byte columns for CodeEdit lookups.
 static func create_lambda(owner_name:String, lambda_data:Dictionary, parser:GDScriptParser, class_obj, owner_indent:int, existing:Variant = null) -> Variant:
 	var lambda:Variant = existing
 	if is_instance_valid(lambda):
@@ -535,14 +592,26 @@ static func create_lambda(owner_name:String, lambda_data:Dictionary, parser:GDSc
 	lambda.declaration_line = start
 	lambda.func_lines = range(start, end + 1)
 	lambda.end_line = end
+	var code_parser:CodeEditParser = ParserRef.get_code_edit_parser(class_obj)
+	lambda.declaration_column = _character_column(code_parser, start, lambda_data.get(Keys.COLUMN_INDEX, -1))
+	lambda.end_column = _character_column(code_parser, end, lambda_data.get("end_column", -1))
+	lambda.owner_variable = lambda_data.get("owner_variable", owner_name)
 	lambda.class_indent = owner_indent
 	lambda.member_data = {Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_LAMBDA, Keys.MEMBER_NAME: owner_name, Keys.LINE_INDEX: start}
 	var locals:Variant = lambda_data.get("locals")
 	if locals is Dictionary: # tree-sitter collected the body already, nested lambdas included
-		lambda.local_vars = locals
+		lambda.local_vars = locals.duplicate(true)
 		lambda._local_vars_mapped = true
+	if lambda_data.has("lambdas"):
+		lambda.set_lambdas(lambda_data.lambdas)
+	elif locals is Dictionary:
 		lambda._create_lambdas_from_locals()
 	return lambda
+
+static func _character_column(code_parser:CodeEditParser, line:int, bytes:int) -> int:
+	if bytes < 0 or line < 0:
+		return -1
+	return code_parser.get_line(line).to_utf8_buffer().slice(0, bytes).get_string_from_utf8().length()
 
 ## Tree-sitter hands locals over pre-collected; lift their `lambda` sub-dicts into ParserFuncs.
 func _create_lambdas_from_locals() -> void:
@@ -556,8 +625,9 @@ func _create_lambdas_from_locals() -> void:
 		var indent:int = code_edit_parser.get_indent_code_edit(data.get(Keys.LINE_INDEX, declaration_line))
 		lambdas[unique_name] = create_lambda(unique_name, lambda_data, ParserRef.get_parser(self), ParserRef.get_class_obj(self), indent)
 
-## Lambdas assigned to this func's local vars. Maps the body first when it hasn't been.
+## Immediate assigned and inline lambdas; map the body lazily when needed.
 func get_lambdas() -> Dictionary:
+	ParserRef.get_code_edit_parser(self).ensure_lambda_data()
 	map_variables()
 	return lambdas
 
@@ -569,8 +639,18 @@ func get_lambda(unique_name:String) -> Variant:
 func _get_lambda_parts() -> Array:
 	var code_edit_parser:CodeEditParser = ParserRef.get_code_edit_parser(self)
 	var text:String = code_edit_parser.get_line_context_text(declaration_line)
+	if declaration_column >= 0:
+		var lines:PackedStringArray = []
+		for line:int in range(declaration_line, end_line + 1):
+			var part:String = code_edit_parser.get_line(line)
+			if line == end_line and end_column >= 0:
+				part = part.left(end_column)
+			if line == declaration_line:
+				part = part.substr(declaration_column)
+			lines.append(part)
+		text = "\n".join(lines)
 	var string_map = code_edit_parser.get_string_map(text)
-	var eq:int = UString.string_safe_find(text, "=", 0, string_map)
+	var eq:int = -1 if declaration_column >= 0 else UString.string_safe_find(text, "=", 0, string_map)
 	var start:int = UString.string_safe_find(text, "func", maxi(eq, 0), string_map)
 	var open:int = -1 if start == -1 else text.find("(", start)
 	if open == -1:

@@ -311,23 +311,23 @@ func get_function_data(identifier_name:String, line:int=-1) -> Dictionary:
 	#print("GET FUNCTION DATA::", result)
 	return result
 
-func resolve_expression_to_type(identifier_name:String, line:int=-1) -> String:
+func resolve_expression_to_type(identifier_name:String, line:int=-1, column:int=-1) -> String:
 	_ensure_source_if_cached()
 	if line == -1:
 		line = code_edit.get_caret_line()
 
-	var result:String = _type_lookup.resolve_expression_to_type_at_line(identifier_name, line)
+	var result:String = _type_lookup.resolve_expression_to_type_at_line(identifier_name, line, column)
 	#print("GET IDENTIFIER::TO TYPE::", result)
 	#ALibRuntime.DebugPrint.print_deb(self, "GET ID TYPE", identifier_name, result)
 	return result
 
 #! keys i-TypeLookup.get_empty_type_rich;
-func resolve_expression_to_type_rich(identifier_name:String, line:int=-1) -> Dictionary:
+func resolve_expression_to_type_rich(identifier_name:String, line:int=-1, column:int=-1) -> Dictionary:
 	_ensure_source_if_cached()
 	if line == -1:
 		line = code_edit.get_caret_line()
 
-	var result:Dictionary = _type_lookup.resolve_expression_to_var_data_at_line(identifier_name, line)
+	var result:Dictionary = _type_lookup.resolve_expression_to_var_data_at_line(identifier_name, line, column)
 	#print("GET IDENTIFIER::TO TYPE::", result)
 	#ALibRuntime.DebugPrint.print_deb(self, "GET ID TYPE", identifier_name, result)
 	return result

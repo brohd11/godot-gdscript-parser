@@ -7,6 +7,7 @@ const ParserClass = GDScriptParser.ParserClass
 const Utils = GDScriptParser.Utils
 const Keys = Utils.Keys
 const UString = GDScriptParser.UString
+const LambdaScanner = preload("lambda_scanner.gd")
 const UClassDetail = GDScriptParser.UClassDetail
 const Keywords = Utils.Keywords
 
@@ -34,6 +35,62 @@ var _annotation_regex:RegEx
 var _first_parse_complete:=false
 var cache_dirty:=true
 var _line_sync_version:int = -1 # code_edit version the line ranges were last synced to
+var _lambda_source:String = ""
+var _plain_lambda_source:String = ""
+var _plain_lambda_roots:Array = []
+var _refreshing_lambdas:bool = false
+
+func ensure_lambda_data() -> void:
+	if _refreshing_lambdas or not is_instance_valid(code_edit) or code_edit.text == _lambda_source:
+		return
+	_refreshing_lambdas = true
+	parse_text(true)
+	_refreshing_lambdas = false
+
+func get_plain_lambdas(class_obj:ParserClass, function = null) -> Dictionary:
+	var source:String = code_edit.text
+	if source != _plain_lambda_source:
+		_plain_lambda_source = source
+		_plain_lambda_roots = LambdaScanner.scan(source)
+	var selected:Array = []
+	for entry:Dictionary in _plain_lambda_roots:
+		var line:int = entry.line_index
+		if _get_parser().get_class_at_line(line) != class_obj.access_path:
+			continue
+		var function_name:String = class_obj.get_function_at_line(line)
+		if function == null:
+			if class_obj.functions.has(function_name):
+				continue
+		elif function_name != function.name:
+			continue
+		selected.append(entry)
+	return _plain_lambda_collection(selected, function != null)
+
+func _plain_lambda_collection(entries:Array, local_scope:bool) -> Dictionary:
+	var reserved:Dictionary = {}
+	for entry:Dictionary in entries:
+		if not entry._owner.is_empty():
+			var key:String = entry._owner
+			if local_scope:
+				key += "-%s-%s" % [entry.line_index, entry._owner_column]
+			reserved[key] = true
+	var result:Dictionary = {}
+	for entry:Dictionary in entries:
+		var owner:String = entry._owner
+		if local_scope and not owner.is_empty():
+			owner += "-%s-%s" % [entry.line_index, entry._owner_column]
+		var key:String = owner
+		if key.is_empty():
+			var base:String = "inline_lambda_%s_%s" % [entry.line_index, entry.column_index]
+			key = base
+			var suffix:int = 1
+			while reserved.has(key) or result.has(key):
+				key = base + "_%s" % suffix
+				suffix += 1
+		result[key] = {Keys.LINE_INDEX: entry.line_index, Keys.COLUMN_INDEX: entry.column_index,
+			Keys.END_LINE: entry.end_line, "end_column": entry.end_column, "owner_variable": owner,
+			"lambdas": _plain_lambda_collection(entry._children, true)}
+	return result
 
 func _set_code_edit(new_code_edit:CodeEdit):
 	if is_instance_valid(code_edit):
@@ -226,7 +283,7 @@ func parse_text(force:=false):
 		_class_obj.set_lines(class_lines)
 		
 		_class_obj.use_ts = false
-		_class_obj.set_members(members)
+		_class_obj.set_members(members, {})
 		_class_obj.set_constants(valid_constants)
 		_class_obj.set_inner_classes(valid_classes)
 		
@@ -239,6 +296,9 @@ func parse_text(force:=false):
 	
 	# reassign the classes and new classes
 	parser.set_class_objs(temp_class_access)
+	for class_obj:ParserClass in temp_class_access.values():
+		class_obj.set_lambdas(get_plain_lambdas(class_obj))
+	_lambda_source = code_edit.text
 	
 	
 	if PRINT_DEBUG:
@@ -530,7 +590,7 @@ func parse_text_ts(force:=false):
 		_class_obj.set_lines(class_lines)
 		_class_obj.use_ts = true
 		
-		_class_obj.set_members(members)
+		_class_obj.set_members(members, cls_data.get("lambdas"))
 		_class_obj.set_constants(valid_constants)
 		_class_obj.set_inner_classes(valid_classes)
 		#print(valid_constants)
@@ -550,6 +610,7 @@ func parse_text_ts(force:=false):
 	cache_dirty = false
 	_first_parse_complete = true
 	_line_sync_version = code_edit.get_version() # ranges are fresh, next sync_line_ranges() no-ops
+	_lambda_source = code_edit.text
 	#_pc = null
 	return temp_class_access
 

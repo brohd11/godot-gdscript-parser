@@ -25,8 +25,8 @@ const STATE_CACHED_RESOLVED = 1
 
 # --- versioning / location ----------------------------------------------------------------------
 const DEFAULT_DIR = "res://.godot/addons/gdscript_parser/parse_cache"
-const SCHEMA_VERSION = 3 # bump when the on-disk dict layout changes
-const PARSER_VERSION = 3 # bump when parse/resolve logic changes -> invalidates all cache files
+const SCHEMA_VERSION = 4 # bump when the on-disk dict layout changes
+const PARSER_VERSION = 4 # bump when parse/resolve logic changes -> invalidates all cache files
 
 # --- on-disk dict keys (cache-local; not in the shared Keys registry) ---------------------------
 const PCACHE_SCHEMA = &"schema_version"
@@ -162,6 +162,9 @@ static func serialize_func(func_obj) -> Dictionary:
 		Keys.LOCAL_VARS: func_obj.local_vars.duplicate(true),
 		PCACHE_FUNC_CACHE: _serialize_func_cache(func_obj),
 		PCACHE_IS_LAMBDA: func_obj.is_lambda,
+		"declaration_column": func_obj.declaration_column,
+		"end_column": func_obj.end_column,
+		"owner_variable": func_obj.owner_variable,
 		PCACHE_LAMBDAS: _serialize_lambdas(func_obj.lambdas),
 	}
 
@@ -203,6 +206,9 @@ static func deserialize_func(data:Dictionary, parser, class_obj) -> GDScriptPars
 	f.local_vars = data.get(Keys.LOCAL_VARS, {})
 	f._cache = data.get(PCACHE_FUNC_CACHE, {})
 	f.is_lambda = data.get(PCACHE_IS_LAMBDA, false)
+	f.declaration_column = data.get("declaration_column", -1)
+	f.end_column = data.get("end_column", -1)
+	f.owner_variable = data.get("owner_variable", "")
 	f.lambdas = _deserialize_lambdas(data.get(PCACHE_LAMBDAS, {}), parser, class_obj)
 	# data was already fully parsed + resolved when cached; mark clean so no live re-read is needed.
 	f._local_vars_mapped = true

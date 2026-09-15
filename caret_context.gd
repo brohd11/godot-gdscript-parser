@@ -156,9 +156,9 @@ func parse():
 	if current_function != Keys.CLASS_BODY and current_function != "" and is_instance_valid(scope_class_obj):
 		scope_func_obj = scope_class_obj.functions.get(current_function) as GDScriptParser.ParserFunc
 	# the single caret scan can't see lambda args or shadowing, so inside a lambda use the layered scope
-	var scope_lambda_obj = scope_class_obj.get_lambda_at_line(caret_line) if is_instance_valid(scope_class_obj) else null
+	var scope_lambda_obj = scope_class_obj.get_lambda_at_line(caret_line, caret_column) if is_instance_valid(scope_class_obj) else null
 	if scope_lambda_obj != null:
-		local_vars = scope_class_obj.get_in_scope_vars_at_line(caret_line)
+		local_vars = scope_class_obj.get_in_scope_vars_at_line(caret_line, [], caret_column)
 		scope_lambda_obj.set_in_scope_local_vars(local_vars)
 		if is_instance_valid(scope_func_obj): # consumers read the function's snapshot
 			scope_func_obj.set_in_scope_local_vars(local_vars)

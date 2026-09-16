@@ -17,11 +17,31 @@ var code_edit:CodeEdit
 var use_native_backend:bool = false # set by the owning GDScriptParser (source of truth) in its _init
 var native_manager:Variant
 const NATIVE_MANAGER_PATH = "res://addons/addon_lib/gdscript_lsp/code_edit_manager.gd"
+const NATIVE_SERVICE_PATH = "res://addons/addon_lib/gdscript_lsp/service.gd"
 
 var indent_size:int
 
 func _get_parser() -> GDScriptParser:
 	return _parser.get_ref()
+
+## A parser that is not the editor's active parser was obtained to READ another script, so its
+## CodeEdit is a scratch line-walker rather than a buffer anyone is editing. active_parser is
+## assigned as soon as the parser is constructed (gdscript_parser.get_parser_for_path), which is
+## before parse() runs - a flag set in _finalize_parser_data would arrive one parse too late.
+## A null active_parser means we cannot tell, so keep today's attached behaviour.
+func _is_read_only_reader(parser:GDScriptParser) -> bool:
+	return is_instance_valid(parser.active_parser) and parser.active_parser != parser
+
+
+## Structural view of a script straight from the workspace index, with no buffer registered.
+## Null when the extension is absent, too old, or the file is not indexed.
+func _get_disk_document(script_path:String, text := "") -> Object:
+	if not ResourceLoader.exists(NATIVE_SERVICE_PATH):
+		return null
+	var service = load(NATIVE_SERVICE_PATH).get_instance()
+	if not is_instance_valid(service) or not service.has_method(&"get_disk_document"):
+		return null
+	return service.get_disk_document(script_path, text)
 
 
 var string_map_cache:={}
@@ -509,41 +529,69 @@ func parse_text_native(force:=false):
 	var main_script = parser._script_resource
 	var main_script_path = parser.get_script_path()
 
-	if not is_instance_valid(native_manager):
-		var code_edit_tree_parser = load(NATIVE_MANAGER_PATH)
-		native_manager = code_edit_tree_parser.new()
-	
-	if native_manager._edit != code_edit:
-		var t4 = GDScriptParser.TF.new("PARSE TEXT NEW CODE")
-		native_manager.detach()
-		# the path is only a label - parse() stamps it into every member dict as Keys.SCRIPT_PATH.
-		# The text must keep coming from the code_edit (prefer_code_edit), or an unsaved buffer is
-		# never reflected and cache_dirty stops meaning anything.
-		native_manager.attach(code_edit, main_script_path)
+	var native_revision:int
+	var full_parse_data:Dictionary
+
+	if _is_read_only_reader(parser):
+		# This parser exists only to READ another script. Its CodeEdit is there so GDScript can walk
+		# lines faster than a PackedStringArray - nobody is editing it. Note the discriminator is the
+		# parser's purpose, not the CodeEdit's origin: a parser-created CodeEdit can still be
+		# live-edited (live_edit_lines_test.gd does exactly that), and those must keep their buffer.
+		# Attaching would register it with the LSP
+		# (attach -> acquire -> sync_buffer -> update_document), publishing a read as an open
+		# document and invalidating every script that depends on it, mid-resolve. Read the
+		# workspace's own indexed copy instead: no buffer, no version push, nothing invalidated.
+		# Matches the built-in LSP, where only editor buffers are open and everything else is disk.
+		var disk_doc:Object = _get_disk_document(main_script_path, code_edit.text)
+		if not is_instance_valid(disk_doc):
+			# No extension, or a file the workspace has not indexed - keep the text parser.
+			use_native_backend = false
+			var text_result = parse_text(force)
+			use_native_backend = true
+			return text_result
+		native_revision = disk_doc.get_revision()
+		if not cache_dirty and not force and _full_native_revision == native_revision:
+			return
+		full_parse_data = disk_doc.parse_script(main_script_path)
 		if PRINT_DEBUG:
-			t4.stop()
-	elif not native_manager.cache_valid(): # only re-parse if needed
-		native_manager.parse_text()
-	elif force:
-		native_manager.parse_text(true)
+			GDScriptParser.TF.new("PARSE TO DATA (disk)").stop()
+	else:
 
-	# same code_edit, different script (set_script_path / upgrade_to_live) - re-label before parsing
-	# so members are not stamped with the previous script's path.
-	native_manager.set_script_path(main_script_path)
+		if not is_instance_valid(native_manager):
+			var code_edit_tree_parser = load(NATIVE_MANAGER_PATH)
+			native_manager = code_edit_tree_parser.new()
+	
+		if native_manager._edit != code_edit:
+			var t4 = GDScriptParser.TF.new("PARSE TEXT NEW CODE")
+			native_manager.detach()
+			# the path is only a label - parse() stamps it into every member dict as Keys.SCRIPT_PATH.
+			# The text must keep coming from the code_edit (prefer_code_edit), or an unsaved buffer is
+			# never reflected and cache_dirty stops meaning anything.
+			native_manager.attach(code_edit, main_script_path)
+			if PRINT_DEBUG:
+				t4.stop()
+		elif not native_manager.cache_valid(): # only re-parse if needed
+			native_manager.parse_text()
+		elif force:
+			native_manager.parse_text(true)
 
-	var t2 = GDScriptParser.TF.new("PARSE TO DATA")
-	if not is_instance_valid(native_manager.parser):
-		# Runtime/headless callers without an editor owner retain the text parser.
-		use_native_backend = false
-		var result = parse_text(force)
-		use_native_backend = true
-		return result
-	var native_revision: int = native_manager.get_parse_revision()
-	if not cache_dirty and not force and _full_native_revision == native_revision:
-		return
-	var full_parse_data = native_manager.parse()
-	if PRINT_DEBUG:
-		t2.stop()
+		# same code_edit, different script (set_script_path / upgrade_to_live) - re-label before parsing
+		# so members are not stamped with the previous script's path.
+		native_manager.set_script_path(main_script_path)
+
+		var t2 = GDScriptParser.TF.new("PARSE TO DATA")
+		if not is_instance_valid(native_manager.parser):
+			# Runtime/headless callers without an editor owner retain the text parser.
+			use_native_backend = false
+			var result = parse_text(force)
+			use_native_backend = true
+			return result
+		native_revision = native_manager.get_parse_revision()
+		if not cache_dirty and not force and _full_native_revision == native_revision:
+			return
+		full_parse_data = native_manager.parse()
+		if PRINT_DEBUG:
+			t2.stop()
 	
 	var temp_class_access = {}
 	for path:String in full_parse_data.keys():

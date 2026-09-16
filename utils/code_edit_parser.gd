@@ -610,12 +610,8 @@ func parse_text_native(force:=false):
 	_full_native_revision = native_revision
 	cache_dirty = false
 	_first_parse_complete = true
-<<<<<<< HEAD
-	_line_sync_version = code_edit.get_version() # ranges are fresh, next sync_line_ranges() no-ops
-	_lambda_source = code_edit.text
-=======
 	_line_sync_version = native_revision # ranges are fresh, next sync_line_ranges() no-ops
->>>>>>> 9aca66a (migrate tree sitter to gdscript-lsp)
+	_lambda_source = code_edit.text
 	#_pc = null
 	return temp_class_access
 

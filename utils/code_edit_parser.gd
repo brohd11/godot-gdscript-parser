@@ -14,9 +14,9 @@ const Keywords = Utils.Keywords
 var _parser:WeakRef
 var code_edit:CodeEdit
 
-var use_tree_sitter:bool = false # set by the owning GDScriptParser (source of truth) in its _init
-var tree_sitter_manager:Variant
-const TREE_SITTER_MANAGER_PATH = "res://addons/addon_lib/tree_sitter_gd/gdscript_code_edit_tree_parser.gd"
+var use_native_backend:bool = false # set by the owning GDScriptParser (source of truth) in its _init
+var native_manager:Variant
+const NATIVE_MANAGER_PATH = "res://addons/addon_lib/gdscript_lsp/code_edit_manager.gd"
 
 var indent_size:int
 
@@ -34,6 +34,7 @@ var _annotation_regex:RegEx
 
 var _first_parse_complete:=false
 var cache_dirty:=true
+var _full_native_revision: int = -1
 var _line_sync_version:int = -1 # code_edit version the line ranges were last synced to
 var _lambda_source:String = ""
 var _plain_lambda_source:String = ""
@@ -148,9 +149,9 @@ func ensure_first_parse():
 	parse_text()
 
 func parse_text(force:=false):
-	if use_tree_sitter:
-		#return parse_text_ts()
-		return parse_text_ts(force)
+	if use_native_backend:
+		#return parse_text_native()
+		return parse_text_native(force)
 	
 	_initialize_regex_map()
 	_initialize_regex_annotation()
@@ -486,7 +487,7 @@ func _line_has_open_bracket(stripped:String):
 	return false
 
 
-func parse_text_ts(force:=false):
+func parse_text_native(force:=false):
 	
 	#_initialize_regex_map() # these aren't used with ts I believe
 	#_initialize_regex_annotation()
@@ -505,43 +506,42 @@ func parse_text_ts(force:=false):
 	if existing_class_access.is_empty():
 		cache_dirty = true
 	
-	# if this is here, the tree_sitter_manager can be sparse parsed and not run properly
-	#elif is_instance_valid(tree_sitter_manager):
-		#cache_dirty = not tree_sitter_manager.cache_valid()
-	
-	if not cache_dirty and not force: # cache_dirty means text is changed. If it hasn't then everything should be valid
-		#t.stop()
-		#print("CODE EDIT PARSE EARLY EXIT::", parser.get_script_path().get_file())
-		return
-	
 	var main_script = parser._script_resource
 	var main_script_path = parser.get_script_path()
 
-	if not is_instance_valid(tree_sitter_manager):
-		var code_edit_tree_parser = load(TREE_SITTER_MANAGER_PATH)
-		tree_sitter_manager = code_edit_tree_parser.new()
+	if not is_instance_valid(native_manager):
+		var code_edit_tree_parser = load(NATIVE_MANAGER_PATH)
+		native_manager = code_edit_tree_parser.new()
 	
-	if tree_sitter_manager._edit != code_edit:
+	if native_manager._edit != code_edit:
 		var t4 = GDScriptParser.TF.new("PARSE TEXT NEW CODE")
-		tree_sitter_manager.detach()
+		native_manager.detach()
 		# the path is only a label - parse() stamps it into every member dict as Keys.SCRIPT_PATH.
 		# The text must keep coming from the code_edit (prefer_code_edit), or an unsaved buffer is
 		# never reflected and cache_dirty stops meaning anything.
-		tree_sitter_manager.attach(code_edit, main_script_path)
+		native_manager.attach(code_edit, main_script_path)
 		if PRINT_DEBUG:
 			t4.stop()
-	elif not tree_sitter_manager.cache_valid(): # only re-parse if needed
-		tree_sitter_manager.parse_text()
+	elif not native_manager.cache_valid(): # only re-parse if needed
+		native_manager.parse_text()
 	elif force:
-		tree_sitter_manager._prev_version = -1
-		tree_sitter_manager.parse_text()
+		native_manager.parse_text(true)
 
 	# same code_edit, different script (set_script_path / upgrade_to_live) - re-label before parsing
 	# so members are not stamped with the previous script's path.
-	tree_sitter_manager.set_script_path(main_script_path)
+	native_manager.set_script_path(main_script_path)
 
 	var t2 = GDScriptParser.TF.new("PARSE TO DATA")
-	var full_parse_data = tree_sitter_manager.parse()
+	if not is_instance_valid(native_manager.parser):
+		# Runtime/headless callers without an editor owner retain the text parser.
+		use_native_backend = false
+		var result = parse_text(force)
+		use_native_backend = true
+		return result
+	var native_revision: int = native_manager.get_parse_revision()
+	if not cache_dirty and not force and _full_native_revision == native_revision:
+		return
+	var full_parse_data = native_manager.parse()
 	if PRINT_DEBUG:
 		t2.stop()
 	
@@ -607,10 +607,15 @@ func parse_text_ts(force:=false):
 	if PRINT_DEBUG:
 		t.stop()
 	#print("CLASSES ",temp_class_access.keys())
+	_full_native_revision = native_revision
 	cache_dirty = false
 	_first_parse_complete = true
+<<<<<<< HEAD
 	_line_sync_version = code_edit.get_version() # ranges are fresh, next sync_line_ranges() no-ops
 	_lambda_source = code_edit.text
+=======
+	_line_sync_version = native_revision # ranges are fresh, next sync_line_ranges() no-ops
+>>>>>>> 9aca66a (migrate tree sitter to gdscript-lsp)
 	#_pc = null
 	return temp_class_access
 
@@ -622,7 +627,7 @@ func parse_text_ts(force:=false):
 ## on being the editor's parser (it drives the headless suite fine); the per-keystroke policy belongs
 ## to the caller, EditorGDScriptParser._on_text_changed. Returns true when a range actually moved.
 func sync_line_ranges() -> bool:
-	if not use_tree_sitter or not _first_parse_complete:
+	if not use_native_backend or not _first_parse_complete:
 		return false
 	var parser:GDScriptParser = _get_parser()
 	if not is_instance_valid(parser) or not is_instance_valid(parser.code_edit):
@@ -630,16 +635,16 @@ func sync_line_ranges() -> bool:
 	# a code_edit we never parsed, or a manager pointed at another buffer, is the full parse's job
 	if not is_instance_valid(code_edit) or code_edit != parser.code_edit:
 		return false
-	if not is_instance_valid(tree_sitter_manager) or tree_sitter_manager._edit != code_edit:
+	if not is_instance_valid(native_manager) or native_manager._edit != code_edit:
 		return false
 
-	var version:int = code_edit.get_version()
+	var version:int = native_manager.get_parse_revision()
 	if version == _line_sync_version:
 		return false
 
 	# through the manager, not its parser: it reparses first (free no-op at the matching version) and
 	# caches per tree revision, so the highlighter's call in the same frame costs nothing. Read-only.
-	var line_data:Dictionary = tree_sitter_manager.sparse_parse().get("lines", {})
+	var line_data:Dictionary = native_manager.sparse_parse().get("lines", {})
 
 	var changed:bool = false
 	for path:String in line_data.keys():
@@ -651,7 +656,7 @@ func sync_line_ranges() -> bool:
 		var cls_data:Dictionary = line_data[path]
 		var class_start:int = cls_data.get(Keys.LINE_INDEX, -1)
 		if path.is_empty():
-			class_start = 0 # same root normalisation as parse_text_ts, or the two paths disagree
+			class_start = 0 # same root normalisation as parse_text_native, or the two paths disagree
 		var class_end:int = cls_data.get(Keys.END_LINE, class_start)
 		if class_start >= 0 and class_end >= class_start:
 			var lines:PackedInt32Array = range(class_start, class_end + 1)

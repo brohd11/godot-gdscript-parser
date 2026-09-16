@@ -48,7 +48,13 @@ var state:int = STATE_LIVE
 
 var code_edit_parser:CodeEditParser
 # this set's children props, allows tests for non ts parsing
-var use_tree_sitter:bool = ClassDB.class_exists("GDScriptTreeSitter")
+var use_native_backend:bool = ClassDB.class_exists("GDScriptLanguageService")
+## Legacy selector name, retained for parser clients and fallback tests.
+var use_tree_sitter: bool:
+	get:
+		return use_native_backend
+	set(value):
+		set_use_native_backend(value)
 var _caret_context:CaretContext
 var _type_lookup:TypeLookup
 var _access:Access
@@ -66,7 +72,7 @@ var active_parser:GDScriptParser
 
 func _init() -> void:
 	code_edit_parser = CodeEditParser.new()
-	code_edit_parser.use_tree_sitter = use_tree_sitter
+	code_edit_parser.use_native_backend = use_native_backend
 	_type_lookup = TypeLookup.new()
 	_access = Access.new()
 	
@@ -204,18 +210,21 @@ func set_source_code(source:String) -> void: # need a version if the script edit
 	_create_buffer_code_edit()
 	code_edit.text = source
 
-## Force tree-sitter on/off (default: GDScriptTreeSitter registered). call before parse()
-## for tests exercising both tree-sitter and plain-text parse paths.
-func set_use_tree_sitter(value:bool) -> void:
-	use_tree_sitter = value
+## Select the optional native backend; call before parsing.
+func set_use_native_backend(value:bool) -> void:
+	use_native_backend = value and ClassDB.class_exists("GDScriptLanguageService")
 	if is_instance_valid(code_edit_parser):
-		code_edit_parser.use_tree_sitter = value
+		code_edit_parser.use_native_backend = use_native_backend
+
+## Compatibility with callers that selected the previous native backend.
+func set_use_tree_sitter(value: bool) -> void:
+	set_use_native_backend(value)
 
 #endregion
 
 func cache_valid() -> bool:
-	if is_instance_valid(code_edit_parser.tree_sitter_manager):
-		return code_edit_parser.tree_sitter_manager.cache_valid()
+	if is_instance_valid(code_edit_parser.native_manager):
+		return code_edit_parser.native_manager.get_parse_revision() == code_edit_parser._full_native_revision
 	return not code_edit_parser.cache_dirty
 
 func parse(force:=false) -> void:

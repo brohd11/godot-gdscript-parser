@@ -62,6 +62,7 @@ var _script_resource:GDScript
 var _class_access:Dictionary = {}
 
 var active_parser:GDScriptParser
+var _source_provider:Callable
 
 
 func _init() -> void:
@@ -92,6 +93,10 @@ func set_parse_cache_dir(dir:String) -> void:
 
 func set_get_parser_callable(callable:Callable) -> void:
 	_get_cached_parser_callable = callable
+
+## Optional immutable source snapshot. Return null for paths that should use disk source.
+func set_source_provider(provider:Callable) -> void:
+	_source_provider = provider
 
 func clean_parser_cache() -> void:
 	var active_parser_cache:Dictionary = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
@@ -448,6 +453,10 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 		
 	if script_path == _script_path and not force_cache:
 		return self
+	if _source_provider.is_valid():
+		var source:Variant = _source_provider.call(script_path)
+		if source is String:
+			return _snapshot_parser(script_path, source)
 	if _get_cached_parser_callable.is_valid():
 		return _get_cached_parser_callable.call()
 	if _parser_cache == null:
@@ -478,7 +487,7 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 		#print("EXISTING PARSER::", script_path)
 		active_parsers_cache.erase(script_path)
 	else:
-		if not force_cache:
+		if not force_cache and not _source_provider.is_valid():
 			parser = read_cache(script_path) # disk cache; null unless the on-disk mtime matches
 		if is_instance_valid(parser):
 			if is_instance_valid(active_parser):
@@ -487,6 +496,7 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 			_finalize_parser_data(parser, parser_data, active_parsers_cache, script_path)
 			return parser
 		parser = new()
+		parser.set_source_provider(_source_provider)
 		parser.set_parser_cache(_parser_cache)
 		parser.set_parse_cache_dir(_parse_cache_dir)
 		parser_data[Keys.CACHE_PARSER] = parser
@@ -515,6 +525,26 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 	var need_parse:bool = not parser_valid or file_changed or force_cache
 	parser.parse(need_parse) # i think this should be last so that classes can be updated
 	_finalize_parser_data(parser, parser_data, active_parsers_cache, script_path)
+	return parser
+
+
+func _snapshot_parser(path:String, source:String) -> GDScriptParser:
+	var cache:Dictionary = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
+	var data:Dictionary = cache.get(path, {})
+	var parser = data.get(Keys.CACHE_PARSER) as GDScriptParser
+	if is_instance_valid(parser) and data.get("snapshot_source") == source:
+		return parser
+	parser = new()
+	parser.set_use_native_backend(false)
+	parser.set_parser_cache(_parser_cache)
+	parser.set_source_provider(_source_provider)
+	parser.active_parser = active_parser
+	parser.set_current_script(load(path))
+	parser.set_source_code(source)
+	data = {Keys.CACHE_PARSER: parser, "snapshot_source": source}
+	cache[path] = data
+	parser.parse()
+	_finalize_parser_data(parser, data, cache, path)
 	return parser
 
 ## Shared tail for get_parser_for_path: share the inference context and write the parser + its

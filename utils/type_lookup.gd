@@ -1369,7 +1369,9 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 		var p_check = resolve_preload(type_declaration, class_obj)
 		if p_check != "": # adding this check here allows a non resolved preload to be resolved to path and have ins tag added if appropriate
 			type_declaration = p_check # does the one in the main body still apply?, I am thinking no
-			
+	elif Utils.is_gdscript_path(type_declaration) and not Utils.is_absolute_path(type_declaration):
+		# The text scanner unwraps literal preloads before resolution; retain their owning folder.
+		type_declaration = Utils.ensure_absolute_path(type_declaration, class_obj.main_script_path)
 	
 	
 	if type_declaration != "":

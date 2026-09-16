@@ -1,0 +1,45 @@
+export_root: "res://addons/addon_lib/gdscript_parser/_export_ignore/exports"
+plugin_folder: "GDScriptParser{{version=gdscript_parser}}"
+pre_script: "res://addons/addon_lib/gdscript_parser/_export_ignore/pre_post_export.gd"
+post_script: "res://addons/addon_lib/gdscript_parser/_export_ignore/pre_post_export.gd"
+build_require: []
+compile_require: []
+options:
+  overwrite: true
+  include_uid: true
+  include_import: true
+  ignore_src: true
+  use_tag_in_cfg: true
+  exported_deps: []
+  include_min_version: true
+  move_global_files: true
+  include_docs: true
+  include_project_license: false
+  parser_settings:
+    use_relative_paths: false
+    backport_target: 100
+    parse_cs:
+      namespace_rename: {}
+    parse_gd:
+      replace_editor_interface: false
+      class_rename_ignore: []
+      backport_string_renames: {}
+    parse_tscn: {}
+    parse_tres: {}
+exports:
+  -
+    source: "res://addons/addon_lib/gdscript_parser"
+    export_name: "gdscript-parser{{version=gdscript_parser}}"
+    export_folder: "addons/addon_lib/gdscript_parser"
+    exclude:
+      directories:
+        - "res://addons/addon_lib/gdscript_parser/_export_ignore"
+      file_extensions: []
+      files: []
+    other_transfers: []
+    parser_overide_settings:
+      parse_cs: {}
+      parse_gd: {}
+      parse_tscn: {}
+      parse_tres: {}
+    remote_dir: "res://addons/addon_lib/gdscript_parser/src/remote"

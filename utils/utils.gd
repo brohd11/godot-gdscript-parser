@@ -1,5 +1,5 @@
 #! import_p Keys,
-const SELF = preload("res://addons/addon_lib/brohd/alib_runtime/utils/gdscript/parser/utils/utils.gd")
+const SELF = preload("res://addons/addon_lib/gdscript_parser/utils/utils.gd")
 
 const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 const Keys = GDScriptParser.Keys

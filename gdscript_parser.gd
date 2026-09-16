@@ -49,12 +49,6 @@ var state:int = STATE_LIVE
 var code_edit_parser:CodeEditParser
 # this set's children props, allows tests for non ts parsing
 var use_native_backend:bool = ClassDB.class_exists("GDScriptLanguageService")
-## Legacy selector name, retained for parser clients and fallback tests.
-var use_tree_sitter: bool:
-	get:
-		return use_native_backend
-	set(value):
-		set_use_native_backend(value)
 var _caret_context:CaretContext
 var _type_lookup:TypeLookup
 var _access:Access
@@ -215,10 +209,6 @@ func set_use_native_backend(value:bool) -> void:
 	use_native_backend = value and ClassDB.class_exists("GDScriptLanguageService")
 	if is_instance_valid(code_edit_parser):
 		code_edit_parser.use_native_backend = use_native_backend
-
-## Compatibility with callers that selected the previous native backend.
-func set_use_tree_sitter(value: bool) -> void:
-	set_use_native_backend(value)
 
 #endregion
 

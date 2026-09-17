@@ -1,12 +1,12 @@
 
-const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
+const URString = GDScriptParser.URString
+const UClassDetail = GDScriptParser.UClassDetail
+
 const ParserClass = GDScriptParser.ParserClass
 const ParserFunc = GDScriptParser.ParserFunc
 const Utils = GDScriptParser.Utils
 const Keys = Utils.Keys
-const UString = GDScriptParser.UString
-const UFile = GDScriptParser.UFile
-const UClassDetail = GDScriptParser.UClassDetail
+
 
 const ENUM_SUFFIX = Keys.ENUM_PATH_SUFFIX
 
@@ -68,7 +68,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 	var dec_trimmed:String = ""
 	if Utils.type_path_get_type(symbol_access.declaration_type, true) == "Enum":
 		if symbol_access.declaration_symbol.contains("."):
-			dec_trimmed = UString.trim_member_access_back(symbol_access.declaration_symbol)
+			dec_trimmed = URString.trim_member_access_back(symbol_access.declaration_symbol)
 		
 		dec_trimmed = dec_trimmed.trim_suffix(symbol_class_path).trim_suffix(".")
 	else:
@@ -79,7 +79,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 	var secondary_parser = parser.get_parser_and_class_obj_for_script(secondary_path)
 	
 	# get the front and type of the secondary, if the symbol is found, then it can be appended to the symbol access 
-	var sec_front = UString.get_member_access_front(secondary_access.declaration_symbol)
+	var sec_front = URString.get_member_access_front(secondary_access.declaration_symbol)
 	var sec_front_type = secondary_access.declaration_type
 	if secondary_access.declaration_symbol.contains("."):
 		sec_front_type = secondary_parser.class_obj.get_member_type(sec_front, true)
@@ -101,28 +101,28 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 	# may make sense to work backwards and track the path? But haven't had issues yet..
 	if secondary_access.declaration_type == to_find:
 		var secondary_class_obj = secondary_parser.class_obj as ParserClass
-		var back = UString.get_member_access_back(secondary_access.declaration_symbol)
+		var back = URString.get_member_access_back(secondary_access.declaration_symbol)
 		var member_data = secondary_class_obj.get_member_data(back, true)
 		if member_data:
 			print_deb_err(T.ACCESS_PATH, ["SEC DEC == TO_FIND"])
 			var access_path = member_data.get(Keys.ACCESS_PATH)
-			access_options.standard = UString.dot_joinv([dec_trimmed, access_path, back])
+			access_options.standard = URString.dot_joinv([dec_trimmed, access_path, back])
 			return access_options
 	
 	#^r doesn't seem to be firing, may be able to get rid of
 	# same as above but with symbol access
 	if symbol_access.declaration_type == to_find:
 		var current_access_class_obj = symbol_access_parser.class_obj as ParserClass
-		var back = UString.get_member_access_back(symbol_access.declaration_symbol)
+		var back = URString.get_member_access_back(symbol_access.declaration_symbol)
 		var member_data = current_access_class_obj.get_member_data(back, true)
 		if member_data:
 			print_deb_err(T.ACCESS_PATH, ["CURRENT DEC == TO_FIND"])
 			var access_path = member_data.get(Keys.ACCESS_PATH)
-			access_options.standard = UString.dot_joinv([dec_trimmed, access_path, back])
+			access_options.standard = URString.dot_joinv([dec_trimmed, access_path, back])
 			return access_options
 	#^r
 	
-	var secondary_dec_front = UString.get_member_access_front(secondary_access.declaration_symbol)
+	var secondary_dec_front = URString.get_member_access_front(secondary_access.declaration_symbol)
 	# 
 	if symbol_access_parser:
 		var symbol_access_class_obj = symbol_access_parser.class_obj as ParserClass
@@ -133,7 +133,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 			if type == sec_front_type:
 				print_deb_err(T.ACCESS_PATH, ["IN MY FIRST CHECK"])
 				var access_path = sec_member_data.get(Keys.ACCESS_PATH)
-				var full_access_path = UString.dot_joinv([dec_trimmed, access_path, secondary_access.declaration_symbol])
+				var full_access_path = URString.dot_joinv([dec_trimmed, access_path, secondary_access.declaration_symbol])
 				access_options.standard = full_access_path
 				return access_options
 		
@@ -142,7 +142,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 			print_deb_err(T.ACCESS_PATH, ["PRELOAD CHECK"])
 			var preload_member_data = symbol_access_class_obj.get_member_data(pre_check, true)
 			var access_path = preload_member_data.get(Keys.ACCESS_PATH)
-			var full_access_path = UString.dot_joinv([dec_trimmed, access_path, pre_check])
+			var full_access_path = URString.dot_joinv([dec_trimmed, access_path, pre_check])
 			access_options.standard = full_access_path
 			return access_options
 	
@@ -150,7 +150,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 	var secondary_script_data = Utils.type_path_get_script_data(secondary_path)
 	var secondary_script_path = secondary_script_data[0]
 	
-	var symbol_front = UString.get_member_access_front(symbol_access.declaration_symbol)
+	var symbol_front = URString.get_member_access_front(symbol_access.declaration_symbol)
 	var symbol_front_type = symbol_access.declaration_type
 	if symbol_access.declaration_symbol.contains("."):
 		symbol_front_type = symbol_access_parser.class_obj.get_member_type(symbol_front)
@@ -169,13 +169,13 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 				#var access_path = current_class_member_data.get(Keys.ACCESS_PATH)
 				var type = class_obj.get_member_type(symbol_front)
 				if symbol_front_type == type:
-					access_options.standard = UString.dot_joinv([dec_trimmed, access_path, secondary_access.declaration_symbol])
+					access_options.standard = URString.dot_joinv([dec_trimmed, access_path, secondary_access.declaration_symbol])
 					return access_options
 			
 			var global_name = UClassDetail.get_global_class_name(secondary_script_path)
 			if global_name:
 				print_deb_err(T.ACCESS_PATH, ["SECONDARY GLOBAL CHECK"])
-				var full_access_path = UString.dot_joinv([global_name, access_path, secondary_access.declaration_symbol])
+				var full_access_path = URString.dot_joinv([global_name, access_path, secondary_access.declaration_symbol])
 				access_options.standard = full_access_path
 				return access_options
 			#^r
@@ -236,7 +236,7 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 	var to_find_script_path = to_find_script_data[0]
 	var to_find_class_path = to_find_script_data[1]
 	
-	var dec_front = UString.get_member_access_front(access_object.declaration_symbol)
+	var dec_front = URString.get_member_access_front(access_object.declaration_symbol)
 	if UClassDetail.get_global_class_path(dec_front) != "":
 		access_options.standard = access_object.declaration_symbol
 		return access_options
@@ -251,7 +251,7 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 				access_options.standard = to_find_class_path.get_file()
 			return access_options
 	
-	if class_obj.inherits_script(UString.dot_join(to_find_script_path, to_find_class_path)):
+	if class_obj.inherits_script(URString.dot_join(to_find_script_path, to_find_class_path)):
 		if class_obj.get_member_data(dec_front, true) != null:
 			print_deb(T.ACCESS_PATH, ["INH EXIT"])
 			access_options.standard = access_object.declaration_symbol
@@ -279,7 +279,7 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 			var access_path = dec_front_member_data.get(Keys.ACCESS_PATH)
 			if to_find_is_current_script:
 				access_path = access_path.trim_prefix(class_obj.access_path)
-			var full_access_path = UString.dot_joinv([access_path, access_object.declaration_symbol])
+			var full_access_path = URString.dot_joinv([access_path, access_object.declaration_symbol])
 			print_deb_err(T.ACCESS_PATH, ["IN MY FIRST CHECK::", full_access_path])
 			access_options.standard = full_access_path
 			return access_options
@@ -344,7 +344,7 @@ func _gather_standard_candidates(class_obj:ParserClass, access_object:AccessObje
 	var to_find_class_path = to_find_script_data[1]
 	var to_find_is_current_script = class_obj.main_script_path == to_find_script_path
 
-	var dec_front = UString.get_member_access_front(access_object.declaration_symbol)
+	var dec_front = URString.get_member_access_front(access_object.declaration_symbol)
 
 	# 0. As-typed verbatim - when the declaration symbol already spells a complete, valid path to
 	#    to_find (e.g. "AddonData.AlertType"), prefer it. This both matches what the user typed and
@@ -364,7 +364,7 @@ func _gather_standard_candidates(class_obj:ParserClass, access_object:AccessObje
 		candidates.append(same_script)
 
 	# 3. Inherited - the front resolves through an inherited script that owns to_find.
-	if class_obj.inherits_script(UString.dot_join(to_find_script_path, to_find_class_path)):
+	if class_obj.inherits_script(URString.dot_join(to_find_script_path, to_find_class_path)):
 		if class_obj.get_member_data(dec_front, true) != null:
 			candidates.append(access_object.declaration_symbol)
 
@@ -391,7 +391,7 @@ func _gather_standard_candidates(class_obj:ParserClass, access_object:AccessObje
 		var access_path = member_data.get(Keys.ACCESS_PATH)
 		if to_find_is_current_script:
 			access_path = access_path.trim_prefix(class_obj.access_path)
-		candidates.append(UString.dot_joinv([access_path, access_object.declaration_symbol]))
+		candidates.append(URString.dot_joinv([access_path, access_object.declaration_symbol]))
 
 	# 5. Dual-access alias - the type comes from a function arg/return defined in another script, so
 	#    the secondary access object carries the member path as written there (e.g. "MyEnum",
@@ -401,7 +401,7 @@ func _gather_standard_candidates(class_obj:ParserClass, access_object:AccessObje
 	#    inner classes, since resolution runs in the caller's scope).
 	if secondary_access != null:
 		var sec_sym = secondary_access.declaration_symbol
-		var sym_front = UString.get_member_access_front(access_object.declaration_symbol)
+		var sym_front = URString.get_member_access_front(access_object.declaration_symbol)
 		# The candidate order turns on whether the secondary symbol is usable VERBATIM from the caller.
 		# That is a reachability question, not a declaration one: an inherited member's arg is spelled in
 		# the ancestor's scope, yet a caller that inherits that script can still write it as-typed.
@@ -415,8 +415,8 @@ func _gather_standard_candidates(class_obj:ParserClass, access_object:AccessObje
 			# member that verbatim can't reach.
 			candidates.append(sec_sym)                                       # verbatim first
 			if sym_front != access_object.declaration_symbol:
-				candidates.append(UString.dot_join(sym_front, sec_sym))     # front prefix (outer-scope members)
-			candidates.append(UString.dot_join(access_object.declaration_symbol, sec_sym))  # full-symbol prefix
+				candidates.append(URString.dot_join(sym_front, sec_sym))     # front prefix (outer-scope members)
+			candidates.append(URString.dot_join(access_object.declaration_symbol, sec_sym))  # full-symbol prefix
 		else:
 			# Out of reach: the arg is written in a foreign script's scope the caller neither owns nor
 			# inherits, so it must be reached through the object's path. Front prefix (reaches the
@@ -426,8 +426,8 @@ func _gather_standard_candidates(class_obj:ParserClass, access_object:AccessObje
 			# from another script's scope, so it only wins when it is already a caller-usable path (a
 			# global/preload alias) and the prefixed forms fail verification.
 			if sym_front != access_object.declaration_symbol:
-				candidates.append(UString.dot_join(sym_front, sec_sym))     # front prefix (outer-scope members)
-			candidates.append(UString.dot_join(access_object.declaration_symbol, sec_sym))  # full-symbol prefix
+				candidates.append(URString.dot_join(sym_front, sec_sym))     # front prefix (outer-scope members)
+			candidates.append(URString.dot_join(access_object.declaration_symbol, sec_sym))  # full-symbol prefix
 			candidates.append(sec_sym)                                       # secondary verbatim (last resort)
 
 	return candidates
@@ -452,7 +452,7 @@ func get_global_name_and_script_alias(to_find:String, class_obj:ParserClass, acc
 	var member_name = Utils.type_path_get_member(to_find)
 	var global_name = UClassDetail.get_global_class_name(to_find_script_path)
 	if global_name != "":
-		access_options.global = AccessUtils.remove_suffixes(UString.dot_joinv([global_name, to_find_class_path, member_name]))
+		access_options.global = AccessUtils.remove_suffixes(URString.dot_joinv([global_name, to_find_class_path, member_name]))
 	if access_options.script_alias != "":
 		return # early exit if it has been changed, this can be expensive, not sure if this needed now?
 	
@@ -469,7 +469,7 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass) -> String:
 	var script_access_path:String = script_data[1]
 	var working_script_access_path:String = script_access_path
 	#if to_find.ends_with(ENUM_SUFFIX):
-		#script_access_path = UString.dot_join(script_access_path, Utils.type_path_get_member(to_find))
+		#script_access_path = URString.dot_join(script_access_path, Utils.type_path_get_member(to_find))
 	
 	var pc = class_obj.has_preload(to_find)
 	if pc != null:
@@ -483,11 +483,11 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass) -> String:
 	if script_access_path != "":
 		steps += 1
 	for i in range(steps):
-		var search_path = UString.dot_join(script_path,working_script_access_path)
+		var search_path = URString.dot_join(script_path,working_script_access_path)
 		var back = working_script_access_path # i think this would be right vs an empty string
 		if working_script_access_path.contains("."):
-			back = UString.get_member_access_back(working_script_access_path)
-			working_script_access_path = UString.trim_member_access_back(working_script_access_path)
+			back = URString.get_member_access_back(working_script_access_path)
+			working_script_access_path = URString.trim_member_access_back(working_script_access_path)
 		else:
 			working_script_access_path = ""
 		
@@ -498,16 +498,16 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass) -> String:
 		if check != null:
 			print_deb(T.ACCESS_PATH, ["FOUND", check, working_script_access_path])
 			#if to_find.ends_with(ENUM_SUFFIX):
-				#working_script_access_path = UString.dot_join(working_script_access_path, Utils.type_path_get_member(to_find))
-			#var return_val = UString.dot_join(check, working_script_access_path)
+				#working_script_access_path = URString.dot_join(working_script_access_path, Utils.type_path_get_member(to_find))
+			#var return_val = URString.dot_join(check, working_script_access_path)
 			
 			if to_find.ends_with(ENUM_SUFFIX):
-				checked_access = UString.dot_join(checked_access, Utils.type_path_get_member(to_find))
-			var return_val = UString.dot_join(check, checked_access)
+				checked_access = URString.dot_join(checked_access, Utils.type_path_get_member(to_find))
+			var return_val = URString.dot_join(check, checked_access)
 			print_deb(T.ACCESS_PATH, ["FINAL", return_val])
 			return return_val
 		
-		checked_access = UString.dot_join(back, checked_access)
+		checked_access = URString.dot_join(back, checked_access)
 	
 	if to_find.begins_with(class_obj.main_script_path):
 		var to_find_script_data = Utils.type_path_get_script_data(to_find)
@@ -519,7 +519,7 @@ func reverse_path_chain_search(to_find:String, class_obj:ParserClass) -> String:
 		var actual_access = to_find_access
 		if to_find_access.begins_with(class_access):
 			actual_access = to_find_access.trim_prefix(class_access)
-		return UString.dot_join(actual_access, to_find_member)
+		return URString.dot_join(actual_access, to_find_member)
 		
 	
 	return ""
@@ -539,14 +539,14 @@ func _find_constant_by_value(type_to_find:String, initial_class_obj:ParserClass,
 		if val == type_to_find:
 			var member_data = initial_class_obj.get_member_data(key, true)
 			var access_path = member_data.get(Keys.ACCESS_PATH)
-			return UString.dot_joinv([current_access, access_path, key])
+			return URString.dot_joinv([current_access, access_path, key])
 		elif type_to_find.begins_with(val):
 			var stripped = type_to_find.trim_prefix(val)
 			if type_to_find.ends_with(ENUM_SUFFIX):
 				var member = Utils.type_path_get_member(type_to_find)
 				var non_member = Utils.type_path_get_non_member(type_to_find)
-				stripped = UString.dot_join(non_member, member)
-			return UString.dot_joinv([current_access, key, stripped])
+				stripped = URString.dot_join(non_member, member)
+			return URString.dot_joinv([current_access, key, stripped])
 	
 	var parser = Utils.ParserRef.get_parser(self)
 	
@@ -556,7 +556,7 @@ func _find_constant_by_value(type_to_find:String, initial_class_obj:ParserClass,
 		var next_parser = parser.get_parser_and_class_obj_for_script(gdscript_constants[key])
 		if not next_parser:
 			continue
-		var next_access = UString.dot_join(current_access, key)
+		var next_access = URString.dot_join(current_access, key)
 		var rec_check = _find_constant_by_value(type_to_find, next_parser.class_obj, next_access, recursions + 1)
 		if rec_check != "":
 			return rec_check
@@ -585,7 +585,7 @@ func _find_constant_by_value_bf(type_to_find:String, initial_class_obj:ParserCla
 		if pc:
 			if PRINT_DEBUG:
 				t.stop()
-			return UString.dot_join(access, pc)
+			return URString.dot_join(access, pc)
 		
 		var gdscript_constants = class_obj.get_gdscript_constants(true)
 		for key in gdscript_constants.keys():
@@ -604,7 +604,7 @@ func _find_constant_by_value_bf(type_to_find:String, initial_class_obj:ParserCla
 				continue
 			queue.append({
 				"class_obj": next_class,
-				"access": UString.dot_join(access, key)
+				"access": URString.dot_join(access, key)
 			})
 	
 	if PRINT_DEBUG:

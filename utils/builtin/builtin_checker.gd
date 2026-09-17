@@ -1,8 +1,8 @@
 
-const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
+const URFile = GDScriptParser.URFile
+
 const Utils = GDScriptParser.Utils
 const Keys = Utils.Keys
-const UFile = GDScriptParser.UFile
 
 # bump version if parsed layout data changes
 const API_SCHEMA_VERSION = 1
@@ -96,7 +96,7 @@ static var _extension_api:Dictionary = {}
 static func _load_extension_api() -> void:
 	var bin_path = EXTENSION_API_PATH.path_join("extension_api.bin")
 	if FileAccess.file_exists(bin_path):
-		var bin_data = UFile.get_data_bin(bin_path)
+		var bin_data = URFile.get_data_bin(bin_path)
 		if bin_data.get(_VERSION, -1) == API_SCHEMA_VERSION:
 			_extension_api = bin_data.get(_DATA)
 			return
@@ -119,7 +119,7 @@ static func _load_extension_api() -> void:
 		printerr("Failed to generate extension_api.json for GDScriptParser - This should not happen, file an issue on GitHub")
 		return
 		
-	var data:Dictionary = UFile.read_from_json(target_path)
+	var data:Dictionary = URFile.read_from_json(target_path)
 	_extension_api.clear()
 	_extension_api[""] = {}
 	
@@ -166,7 +166,7 @@ static func _load_extension_api() -> void:
 		_add_to_dict(class_nm, SIGNALS, class_dict)
 		_add_to_dict(class_nm, PROPERTIES, class_dict)
 	
-	UFile.store_data_bin({
+	URFile.store_data_bin({
 		_VERSION: API_SCHEMA_VERSION,
 		_DATA: _extension_api,
 		}, bin_path)

@@ -1,4 +1,4 @@
-const GDScriptParser = preload("res://addons/addon_lib/gdscript_parser/gdscript_parser.gd")
+
 const Keys = GDScriptParser.Keys
 
 var member_stack:Array = []

@@ -1,15 +1,12 @@
 #! import_p Keys,
 const SELF = preload("res://addons/addon_lib/gdscript_parser/utils/utils.gd")
 
-const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
+const URString = GDScriptParser.URString
+
 const Keys = GDScriptParser.Keys
 const CodeEditParser = GDScriptParser.CodeEditParser
 const AccessObject = GDScriptParser.TypeLookup.AccessObject
-
-const UFile = GDScriptParser.UFile
-const UString = GDScriptParser.UString
-const GDScriptParse = GDScriptParser.UStringGDScriptParse
-const UClassDetail = GDScriptParser.UClassDetail
+const MemberParse = GDScriptParser.MemberParse
 
 const ENUM_SUFFIX = Keys.ENUM_PATH_SUFFIX
 
@@ -79,9 +76,9 @@ static func valid_instance_type(string:String) -> bool:
 	elif is_absolute_path(string):
 		return true
 	elif string.contains("."):
-		var front:String = UString.get_member_access_front(string)
+		var front:String = URString.get_member_access_front(string)
 		if ClassDB.class_exists(front):
-			var back:String = UString.get_member_access_back(string)
+			var back:String = URString.get_member_access_back(string)
 			if ClassDB.class_has_enum(front, back):
 				return false
 		return true
@@ -128,7 +125,7 @@ static func type_path_get_script_data(string:String) -> Array[String]:
 		string = string.get_slice(Keys.TYPE_DELIM, 0)
 	elif string.contains(Keys.INS_DELIM):
 		string = string.get_slice(Keys.INS_DELIM, 0)
-	var script_data = UString.get_script_path_and_suffix(string)
+	var script_data = URString.get_script_path_and_suffix(string)
 	
 	return script_data
 
@@ -210,28 +207,28 @@ static func member_is_valid_static(member_type:String) -> bool:
 	return member_type in VALID_STATIC_MEMBER_TYPES
 
 static func is_absolute_path(string:String) -> bool:
-	return GDScriptParse.is_absolute_path(string)
+	return MemberParse.is_absolute_path(string)
 
 static func get_func_name_in_line(stripped_line_text:String) -> String:
-	return GDScriptParse.get_func_name_in_line(stripped_line_text)
+	return MemberParse.get_func_name_in_line(stripped_line_text)
 
 static func get_class_name_in_line(stripped_line_text:String) -> String:
-	return GDScriptParse.get_class_name_in_line(stripped_line_text)
+	return MemberParse.get_class_name_in_line(stripped_line_text)
 
 static func get_class_info(stripped_line: String) -> Variant:
-	return GDScriptParse.get_class_info(stripped_line)
+	return MemberParse.get_class_info(stripped_line)
 
 static func get_var_or_const_info(stripped_line:String) -> Variant:
-	return GDScriptParse.get_var_or_const_info(stripped_line)
+	return MemberParse.get_var_or_const_info(stripped_line)
 
 static func get_for_loop_info(stripped_line:String) -> Variant:
-	return GDScriptParse.get_for_loop_info(stripped_line)
+	return MemberParse.get_for_loop_info(stripped_line)
 
 static func get_enum_info(stripped_line: String) -> Array:
-	return GDScriptParse.get_enum_info(stripped_line)
+	return MemberParse.get_enum_info(stripped_line)
 
 static func get_nameless_enum_entries(lines:PackedStringArray, first_line:int) -> Array:
-	return GDScriptParse.get_nameless_enum_entries(lines, first_line)
+	return MemberParse.get_nameless_enum_entries(lines, first_line)
 
 ## A var value that is a lambda: `func(`, `func (` or a named `func name(`.
 static func is_lambda_assignment(assignment:String) -> bool:
@@ -246,10 +243,10 @@ static func is_lambda_assignment(assignment:String) -> bool:
 	return lambda_name.is_empty() or lambda_name.is_valid_ascii_identifier()
 
 static func get_func_info(stripped_text: String) -> Dictionary:
-	return GDScriptParse.get_func_info(stripped_text)
+	return MemberParse.get_func_info(stripped_text)
 
 static func get_signal_info(stripped_text: String) -> Dictionary:
-	return GDScriptParse.get_signal_info(stripped_text)
+	return MemberParse.get_signal_info(stripped_text)
 
 static func get_type_from_var_info(var_data:Array) -> String:
 	#if var_data[2] == "":
@@ -286,8 +283,8 @@ static func get_string_inside_brackets(string:String, must_be_string:=true) -> S
 	var bracket_string:String = string.substr(open_b, string.rfind(")") - open_b)
 	if not must_be_string:
 		return bracket_string
-	if UString.is_string_or_string_name(bracket_string):
-		return UString.unquote(bracket_string)
+	if URString.is_string_or_string_name(bracket_string):
+		return URString.unquote(bracket_string)
 	return ""
 
 
@@ -329,7 +326,7 @@ static func add_var_to_dict(stripped_line:String, line:int, column:int, dict:Dic
 	return var_data
 
 static func get_class_access_path_from_member_data(dict:Dictionary) -> String:
-	return UString.dot_join(dict.get(Keys.SCRIPT_PATH, ""), dict.get(Keys.ACCESS_PATH, ""))
+	return URString.dot_join(dict.get(Keys.SCRIPT_PATH, ""), dict.get(Keys.ACCESS_PATH, ""))
 
 static func token_is_string(text:String) -> bool: # should this account for StringName and NodePath?
 	if text.begins_with("r"):
@@ -356,7 +353,7 @@ static func ensure_absolute_path(path:String, main_script_path:String) -> String
 	if path.is_absolute_path():
 		return path
 	var new_path:String = main_script_path.get_base_dir().path_join(path).simplify_path()
-	var script_data:Array[String] = UString.get_script_path_and_suffix(new_path)
+	var script_data:Array[String] = URString.get_script_path_and_suffix(new_path)
 	if FileAccess.file_exists(script_data[0]): # script path only
 		return new_path
 	return path
@@ -375,30 +372,8 @@ static func run_expression(expression:String, script:GDScript) -> String:
 		result = ""
 	return str(result)
 
-class Keywords: # this also exists in UString.GDScriptParse, move it?
-	const DECLARATIONS = [VAR, STATIC_VAR, FUNC, STATIC_FUNC, CONST, SIGNAL, ENUM, CLASS]
-	
-	const VAR = &"var "
-	const STATIC_VAR = &"static var " 
-	const FUNC = &"func "
-	const STATIC_FUNC = &"static func "
-	const CONST = &"const "
-	const SIGNAL = &"signal "
-	const ENUM = &"enum "
-	const CLASS = &"class "
-	
-	const CONTROL_FLOW_KEYWORDS = [FOR, MATCH, IF, ELIF, ELSE, WHILE]
-	
-	const FOR = &"for "
-	const MATCH = &"match" # no space to allow for backslashes. Do I bother?
-	const IF = &"if "
-	const ELIF = &"elif "
-	const ELSE = &"else:"
-	const WHILE = &"while "
-	
-	const BITWISE_OPERATORS = ["<<", ">>", "~", "^", "|", "&"]
-	const BOOL_OPERATORS = ["==", "!=", "<", "<=", ">", ">=", " and ", " not ", " or ", "&&", "!", "||"]
-	const NON_BOOL_OPERATORS = ["+", "-", "*", "/", "%"]
+# Single definition lives on MemberParse; alias kept so existing Utils.Keywords callers hold.
+const Keywords = GDScriptParser.MemberParse.Keywords
 
 
 
@@ -441,7 +416,7 @@ func print_hierarchy(parser:GDScriptParser) -> void:
 			name = "Script"
 		else:
 			indent = name.count(".") + 1
-			name = UString.get_member_access_back(name)
+			name = URString.get_member_access_back(name)
 		var base_indent_str:String = ""
 		for i:Variant in indent:
 			base_indent_str += "\t"

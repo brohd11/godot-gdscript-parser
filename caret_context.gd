@@ -1,14 +1,14 @@
 
 const PRINT_DEBUG = false
 
-const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
+const URString = GDScriptParser.URString
+const UClassDetail = GDScriptParser.UClassDetail
+
 const CodeEditParser = GDScriptParser.CodeEditParser
 const Keywords = CodeEditParser.Keywords
 const Utils = GDScriptParser.Utils
 const ParserRef = Utils.ParserRef
 const Keys = Utils.Keys
-const UString = GDScriptParser.UString
-const UClassDetail = GDScriptParser.UClassDetail
 const AccessOptions = GDScriptParser.Access.AccessOptions
 const AccessObject = GDScriptParser.Access.AccessObject
 
@@ -82,7 +82,7 @@ var current_line_text:String
 var code_context_caret_pos:int
 var code_context:String #
 var code_context_stripped:String
-var code_context_string_map:UString.StringMap #
+var code_context_string_map # :UString.StringMap # Untyped to allow native string map
 
 var code_context_start_line:int
 var code_context_end_line:int
@@ -394,7 +394,7 @@ func get_function_call_data() -> FunctionCallData:
 	else:
 		_active_function_call.function_data = parser.get_function_data(expression, caret_line)
 		if expression.contains("."):
-			_active_function_call.function_class_base_type = parser.resolve_expression_to_type(UString.trim_member_access_back(expression), get_current_class_object().declaration_line)
+			_active_function_call.function_class_base_type = parser.resolve_expression_to_type(URString.trim_member_access_back(expression), get_current_class_object().declaration_line)
 		else:
 			if not GDScriptParser.TypeLookup.BuiltInChecker.is_global_method(_active_function_call.get_function_name()):
 				_active_function_call.function_class_base_type = get_current_class_object().script_base_type
@@ -511,7 +511,7 @@ func get_symbol_data(chain_text:String, line:int=caret_line) -> SymbolData:
 	if symbol_data.name == "":
 		# no ::member in origin - a global builtin (`str##Callable`) or an unresolved chain. Fall back to
 		# what was actually typed, so callers keying off the name (dict_key, code hints) still see one.
-		var back = UString.get_member_access_back(chain_text, parser.get_string_map(chain_text))
+		var back = URString.get_member_access_back(chain_text, parser.get_string_map(chain_text))
 		symbol_data.name = back.substr(0, back.find("(")) if back.contains("(") else back
 
 	# The declaring script comes straight out of origin, which followed the resolution that actually
@@ -601,12 +601,12 @@ func trim_last_member_access_part():
 	if expression_state == ExpressionState.MEMBER_ACCESS:
 		if not word_before_caret.contains("."):
 			return ""
-		return UString.trim_member_access_back(word_before_caret)
+		return URString.trim_member_access_back(word_before_caret)
 	return ""
 
 func get_last_member_access_part():
 	if expression_state == ExpressionState.MEMBER_ACCESS:
-		return UString.get_member_access_back(word_before_caret)
+		return URString.get_member_access_back(word_before_caret)
 	return ""
 
 func get_index_access_identifier():
@@ -659,7 +659,7 @@ func get_comment(line:int=caret_line):
 		line_text = current_line_text
 	else:
 		line_text = code_edit.get_line(line)
-	var com_i = UString.string_safe_find(line_text, "#")
+	var com_i = URString.string_safe_find(line_text, "#")
 	if com_i == -1:
 		return ""
 	return line_text.substr(com_i)
@@ -676,13 +676,13 @@ func get_string_map(text:String):
 func code_context_find(what:String, from:int=-1, string_safe:=true):
 	if string_safe:
 		from = max(from, 0)
-		return UString.string_safe_find(code_context, what, from, code_context_string_map)
+		return URString.string_safe_find(code_context, what, from, code_context_string_map)
 	return code_context.find(what, from)
 
 func code_context_rfind(what:String, from:int=-1, string_safe:=true):
 	if string_safe:
-		return UString.string_safe_rfind(code_context, what, from, code_context_string_map)
-	return UString.rfind_index_safe(code_context, what, from)
+		return URString.string_safe_rfind(code_context, what, from, code_context_string_map)
+	return URString.rfind_index_safe(code_context, what, from)
 
 func code_context_parse_expression(start_pos:int):
 	return ParserRef.get_code_edit_parser(self).parse_expression_at_position(code_context, start_pos, code_context_string_map)

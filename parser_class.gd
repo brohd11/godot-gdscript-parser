@@ -2,13 +2,14 @@
 
 const PLUGIN_EXPORTED = false
 
-const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
+const URString = GDScriptParser.URString
+const UClassDetail = GDScriptParser.UClassDetail
+
 const ParserFunc = GDScriptParser.ParserFunc
 const Utils = GDScriptParser.Utils
 const ParserRef = Utils.ParserRef
 const Keys = Utils.Keys
-const UString = GDScriptParser.UString
-const UClassDetail = GDScriptParser.UClassDetail
+
 
 @warning_ignore_start("unused_private_class_variable")
 var _parser:WeakRef
@@ -82,10 +83,10 @@ func get_script_resource():
 	return script_resource
 
 func get_script_class_path():
-	return Utils.UString.dot_join(main_script_path, access_path)
+	return URString.dot_join(main_script_path, access_path)
 
 func get_name():
-	return UString.get_member_access_back(access_path)
+	return URString.get_member_access_back(access_path)
 
 func get_members_hash():
 	if _members_hash is int and _members_hash != -1:
@@ -407,7 +408,7 @@ func get_member_type(identifier:String, include_inherited:=false) -> String:
 	if has_inherited_member(identifier):
 		var member_data = get_inherited_member(identifier)
 		var script_path = member_data.get(Keys.SCRIPT_PATH)
-		script_path = UString.dot_join(script_path, member_data.get(Keys.ACCESS_PATH, &""))
+		script_path = URString.dot_join(script_path, member_data.get(Keys.ACCESS_PATH, &""))
 		var parser = Utils.ParserRef.get_parser(self)
 		var parser_data = parser.get_parser_and_class_obj_for_script(script_path)
 		var next_class = parser_data.class_obj as GDScriptParser.ParserClass
@@ -628,7 +629,7 @@ func get_outer_script_constants():
 	var parser = Utils.ParserRef.get_parser(self)
 	var parent_access_path = ""
 	if access_path.contains("."):
-		parent_access_path = UString.trim_member_access_back(access_path)
+		parent_access_path = URString.trim_member_access_back(access_path)
 	
 	var parent_class_obj = parser.get_class_object(parent_access_path) as GDScriptParser.ParserClass
 	var par_inh_members = parent_class_obj.get_inherited_members()
@@ -672,7 +673,7 @@ func get_gdscript_constants(as_dict:=false):
 			var inh_script_path = member_data[Keys.SCRIPT_PATH]
 			var target_class_obj = self
 			if inh_script_path != main_script_path:
-				var full_script_path = UString.dot_join(inh_script_path, member_data[Keys.ACCESS_PATH])
+				var full_script_path = URString.dot_join(inh_script_path, member_data[Keys.ACCESS_PATH])
 				var inh_parser = main_parser.get_parser_and_class_obj_for_script(full_script_path)
 				#if not inh_parser.has(&"class_obj"): # this was due to script path being dropped, should be irrelevant
 					#continue
@@ -778,7 +779,7 @@ func _check_inherited_valid():
 	
 	var valid_scripts = {}
 	for path in inherited_scripts:
-		var script_data = UString.get_script_path_and_suffix(path)
+		var script_data = URString.get_script_path_and_suffix(path)
 		var script_path = script_data[0]
 		
 		var mod_time = FileAccess.get_modified_time(script_path)

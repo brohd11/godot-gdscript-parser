@@ -2,14 +2,14 @@
 
 const PRINT_DEBUG = false
 
-const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
+const URString = GDScriptParser.URString
+const UClassDetail = GDScriptParser.UClassDetail
+
 const ParserClass = GDScriptParser.ParserClass
 const Utils = GDScriptParser.Utils
 const Keys = Utils.Keys
-const UString = GDScriptParser.UString
-const LambdaScanner = preload("lambda_scanner.gd")
-const UClassDetail = GDScriptParser.UClassDetail
 const Keywords = Utils.Keywords
+const LambdaScanner = preload("res://addons/addon_lib/gdscript_parser/utils/lambda_scanner.gd")
 
 var _parser:WeakRef
 var code_edit:CodeEdit
@@ -269,10 +269,10 @@ func parse_text(force:=false):
 		var valid_classes:Dictionary = _pc.inner_class_map.get("", {}).duplicate()
 		if path != "":
 			var working_path = ""
-			var parts = UString.split_member_access(path)
+			var parts = URString.split_member_access(path)
 			for x in range(parts.size()):
 				var part = parts[x]
-				working_path = UString.dot_join(working_path, part)
+				working_path = URString.dot_join(working_path, part)
 				valid_constants.merge(_pc.constant_map.get(working_path, {}), true)
 				#valid_classes.merge(_pc.inner_class_map.get(working_path, {}), true)
 				var classes = _pc.inner_class_map.get(working_path, {})
@@ -395,9 +395,9 @@ func _parse_line(stripped:String, line:int, column:int=0):
 		
 		_pc.in_function = false
 		if keyword == "class":
-			var new_access_path = UString.dot_join(_pc.access_path, member_name)
+			var new_access_path = URString.dot_join(_pc.access_path, member_name)
 			#data[Keys.MEMBER_TYPE] = Keys.MEMBER_TYPE_CLASS
-			data[Keys.TYPE] = UString.dot_join(_pc.main_script_path, new_access_path)
+			data[Keys.TYPE] = URString.dot_join(_pc.main_script_path, new_access_path)
 			
 			_pc.inner_class_map.get_or_add(_pc.access_path, {})[member_name] = data
 			
@@ -818,7 +818,7 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 								continue
 						else:
 							var assigns = [stripped]
-							assigns = UString.string_safe_split(stripped, ";")
+							assigns = URString.string_safe_split(stripped, ";")
 							if stripped.begins_with("var my"):
 								print("has sem---",assigns)
 							var col = 0
@@ -956,8 +956,8 @@ func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=fal
 	
 	if has_semi_col:# and _caret_column > 0:
 		var string_map = get_string_map(context_text)
-		var semi_prev = UString.string_safe_rfind(context_text, ";", caret_idx, string_map) + 1
-		var semi_next = UString.string_safe_find(context_text, ";", caret_idx, string_map)
+		var semi_prev = URString.string_safe_rfind(context_text, ";", caret_idx, string_map) + 1
+		var semi_next = URString.string_safe_find(context_text, ";", caret_idx, string_map)
 		var end_idx = -1 if semi_next == -1 else semi_next - semi_prev
 		context_text = context_text.substr(semi_prev, end_idx)
 	
@@ -1006,7 +1006,7 @@ func parse_identifier_at_position(text_to_process:String, start_pos:int):
 			var valid = false
 			if _char == ")" and last_char == ".":
 				valid = true
-			if _char in UString.NUMBERS:
+			if _char in URString.NUMBERS:
 				valid = true
 			
 			if not valid:
@@ -1129,7 +1129,7 @@ func is_valid_code(line:int, col:int):
 func get_string_map(text:String):
 	if string_map_cache.has(text):
 		return string_map_cache[text]
-	var string_map = UString.get_string_map(text, UString.StringMap.Mode.FULL)
+	var string_map = URString.get_string_map(text, URString.StringMap.Mode.FULL)
 	string_map_cache[text] = string_map
 	return string_map
 

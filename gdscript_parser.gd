@@ -1,4 +1,4 @@
-
+class_name GDScriptParser
 #! import_p Keys,
 
 const PLUGIN_EXPORTED = false
@@ -13,19 +13,19 @@ const PARSE_CACHE_DIR = ScriptCache.DEFAULT_DIR
 
 const TF = preload("uid://ft7o6vspsurv") #! resolve ALibRuntime.Utils.UProfile.TimeFunction
 
-const UString = preload("uid://bbk1yedqm7a6a") #! resolve ALibRuntime.Utils.UString.Methods
-const UStringGDScriptParse = preload("uid://djphen6jtpagy") #! resolve ALibRuntime.Utils.UString.GDScriptParse
-const StringMap = preload("uid://mhebqdb72dqn") #! resolve ALibRuntime.Utils.UString.StringMap
+const URFile = preload("uid://bqfy5cvhth0m1") #! resolve UtilR.Files.URFile
+const URString = preload("uid://dce8d0wuh35gs") #! resolve UtilR.Strings.URString
+const StringMap = preload("uid://btml0a8r6vbbn") #! resolve UtilR.Strings.StringMap
+
 const UClassDetail = preload("uid://dpmubecadgfk8") #! resolve ALibRuntime.Utils.UGDScript.UClassDetail
-const UFile = preload("uid://bl33psa06nv1e") #! resolve ALibRuntime.Utils.UFile.Methods
 const UResource = preload("uid://brjrqxh2smivn") #! resolve ALibRuntime.Utils.UResource.Methods
 const UPackedScene = preload("uid://44xrh5kbrpaa") #! resolve ALibRuntime.Utils.UResource.UPackedScene
 
 const CacheHelper = preload("res://addons/addon_lib/brohd/alib_runtime/cache_helper/cache_helper.gd")
 
-const GDScriptParser = preload("res://addons/addon_lib/gdscript_parser/gdscript_parser.gd")
 const ParserClass = preload("res://addons/addon_lib/gdscript_parser/parser_class.gd")
 const ParserFunc = preload("res://addons/addon_lib/gdscript_parser/parser_func.gd")
+const MemberParse = preload("res://addons/addon_lib/gdscript_parser/utils/member_parse.gd")
 const CaretContext = preload("res://addons/addon_lib/gdscript_parser/caret_context.gd")
 const CodeEditParser = preload("res://addons/addon_lib/gdscript_parser/utils/code_edit_parser.gd")
 const TypeLookup = preload("res://addons/addon_lib/gdscript_parser/utils/type_lookup.gd")
@@ -250,7 +250,7 @@ func get_type_lookup() -> TypeLookup:
 func get_access() -> Access:
 	return _access
 
-func get_string_map(string:String) -> UString.StringMap:
+func get_string_map(string:String):
 	return code_edit_parser.get_string_map(string)
 
 func get_caret_context(parse_context:=true) -> CaretContext:
@@ -384,8 +384,8 @@ func get_member_info_from_script(full_script_path:String) -> Variant:
 	var access_path:String = ""
 	var member_name:String = class_path
 	if class_path.contains("."):
-		access_path = UString.trim_member_access_back(class_path)
-		member_name = UString.get_member_access_back(class_path)
+		access_path = URString.trim_member_access_back(class_path)
+		member_name = URString.get_member_access_back(class_path)
 	
 	if member_name.ends_with(Keys.ENUM_PATH_SUFFIX):
 		member_name = member_name.trim_suffix(Keys.ENUM_PATH_SUFFIX)

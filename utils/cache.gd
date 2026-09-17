@@ -13,7 +13,6 @@
 ##     classes: { access_path: { <class fields>, members/constants: { name: {..resolved:{}} },
 ##                               inner_classes, functions: { name: {..} } } } }
 
-const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 const Keys = GDScriptParser.Keys
 const Utils = GDScriptParser.Utils
 const ParserRef = Utils.ParserRef
@@ -70,7 +69,7 @@ static func serialize_class(class_obj) -> Dictionary:
 	# the monitor matches unchanged parents and only clears when one actually changed.
 	var inh_mod:Dictionary = {}
 	for isp in class_obj.inherited_scripts:
-		var sp:String = GDScriptParser.UString.get_script_path_and_suffix(String(isp))[0]
+		var sp:String = GDScriptParser.URString.get_script_path_and_suffix(String(isp))[0]
 		inh_mod[sp] = FileAccess.get_modified_time(sp)
 	return {
 		Keys.ACCESS_PATH: class_obj.access_path,

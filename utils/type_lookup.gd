@@ -2,10 +2,9 @@
 const PLUGIN_EXPORTED = false
 const PRINT_DEBUG = false # not PLUGIN_EXPORTED
 
-const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
 
-const UString = GDScriptParser.UString
-const UFile = GDScriptParser.UFile
+const URString = GDScriptParser.URString
+const URFile = GDScriptParser.URFile
 const UClassDetail = GDScriptParser.UClassDetail
 const UResource = GDScriptParser.UResource
 const UPackedScene = GDScriptParser.UPackedScene
@@ -296,7 +295,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		#return expression
 	
 	if expression == "self": # if self, we can just return the path to the class
-		var class_path = UString.dot_join(main_script_path, initial_class_obj.access_path)
+		var class_path = URString.dot_join(main_script_path, initial_class_obj.access_path)
 		return Utils.type_path_add_ins(class_path)
 	elif expression.begins_with("self."):
 		expression = expression.trim_prefix("self.")
@@ -316,7 +315,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		expression = comp_check
 	
 	var string_map = parser.get_string_map(expression)
-	var parts: Array = UString.split_member_access(expression, string_map)
+	var parts: Array = URString.split_member_access(expression, string_map)
 	
 	var current_class_obj:ParserClass = initial_class_obj
 	var current_type_path = Keys.INS_DELIM # set this based on if function is static or not
@@ -378,7 +377,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 					if not BuiltInChecker.class_has_method("Dictionary", identifier):
 						return current_type_path # commented below works, but doesn't give proper path to enum
 					#var dic_return = BuiltInChecker.get_func_return("Dictionary", identifier)
-					#var new = UString.dot_join(current_type_path.trim_suffix(ENUM_SUFFIX), identifier)
+					#var new = URString.dot_join(current_type_path.trim_suffix(ENUM_SUFFIX), identifier)
 					#return Utils.type_path_add_type(new, dic_return)
 					current_type_path = "Dictionary[StringName, int]"
 					current_part_in_script = false
@@ -428,8 +427,8 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 					identifier = part_check # proceed to process the identifier
 		else:
 			var identifier_name = current_part.trim_prefix(INDEX_PREFIX).trim_prefix("[").trim_suffix("]")
-			if UString.is_string_or_string_name(identifier_name):
-				identifier = UString.unquote(identifier_name) # proceed to process the identifier
+			if URString.is_string_or_string_name(identifier_name):
+				identifier = URString.unquote(identifier_name) # proceed to process the identifier
 			elif current_t_is_collection:
 				resolved_type = get_type_hint_from_collection(current_type_path)
 			else:
@@ -844,9 +843,9 @@ func _is_unresolved_expression(identifier:String):
 	elif identifier.begins_with("typedarray::"):
 		return false
 	elif identifier.contains(Keys.TYPE_DELIM):
-		return UString.string_safe_find(identifier, Keys.TYPE_DELIM) == -1 # this may be slow..
+		return URString.string_safe_find(identifier, Keys.TYPE_DELIM) == -1 # this may be slow..
 	elif identifier.contains(Keys.MEMBER_DELIM):
-		return UString.string_safe_find(identifier, Keys.MEMBER_DELIM) == -1 # this may be slow..
+		return URString.string_safe_find(identifier, Keys.MEMBER_DELIM) == -1 # this may be slow..
 	elif identifier.ends_with(CALLABLE_SUFFIX):
 		return false
 	elif identifier.ends_with(SIGNAL_SUFFIX):
@@ -1027,7 +1026,7 @@ func _get_inherited_member_type(identifier:String, full_part:String, class_obj:P
 	if is_instance_valid(base_script):
 		var inheriting_script = _find_inheriting_script(stripped_identifer, class_obj)
 		if inheriting_script != "":
-			var script_data = UString.get_script_path_and_suffix(inheriting_script)
+			var script_data = URString.get_script_path_and_suffix(inheriting_script)
 			print_deb(T.INHERITED, ["EXTERNAL SCRIPT", inheriting_script])
 			print_deb_err(T.INHERITED, ["IS THIS EVER USED - _get_inherited_member_type::want to delete _find_inheriting_script"])
 			return _process_external_identifier(identifier, script_data[0], script_data[1]) # may need access path for class?
@@ -1042,7 +1041,7 @@ func _ensure_valid_type_path(full_script_path:String):
 		print_deb(T.RESOLVE, ["TYPE_PRELOAD", full_script_path]) # be better to use resolve_preload maybe?
 		## TEST
 	
-	var script_data = UString.get_script_path_and_suffix(full_script_path)
+	var script_data = URString.get_script_path_and_suffix(full_script_path)
 	var script_path = script_data[0]
 	var class_access = script_data[1]
 	if class_access == "":
@@ -1100,7 +1099,7 @@ func resolve_expression_to_access_object(expression: String, class_data:ClassDat
 	var access_object = AccessObject.new()
 	
 	var string_map = parser.get_string_map(expression)
-	var parts = UString.split_member_access(expression, string_map)
+	var parts = URString.split_member_access(expression, string_map)
 	if parts.is_empty():
 		return access_object
 	
@@ -1109,7 +1108,7 @@ func resolve_expression_to_access_object(expression: String, class_data:ClassDat
 	print_deb(T.VAR_TO_CONST, ["DECLARATION RAW", dec_symbol])
 	
 	if Utils.is_absolute_path(dec_symbol):
-		var script_data = UString.get_script_path_and_suffix(dec_symbol)
+		var script_data = URString.get_script_path_and_suffix(dec_symbol)
 		if script_data[0] == main_script_path:
 			var access = script_data[1]
 			if access == "":
@@ -1184,7 +1183,7 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 					return ".".join(resolved_parts)
 				current_class_obj = next_parser.class_obj
 				continue
-				#return UString.dot_join(identifier, ".".join(parts))
+				#return URString.dot_join(identifier, ".".join(parts))
 			else:
 				var target_class = current_class_obj
 				var local = local_vars
@@ -1204,7 +1203,7 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 					var_to_const = var_to_const.get_slice(Keys.MEMBER_INFER_DELIM, 1)
 				if var_to_const.contains(Keys.MEMBER_ASSIGN_DELIM):
 					var_to_const = var_to_const.get_slice(Keys.MEMBER_ASSIGN_DELIM, 1)
-				var split = UString.split_member_access(var_to_const)
+				var split = URString.split_member_access(var_to_const)
 				split.reverse()
 				for s in split:
 					if not s.begins_with("new("):
@@ -1327,7 +1326,7 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 			type_declaration = _get_script_member_type(line_index, column)
 		print_deb(T.RESOLVE, ["MEMBER GET TYPE", member_name, " -> ", type_declaration])
 		#if type_declaration == "Signal":
-			#type_declaration = UString.dot_join(class_obj.get_script_class_path(), member_name + SIGNAL_SUFFIX)
+			#type_declaration = URString.dot_join(class_obj.get_script_class_path(), member_name + SIGNAL_SUFFIX)
 		
 		#prints(member_type, member_name, type_declaration)
 		#^ handle for loop collection inference
@@ -1351,7 +1350,7 @@ func _check_class_obj_member_data(member_name:String, class_obj:ParserClass, loc
 					# these 2 resolve expression do not respect origin, so they are faster
 					# remains to be seen if this is valid...
 					#if collection_type_dec == "":
-					var dict_path = UString.trim_member_access_back(collection_text)
+					var dict_path = URString.trim_member_access_back(collection_text)
 					collection_type_dec = resolve_expression_to_type_at_line(dict_path, line_index)
 					type_declaration = get_type_hint_from_collection(collection_type_dec, collection_text.ends_with("values()"))
 				else:
@@ -1523,7 +1522,7 @@ func _variant_type_check(type_hint:String, type_cast_check:=true):
 		#ClassDB.class_has_method(base, type_hint) or 
 		#ClassDB.class_has_signal(base, type_hint)
 		#):
-		#return UString.dot_join(base, type_hint)
+		#return URString.dot_join(base, type_hint)
 	# TEST
 	
 	return ""
@@ -1555,7 +1554,7 @@ static func get_type_hint_from_collection(string:String, value:bool=false, add_i
 	return "Variant"
 
 func get_index_access_in_string(string:String):
-	var string_map:GDScriptParser.UString.StringMap = _get_parser().get_string_map(string)
+	var string_map:GDScriptParser.URString.StringMap = _get_parser().get_string_map(string)
 	var matches:Array[String] = []
 	var i = 0
 	while i < string.length():
@@ -1577,7 +1576,7 @@ func get_index_access_in_string(string:String):
 func _check_for_type_cast(type_hint:String):
 	_initialize_op_regexes()
 	var parser = Utils.ParserRef.get_parser(self)
-	var string_map:UString.StringMap
+	var string_map:URString.StringMap
 	var as_matches = _as_regex.search_all(type_hint)
 	if not as_matches.is_empty():
 		string_map = parser.get_string_map(type_hint)
@@ -1698,14 +1697,14 @@ func _get_script_member_type(line:int, column:int=0): # thjs could be a bit more
 	elif dec_type == Keys.MEMBER_TYPE_ENUM:
 		var parser = Utils.ParserRef.get_parser(self)
 		var class_at_line = parser.get_class_object(parser.get_class_at_line(line)) as ParserClass
-		var access = UString.dot_join(class_at_line.main_script_path, class_at_line.access_path)
-		#var access = UString.dot_join(class_at_line.access_path, result[0] + Keys.ENUM_PATH_SUFFIX)
+		var access = URString.dot_join(class_at_line.main_script_path, class_at_line.access_path)
+		#var access = URString.dot_join(class_at_line.access_path, result[0] + Keys.ENUM_PATH_SUFFIX)
 		return Utils.type_path_add_member(access, result[0] + Keys.ENUM_PATH_SUFFIX)
 	elif dec_type == Keys.MEMBER_TYPE_CLASS:
 		var parser = Utils.ParserRef.get_parser(self)
 		var class_at_line = parser.get_class_object(parser.get_class_at_line(line)) as ParserClass
-		var access = UString.dot_join(class_at_line.access_path, result[0])
-		return UString.dot_join(class_at_line.main_script_path, access)
+		var access = URString.dot_join(class_at_line.access_path, result[0])
+		return URString.dot_join(class_at_line.main_script_path, access)
 	elif dec_type == Keys.MEMBER_TYPE_FUNC or dec_type == Keys.MEMBER_TYPE_STATIC_FUNC:
 		return result.get(Keys.FUNC_NAME, "")
 	elif dec_type == Keys.MEMBER_TYPE_SIGNAL:
@@ -1735,7 +1734,7 @@ func resolve_preload(preload_call:String, class_obj:ParserClass):
 	if not Utils.is_absolute_path(path):
 		path = Utils.ensure_absolute_path(path, class_obj.main_script_path)
 	else:
-		path = UFile.uid_to_path(path)
+		path = URFile.uid_to_path(path)
 	
 	if path.get_extension() == "tres" or path.get_extension() == "res":
 		path = Utils.type_path_add_ins(path)
@@ -1772,7 +1771,7 @@ func set_autoload_cache():
 			continue
 		
 		autoload_name = autoload_name.trim_prefix("autoload/")
-		autoload_path = UFile.uid_to_path(autoload_path.trim_prefix("*"))
+		autoload_path = URFile.uid_to_path(autoload_path.trim_prefix("*"))
 		
 		if autoload_cache.has(autoload_name) and autoload_path == autoload_cache[autoload_name]:
 			valid_scripts[autoload_name] = autoload_path
@@ -1999,7 +1998,7 @@ func _simple_type_check(type_hint:String, exit_check:=false):
 	if type_hint in OTHER_TYPES:
 		return type_hint
 	if type_hint.begins_with("uid:"):
-		return UFile.uid_to_path(type_hint)
+		return URFile.uid_to_path(type_hint)
 	#if type_hint.begins_with("res://"):
 	if Utils.is_absolute_path(type_hint):
 		return Utils.file_path_to_type(type_hint) # do this here?
@@ -2045,6 +2044,6 @@ func _simple_type_check(type_hint:String, exit_check:=false):
 	var base = current_script.get_instance_base_type()
 	if (ClassDB.class_has_enum(base, type_hint) or ClassDB.class_has_integer_constant(base, type_hint) or 
 	ClassDB.class_has_method(base, type_hint) or ClassDB.class_has_signal(base, type_hint)):
-		return UString.dot_join(base, type_hint)
+		return URString.dot_join(base, type_hint)
 	
 	return ""

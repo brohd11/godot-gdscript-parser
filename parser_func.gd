@@ -1,10 +1,10 @@
 
 const PLUGIN_EXPORTED = false
 
-const GDScriptParser = preload("uid://c4465kdwgj042") #! resolve ALibRuntime.Utils.UGDScript.Parser
+const URString = GDScriptParser.URString
+
 const CodeEditParser = GDScriptParser.CodeEditParser
 const Utils = GDScriptParser.Utils
-const UString = GDScriptParser.UString
 const Keys = Utils.Keys
 const ParserRef = Utils.ParserRef
 
@@ -654,8 +654,8 @@ func _get_lambda_parts() -> Array:
 			lines.append(part)
 		text = "\n".join(lines)
 	var string_map = code_edit_parser.get_string_map(text)
-	var eq:int = -1 if declaration_column >= 0 else UString.string_safe_find(text, "=", 0, string_map)
-	var start:int = UString.string_safe_find(text, "func", maxi(eq, 0), string_map)
+	var eq:int = -1 if declaration_column >= 0 else URString.string_safe_find(text, "=", 0, string_map)
+	var start:int = URString.string_safe_find(text, "func", maxi(eq, 0), string_map)
 	var open:int = -1 if start == -1 else text.find("(", start)
 	if open == -1:
 		return ["", ""]

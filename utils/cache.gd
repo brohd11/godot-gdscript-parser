@@ -25,8 +25,8 @@ const STATE_CACHED_RESOLVED = 1
 
 # --- versioning / location ----------------------------------------------------------------------
 const DEFAULT_DIR = "res://.godot/addons/gdscript_parser/parse_cache"
-const SCHEMA_VERSION = 4 # bump when the on-disk dict layout changes
-const PARSER_VERSION = 4 # bump when parse/resolve logic changes -> invalidates all cache files
+const SCHEMA_VERSION = 5 # bump when the on-disk dict layout changes
+const PARSER_VERSION = 5 # bump when parse/resolve logic changes -> invalidates all cache files
 
 # --- on-disk dict keys (cache-local; not in the shared Keys registry) ---------------------------
 const PCACHE_SCHEMA = &"schema_version"
@@ -159,6 +159,7 @@ static func serialize_func(func_obj) -> Dictionary:
 		Keys.TYPE: func_obj._return_type,
 		PCACHE_HAS_STATIC_RETURN: func_obj._has_static_return,
 		PCACHE_ARGUMENTS: func_obj.arguments.duplicate(true),
+		"rest_argument": func_obj.rest_argument,
 		Keys.LOCAL_VARS: func_obj.local_vars.duplicate(true),
 		PCACHE_FUNC_CACHE: _serialize_func_cache(func_obj),
 		PCACHE_IS_LAMBDA: func_obj.is_lambda,
@@ -203,6 +204,7 @@ static func deserialize_func(data:Dictionary, parser, class_obj) -> GDScriptPars
 	f._return_type = data.get(Keys.TYPE, "")
 	f._has_static_return = data.get(PCACHE_HAS_STATIC_RETURN, false)
 	f.arguments = data.get(PCACHE_ARGUMENTS, {})
+	f.rest_argument = data.get("rest_argument", "")
 	f.local_vars = data.get(Keys.LOCAL_VARS, {})
 	f._cache = data.get(PCACHE_FUNC_CACHE, {})
 	f.is_lambda = data.get(PCACHE_IS_LAMBDA, false)

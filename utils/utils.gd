@@ -20,6 +20,7 @@ const _TEXTURE_EXTS = ["svg", "png", "jpg", "jpeg", "exr", "dds"]
 
 static var _string_path_regex:RegEx
 
+#! inline
 static func is_gdscript_path(file_path:String) -> bool:
 	return file_path.ends_with(".gd") or file_path.contains(".gd.") or file_path.contains(".gd::")
 

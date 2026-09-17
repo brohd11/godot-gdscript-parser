@@ -30,6 +30,7 @@ var empty_return_as_variant:bool =false # where to set this?
 var _return_type_raw:String = ""
 var _return_type_raw_line:int = -1
 var _return_type:String = "" # done
+var rest_argument:String = ""
 var arguments:Dictionary = {} # done
 
 var _has_static_return:bool=false
@@ -124,6 +125,7 @@ func _set_function_data() -> void:
 	_has_static_return = true
 	
 	arguments.clear()
+	rest_argument = ""
 	var result:Variant = func_data.get("result")
 	_cache_dirty = false # at this point it has been read
 	if result == null:
@@ -134,6 +136,7 @@ func _set_function_data() -> void:
 		#_cache_dirty = true # should this reset? this shouldn't happen
 		return
 	
+	rest_argument = result.get("rest_arg", "")
 	var arg_data:Dictionary = result.get(Keys.FUNC_ARGS, {})
 	for arg:String in arg_data.keys():
 		var arg_data_array:Array = arg_data[arg]
@@ -151,6 +154,7 @@ func _set_function_data() -> void:
 			Keys.TYPE: arg_type,
 			Keys.ASSIGNMENT: arg_assign,
 			Keys.HAS_STATIC_TYPE: has_static_type,
+			"is_rest": arg == rest_argument,
 			Keys.MEMBER_TYPE: Keys.MEMBER_TYPE_FUNC_ARG,
 			Keys.LINE_INDEX: declaration_line
 			}
@@ -428,7 +432,7 @@ func _scan_in_scope_vars(line:int, stop_line:int = -1, include_args:bool = true,
 
 func get_function_data() -> Dictionary:
 	var return_string:String = get_return_type()
-	return {Keys.FUNC_ARGS: arguments.duplicate(), Keys.FUNC_RETURN:return_string}
+	return {Keys.FUNC_ARGS: arguments.duplicate(), Keys.FUNC_RETURN:return_string, "rest_arg": rest_argument}
 
 func get_arguments_raw() -> Dictionary:
 	var dict:Dictionary = {}

@@ -1,6 +1,6 @@
 
 const URString = GDScriptParser.URString
-const UClassDetail = GDScriptParser.UClassDetail
+const URClassDetail = GDScriptParser.URClassDetail
 
 const ParserClass = GDScriptParser.ParserClass
 const ParserFunc = GDScriptParser.ParserFunc
@@ -85,7 +85,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 		sec_front_type = secondary_parser.class_obj.get_member_type(sec_front, true)
 	
 	# if secondary is using a global path for access just return the path
-	if UClassDetail.get_global_class_path(sec_front) != "":
+	if URClassDetail.get_global_class_path(sec_front) != "":
 		access_options.standard = secondary_access.declaration_symbol
 		return access_options
 	
@@ -172,7 +172,7 @@ func _find_path_to_type(class_obj:ParserClass, symbol_access:AccessObject, secon
 					access_options.standard = URString.dot_joinv([dec_trimmed, access_path, secondary_access.declaration_symbol])
 					return access_options
 			
-			var global_name = UClassDetail.get_global_class_name(secondary_script_path)
+			var global_name = URClassDetail.get_global_class_name(secondary_script_path)
 			if global_name:
 				print_deb_err(T.ACCESS_PATH, ["SECONDARY GLOBAL CHECK"])
 				var full_access_path = URString.dot_joinv([global_name, access_path, secondary_access.declaration_symbol])
@@ -237,7 +237,7 @@ func _find_path_to_type_simple(class_obj:ParserClass, access_object:AccessObject
 	var to_find_class_path = to_find_script_data[1]
 	
 	var dec_front = URString.get_member_access_front(access_object.declaration_symbol)
-	if UClassDetail.get_global_class_path(dec_front) != "":
+	if URClassDetail.get_global_class_path(dec_front) != "":
 		access_options.standard = access_object.declaration_symbol
 		return access_options
 	
@@ -353,7 +353,7 @@ func _gather_standard_candidates(class_obj:ParserClass, access_object:AccessObje
 	candidates.append(access_object.declaration_symbol)
 
 	# 1. Global class prefix - the front is an autoload/global class, symbol is usable verbatim.
-	if UClassDetail.get_global_class_path(dec_front) != "":
+	if URClassDetail.get_global_class_path(dec_front) != "":
 		candidates.append(access_object.declaration_symbol)
 
 	# 2. self / same-script - reference the enum or inner class relative to the current class.
@@ -450,7 +450,7 @@ func get_global_name_and_script_alias(to_find:String, class_obj:ParserClass, acc
 	var to_find_script_path = to_find_script_data[0]
 	var to_find_class_path = to_find_script_data[1]
 	var member_name = Utils.type_path_get_member(to_find)
-	var global_name = UClassDetail.get_global_class_name(to_find_script_path)
+	var global_name = URClassDetail.get_global_class_name(to_find_script_path)
 	if global_name != "":
 		access_options.global = AccessUtils.remove_suffixes(URString.dot_joinv([global_name, to_find_class_path, member_name]))
 	if access_options.script_alias != "":
@@ -663,7 +663,7 @@ class AccessUtils:
 		return string
 
 
-const PrintDebug = preload("uid://d1ki8cxxh7lvb") #! resolve ALibEditor.PrintDebug
+const PrintDebug = GDScriptParser.PrintDebug
 #! arg_location section:T
 static func print_deb(section:String, msg:Array):
 	if not PRINT_DEBUG:

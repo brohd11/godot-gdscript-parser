@@ -5,17 +5,17 @@ const PRINT_DEBUG = false # not PLUGIN_EXPORTED
 
 const URString = GDScriptParser.URString
 const URFile = GDScriptParser.URFile
-const UClassDetail = GDScriptParser.UClassDetail
-const UResource = GDScriptParser.UResource
-const UPackedScene = GDScriptParser.UPackedScene
+const URClassDetail = GDScriptParser.URClassDetail
+const ReadTres = GDScriptParser.ReadTres
+const ReadTscn = GDScriptParser.ReadTscn
 
 const ParserClass = GDScriptParser.ParserClass
 const ParserFunc = GDScriptParser.ParserFunc
 const BuiltInChecker = GDScriptParser.BuiltInChecker
-const Utils = GDScriptParser.Utils
-const Keys = Utils.Keys
 const AccessObject = GDScriptParser.Access.AccessObject
 const InferenceContext = GDScriptParser.InferenceContext
+const Utils = GDScriptParser.Utils
+const Keys = Utils.Keys
 
 const GLOBAL_CALLABLE_QUEUED = &"global_callable_queued"
 const RESOLVE_FLAGS = [GLOBAL_CALLABLE_QUEUED]
@@ -704,7 +704,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		# convert resource path to it's gdscript base
 		if Utils.is_absolute_path(resolved_type) and resolved_type.trim_suffix(Keys.INS_DELIM).get_extension() == "tres":
 			var trimmed_path = resolved_type.trim_suffix(Keys.INS_DELIM)
-			var script_path = UResource.get_resource_script_class(trimmed_path)
+			var script_path = ReadTres.get_resource_script_class(trimmed_path)
 			#push_warning("RESOLVED TRES::", script_path)
 			resolved_type = script_path # this could be a class_name or a path
 			var global_check = check_global_or_autoload(resolved_type)
@@ -998,7 +998,7 @@ func _get_inherited_member_type(identifier:String, full_part:String, class_obj:P
 		return ""
 	elif BuiltInChecker.is_variant_type(stripped_identifer):
 		return ""
-	elif UClassDetail.get_global_class_path(stripped_identifer) != "":
+	elif URClassDetail.get_global_class_path(stripped_identifer) != "":
 		return ""
 	
 	#if class_obj.class_has_member(stripped_identifer):
@@ -1213,13 +1213,13 @@ func _resolve_access_object(parts:Array, initial_class_obj: ParserClass, local_v
 		
 		if BuiltInChecker.is_builtin_class(identifier):
 			return identifier # not a valid thing really, it would be direct access..
-		elif UClassDetail.get_global_class_path(identifier) != "":
+		elif URClassDetail.get_global_class_path(identifier) != "":
 			if global_class_found != "":
 				resolved_parts.clear() # if we find another global for some reason, restart the chain
 			
 			resolved_parts.append(identifier)
 			global_class_found = identifier
-			var global_parser_data = parser.get_parser_and_class_obj_for_script(UClassDetail.get_global_class_path(identifier))
+			var global_parser_data = parser.get_parser_and_class_obj_for_script(URClassDetail.get_global_class_path(identifier))
 			current_class_obj = global_parser_data.class_obj
 			continue
 		
@@ -1752,7 +1752,7 @@ func member_in_inherited(identifier:String, class_obj:ParserClass):
 	return member_data != null
 
 func check_global_or_autoload(identifier:String) -> String:
-	var global = UClassDetail.get_global_class_path(identifier)
+	var global = URClassDetail.get_global_class_path(identifier)
 	if not global.is_empty():
 		return global
 	return autoload_cache.get(identifier, "")
@@ -1782,7 +1782,7 @@ func set_autoload_cache():
 		elif autoload_path.get_extension() == "cs":
 			continue
 		else:
-			autoload_path = UPackedScene.ReadFile.get_root_script_path(autoload_path)
+			autoload_path = ReadTscn.get_root_script_path(autoload_path)
 			if autoload_path == "":
 				continue
 		
@@ -1923,7 +1923,7 @@ class ClassData:
 static func get_empty_type_rich() -> Dictionary:
 	return {"type": "", "origin": "", "member_stack": [], "is_instance": false}
 
-const PrintDebug = preload("uid://d1ki8cxxh7lvb") #! resolve ALibEditor.PrintDebug
+const PrintDebug = GDScriptParser.PrintDebug
 #! arg_location section:T
 static func print_deb(section:String, msg:Array):
 	if not PRINT_DEBUG:

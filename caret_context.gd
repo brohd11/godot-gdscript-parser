@@ -2,13 +2,13 @@
 const PRINT_DEBUG = false
 
 const URString = GDScriptParser.URString
-const UClassDetail = GDScriptParser.UClassDetail
+const URClassDetail = GDScriptParser.URClassDetail
 
 const CodeEditParser = GDScriptParser.CodeEditParser
-const Keywords = CodeEditParser.Keywords
 const Utils = GDScriptParser.Utils
 const ParserRef = Utils.ParserRef
 const Keys = Utils.Keys
+const Keywords = Utils.Keywords
 const AccessOptions = GDScriptParser.Access.AccessOptions
 const AccessObject = GDScriptParser.Access.AccessObject
 

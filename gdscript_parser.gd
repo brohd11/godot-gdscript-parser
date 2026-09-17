@@ -11,17 +11,14 @@ const STATE_LIVE = ScriptCache.STATE_LIVE
 const STATE_CACHED_RESOLVED = ScriptCache.STATE_CACHED_RESOLVED
 const PARSE_CACHE_DIR = ScriptCache.DEFAULT_DIR
 
-const TF = preload("uid://ft7o6vspsurv") #! resolve ALibRuntime.Utils.UProfile.TimeFunction
+const TF = preload("uid://7v3ioke0kffx") #! resolve UtilR.Profile.TimeFunction
 
 const URFile = preload("uid://bqfy5cvhth0m1") #! resolve UtilR.Files.URFile
 const URString = preload("uid://dce8d0wuh35gs") #! resolve UtilR.Strings.URString
 const StringMap = preload("uid://btml0a8r6vbbn") #! resolve UtilR.Strings.StringMap
-
-const UClassDetail = preload("uid://dpmubecadgfk8") #! resolve ALibRuntime.Utils.UGDScript.UClassDetail
-const UResource = preload("uid://brjrqxh2smivn") #! resolve ALibRuntime.Utils.UResource.Methods
-const UPackedScene = preload("uid://44xrh5kbrpaa") #! resolve ALibRuntime.Utils.UResource.UPackedScene
-
-const CacheHelper = preload("res://addons/addon_lib/brohd/alib_runtime/cache_helper/cache_helper.gd")
+const URClassDetail = preload("uid://0a4i0eyxcij7") #! resolve UtilR.Objects.URClassDetail
+const ReadTres = preload("uid://b63khouggaars") #! resolve UtilR.Resources.Read.Tres
+const ReadTscn = preload("uid://cx8sx32appge5") #! resolve UtilR.Resources.Read.Tscn
 
 const ParserClass = preload("res://addons/addon_lib/gdscript_parser/parser_class.gd")
 const ParserFunc = preload("res://addons/addon_lib/gdscript_parser/parser_func.gd")
@@ -658,7 +655,15 @@ func _notification(what: int) -> void:
 				code_edit.queue_free()
 
 
+#^r debug area
 static func print_deb_err(args:Array) -> void:
 	if not PLUGIN_EXPORTED:
 		return
 	printerr("::".join(args))
+
+class PrintDebug:
+	static func print(msg:Array):
+		print("::".join(msg))
+
+	static func print_err(msg:Array):
+		printerr("::".join(msg))

@@ -3,7 +3,7 @@
 const PRINT_DEBUG = false
 
 const URString = GDScriptParser.URString
-const UClassDetail = GDScriptParser.UClassDetail
+const URClassDetail = GDScriptParser.URClassDetail
 
 const ParserClass = GDScriptParser.ParserClass
 const Utils = GDScriptParser.Utils
@@ -295,8 +295,8 @@ func parse_text(force:=false):
 			_class_obj.set_script_resource(parser._script_resource)
 			_class_obj.class_name_data = _pc.class_name_data
 		else:
-			#_class_obj.set_script_resource(UClassDetail.get_member_info_by_path(main_script, _pc.access_path))
-			var inner_script = UClassDetail.get_member_info_by_path(main_script, path)
+			#_class_obj.set_script_resource(URClassDetail.get_member_info_by_path(main_script, _pc.access_path))
+			var inner_script = URClassDetail.get_member_info_by_path(main_script, path)
 			#prints("INNERSCRIPT::", inner_script, "::PATH::", path)
 			_class_obj.set_script_resource(inner_script)
 		
@@ -624,8 +624,8 @@ func parse_text_native(force:=false):
 			_class_obj.set_script_resource(parser._script_resource)
 			_class_obj.class_name_data = cls_data
 		else:
-			#_class_obj.set_script_resource(UClassDetail.get_member_info_by_path(main_script, _pc.access_path))
-			var inner_script = UClassDetail.get_member_info_by_path(main_script, path)
+			#_class_obj.set_script_resource(URClassDetail.get_member_info_by_path(main_script, _pc.access_path))
+			var inner_script = URClassDetail.get_member_info_by_path(main_script, path)
 			#prints("INNERSCRIPT::", inner_script, "::PATH::", path)
 			_class_obj.set_script_resource(inner_script)
 		

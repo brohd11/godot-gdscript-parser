@@ -440,7 +440,7 @@ func print_hierarchy(parser:GDScriptParser) -> void:
 		print("")
 
 
-const PrintDebug = preload("uid://d1ki8cxxh7lvb") #! resolve ALibEditor.PrintDebug
+const PrintDebug = GDScriptParser.PrintDebug
 
 #! arg_location section:T
 static func print_deb(section:String, msg:Array):

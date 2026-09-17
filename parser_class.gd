@@ -3,7 +3,7 @@
 const PLUGIN_EXPORTED = false
 
 const URString = GDScriptParser.URString
-const UClassDetail = GDScriptParser.UClassDetail
+const URClassDetail = GDScriptParser.URClassDetail
 
 const ParserFunc = GDScriptParser.ParserFunc
 const Utils = GDScriptParser.Utils
@@ -580,11 +580,11 @@ func get_inherited_members() -> Dictionary:
 	
 	#t.stop()
 	
-	#^ debug print, compare UClassDetail to new parser
+	#^ debug print, compare URClassDetail to new parser
 	#var base_script = get_class_base_script()
 	#if base_script != null:
 		#print("COMPARE INHERITEDS")
-		#var test = UClassDetail.script_get_all_members(base_script, UClassDetail.IncludeInheritance.ALL)
+		#var test = URClassDetail.script_get_all_members(base_script, URClassDetail.IncludeInheritance.ALL)
 		#var smaller_str = "inh"
 		#var smaller = test
 		#var bigger = inherited_members
@@ -732,7 +732,7 @@ func _set_inherited_scripts():
 		return []
 	var last_path = get_script_class_path()
 	var valid = []
-	var inh_scripts = UClassDetail.script_get_inherited_scripts(base_script)
+	var inh_scripts = URClassDetail.script_get_inherited_scripts(base_script)
 	for script:GDScript in inh_scripts:
 		
 		if script.resource_path == "":

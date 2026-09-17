@@ -247,7 +247,7 @@ func get_type_lookup() -> TypeLookup:
 func get_access() -> Access:
 	return _access
 
-func get_string_map(string:String):
+func get_string_map(string:String) -> StringMap:
 	return code_edit_parser.get_string_map(string)
 
 func get_caret_context(parse_context:=true) -> CaretContext:

@@ -4,6 +4,7 @@ const PRINT_DEBUG = false # not PLUGIN_EXPORTED
 
 
 const URString = GDScriptParser.URString
+const StringMap = GDScriptParser.StringMap
 const URFile = GDScriptParser.URFile
 const URClassDetail = GDScriptParser.URClassDetail
 const ReadTres = GDScriptParser.ReadTres
@@ -314,7 +315,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 		print_deb(T.RESOLVE, ["COMPCHECK", expression, " -> ", comp_check])
 		expression = comp_check
 	
-	var string_map = parser.get_string_map(expression)
+	var string_map:StringMap = parser.get_string_map(expression)
 	var parts: Array = URString.split_member_access(expression, string_map)
 	
 	var current_class_obj:ParserClass = initial_class_obj
@@ -1098,7 +1099,7 @@ func resolve_expression_to_access_object(expression: String, class_data:ClassDat
 	
 	var access_object = AccessObject.new()
 	
-	var string_map = parser.get_string_map(expression)
+	var string_map:StringMap = parser.get_string_map(expression)
 	var parts = URString.split_member_access(expression, string_map)
 	if parts.is_empty():
 		return access_object
@@ -1554,7 +1555,7 @@ static func get_type_hint_from_collection(string:String, value:bool=false, add_i
 	return "Variant"
 
 func get_index_access_in_string(string:String):
-	var string_map:GDScriptParser.URString.StringMap = _get_parser().get_string_map(string)
+	var string_map:StringMap = _get_parser().get_string_map(string)
 	var matches:Array[String] = []
 	var i = 0
 	while i < string.length():
@@ -1576,7 +1577,7 @@ func get_index_access_in_string(string:String):
 func _check_for_type_cast(type_hint:String):
 	_initialize_op_regexes()
 	var parser = Utils.ParserRef.get_parser(self)
-	var string_map:URString.StringMap
+	var string_map:StringMap
 	var as_matches = _as_regex.search_all(type_hint)
 	if not as_matches.is_empty():
 		string_map = parser.get_string_map(type_hint)
@@ -1595,7 +1596,7 @@ func _check_for_type_cast(type_hint:String):
 func _check_for_ternary_operation(text: String, class_data:ClassData):
 	_initialize_op_regexes()
 	var parser = Utils.ParserRef.get_parser(self)
-	var string_map = parser.get_string_map(text)
+	var string_map:StringMap = parser.get_string_map(text)
 	
 	var true_expr = ""
 	var false_expr = ""
@@ -1637,7 +1638,7 @@ func _check_for_ternary_operation(text: String, class_data:ClassData):
 func _check_for_bool_or_bitwise_operation(type_hint:String):
 	_initialize_op_regexes()
 	var parser = Utils.ParserRef.get_parser(self)
-	var string_map = parser.get_string_map(type_hint)
+	var string_map:StringMap = parser.get_string_map(type_hint)
 	var bit_matches = _bitwise_op_regex.search_all(type_hint)
 	for m in bit_matches:
 		var i = m.get_start(0)
@@ -1661,7 +1662,7 @@ func _check_for_bool_or_bitwise_operation(type_hint:String):
 func _check_for_math_operation(type_hint:String):
 	_initialize_op_regexes()
 	var parser = Utils.ParserRef.get_parser(self)
-	var string_map = parser.get_string_map(type_hint)
+	var string_map:StringMap = parser.get_string_map(type_hint)
 	var compare_matches = _compar_op_regex.search_all(type_hint)
 	for m in compare_matches:
 		var i = m.get_start(0)

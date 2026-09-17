@@ -3,6 +3,7 @@
 const PRINT_DEBUG = false
 
 const URString = GDScriptParser.URString
+const StringMap = GDScriptParser.StringMap
 const URClassDetail = GDScriptParser.URClassDetail
 
 const ParserClass = GDScriptParser.ParserClass
@@ -1126,7 +1127,7 @@ func is_valid_code(line:int, col:int):
 	return code_edit.is_in_string(line, col) == -1 and code_edit.is_in_comment(line, col) == -1
 
 
-func get_string_map(text:String):
+func get_string_map(text:String) -> StringMap:
 	if string_map_cache.has(text):
 		return string_map_cache[text]
 	var string_map = URString.get_string_map(text, URString.StringMap.Mode.FULL)

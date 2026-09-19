@@ -294,6 +294,8 @@ static func prune(cache_dir:String = "") -> int:
 
 ## Serialize a parser's parsed+resolved classes to disk. Returns true on success.
 static func write(parser) -> bool:
+	if not parser.cache_enabled:
+		return false
 	if parser._script_path.is_empty() or parser._class_access.is_empty():
 		return false
 	if not FileAccess.file_exists(parser._script_path):
@@ -320,6 +322,8 @@ static func write(parser) -> bool:
 ## Validation: schema + parser version, stored path (hash-collision guard), and file mtime.
 ## `dispatcher` is the parser doing the lookup - it supplies the cache dict + dir for the new parser.
 static func read(dispatcher, script_path:String) -> GDScriptParser:
+	if not dispatcher.cache_enabled:
+		return null
 	return _read(script_path, dispatcher._parse_cache_dir, dispatcher._parser_cache)
 
 ## Dispatcher-less disk read: standalone CACHED_RESOLVED parser with its own empty parser cache.

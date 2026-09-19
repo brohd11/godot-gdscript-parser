@@ -1128,10 +1128,12 @@ func is_valid_code(line:int, col:int):
 
 
 func get_string_map(text:String) -> StringMap:
-	if string_map_cache.has(text):
+	var cache_enabled:bool = _get_parser().cache_enabled
+	if cache_enabled and string_map_cache.has(text):
 		return string_map_cache[text]
 	var string_map = URString.get_string_map(text, URString.StringMap.Mode.FULL)
-	string_map_cache[text] = string_map
+	if cache_enabled:
+		string_map_cache[text] = string_map
 	return string_map
 
 
@@ -1304,7 +1306,6 @@ func get_member_name_from_line(line:int):
 			keyword = "static " + keyword
 		return result.get_string(3)
 	return ""
-
 
 static func get_line_declaration(stripped_line:String) -> StringName:
 	for dec in Keywords.DECLARATIONS:

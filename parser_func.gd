@@ -107,7 +107,7 @@ func parse() -> void:
 
 
 func _set_function_data() -> void:
-	if not _cache_dirty:
+	if not _cache_dirty and ParserRef.get_parser(self).cache_enabled:
 		return
 	_return_type = "" # ensure this doesn't get stuck
 	
@@ -335,7 +335,7 @@ func get_local_var_type_rich(member_name:String) -> Dictionary:
 	var cache_string:String = _get_cache_string(member_name, type_hint)
 	for i:int in range(1): # single loop for early break
 		#break # ALERT
-		if not GDScriptParser.CACHE_TYPES:
+		if not GDScriptParser.CACHE_TYPES or not parser.cache_enabled:
 			break
 		if not _cache.has(cache_string):
 			break
@@ -349,7 +349,7 @@ func get_local_var_type_rich(member_name:String) -> Dictionary:
 			break
 		return cache_data.get(Keys.CLASS_CACHE_TYPE)
 	
-	var cached_data:Dictionary = _cache.get_or_add(cache_string, {})
+	var cached_data:Dictionary = _cache.get_or_add(cache_string, {}) if parser.cache_enabled else {}
 	cached_data[Keys.CLASS_CACHE_DEC] = type_hint
 	
 	if member_name.contains("-"):
@@ -436,7 +436,7 @@ func get_function_data() -> Dictionary:
 
 func get_arguments_raw() -> Dictionary:
 	var dict:Dictionary = {}
-	if not _cache_dirty: # seems ok, but could this get out of sync?
+	if not _cache_dirty and ParserRef.get_parser(self).cache_enabled:
 		for a:String in arguments:
 			dict[a] = true
 		return dict

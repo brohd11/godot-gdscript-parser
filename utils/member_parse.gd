@@ -59,8 +59,8 @@ static func get_line_declaration(stripped_line:String) -> StringName:
 static func get_func_name_in_line(stripped_line_text:String) -> String:
 	if not (stripped_line_text.begins_with("func ") or stripped_line_text.begins_with("static func ")):
 		return ""
-	var func_name:String = stripped_line_text.get_slice("func ", 1).get_slice("(", 0)
-	return func_name.strip_edges()
+	else:
+		return stripped_line_text.get_slice("func ", 1).get_slice("(", 0).strip_edges()
 
 static func get_class_name_in_line(stripped_line_text:String) -> String:
 	if not stripped_line_text.begins_with("class "): # "" <- parser

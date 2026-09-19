@@ -108,7 +108,8 @@ func get_members_hash():
 
 func set_lines(new_lines:PackedInt32Array):
 	line_indexes = new_lines
-	declaration_line = line_indexes[0]
+	# A script consisting entirely of inner classes has no root-owned lines.
+	declaration_line = line_indexes[0] if not line_indexes.is_empty() else 0
 
 func set_members(members_dict:Dictionary, lambda_data:Variant = null):
 	members = members_dict
@@ -425,7 +426,7 @@ func get_member_type_rich(identifier:String):
 	var parser = Utils.ParserRef.get_parser(self)
 	
 	var cache_valid = cached_resolve_valid_for_member(identifier)
-	var cached = _resolve_cache.get_or_add(identifier, {})
+	var cached = _resolve_cache.get_or_add(identifier, {}) if parser.cache_enabled else {}
 	var type_rich:Dictionary
 	if not cache_valid:
 		# resolve-cache miss on a rehydrated parser: lazily attach the source buffer so the live
@@ -465,12 +466,13 @@ func get_member_type_rich(identifier:String):
 		type_rich = cached.get(Keys.CLASS_CACHE_TYPE, &"")
 	
 	
-	_resolve_cache[identifier] = cached
+	if parser.cache_enabled:
+		_resolve_cache[identifier] = cached
 	#t.stop("GET MEMBER::WAS_VALID::" + str(cache_valid) + "::" + identifier + " -> " + type)
 	return type_rich
 
 func cached_resolve_valid_for_member(identifier:String):
-	if not GDScriptParser.CACHE_TYPES:
+	if not GDScriptParser.CACHE_TYPES or not Utils.ParserRef.get_parser(self).cache_enabled:
 		return false
 
 	var member_data = get_member(identifier)
@@ -508,6 +510,8 @@ func cached_resolve_valid_for_member(identifier:String):
 	return cache_valid
 
 func get_cached_resolve_for_member(identifier:String):
+	if not Utils.ParserRef.get_parser(self).cache_enabled:
+		return ""
 	return _resolve_cache.get(identifier, {}).get(Keys.CLASS_CACHE_TYPE, &"")
 
 func is_member_static_typed(identifier:String):
@@ -573,7 +577,7 @@ func has_preload(path:String) -> Variant: # doesnt handle inherited, should cach
 func get_inherited_members() -> Dictionary:
 	_check_inherited_valid()
 	
-	if not inherited_members.is_empty():
+	if Utils.ParserRef.get_parser(self).cache_enabled and not inherited_members.is_empty():
 		return inherited_members
 	#var t = GDScriptParser.TF.new("INHCHJECK::" + get_name())
 	_get_inherited_members()

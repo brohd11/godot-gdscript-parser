@@ -17,7 +17,6 @@ const _TEXTURE_EXTS = ["svg", "png", "jpg", "jpeg", "exr", "dds"]
 
 static var _string_path_regex:RegEx
 
-#! inline
 static func is_gdscript_path(file_path:String) -> bool:
 	return file_path.ends_with(".gd") or file_path.contains(".gd.") or file_path.contains(".gd::")
 
@@ -87,13 +86,13 @@ static func valid_instance_type(string:String) -> bool:
 		return true
 	return false
 
-
 static func type_path_add_ins(string:String) -> String:
 	if not valid_instance_type(string):
 		return string
-	if not string.ends_with(Keys.INS_DELIM):
-		string += Keys.INS_DELIM
-	return string
+	elif not string.ends_with(Keys.INS_DELIM):
+		return string + Keys.INS_DELIM
+	else:
+		return string
 
 #! keys class_path:String member_name:String line:int
 static func type_path_get_local_var(string:String) -> Variant:
@@ -114,7 +113,8 @@ static func type_path_get_local_var(string:String) -> Variant:
 static func get_or_add_current_type_path(current:String, class_object:GDScriptParser.ParserClass) -> String:
 	if current != "":
 		return current
-	return class_object.get_script_class_path()
+	else:
+		return class_object.get_script_class_path()
 
 
 
@@ -125,26 +125,30 @@ static func type_path_get_script_data(string:String) -> Array[String]:
 		string = string.get_slice(Keys.TYPE_DELIM, 0)
 	elif string.contains(Keys.INS_DELIM):
 		string = string.get_slice(Keys.INS_DELIM, 0)
-	var script_data = URString.get_script_path_and_suffix(string)
 	
+	var script_data = URString.get_script_path_and_suffix(string)
 	return script_data
 
 static func type_path_get_non_member(string:String) -> String:
 	if not string.contains(Keys.MEMBER_DELIM):
 		return ""
-	return string.get_slice(Keys.MEMBER_DELIM, 0)
+	else:
+		return string.get_slice(Keys.MEMBER_DELIM, 0)
 
 static func type_path_get_member(string:String, include_type:=false) -> String:
 	if not string.contains(Keys.MEMBER_DELIM):
 		return ""
-	if include_type or not string.contains(Keys.TYPE_DELIM):
+	elif include_type or not string.contains(Keys.TYPE_DELIM):
 		return string.get_slice(Keys.MEMBER_DELIM, 1) #.strip_edges()
-	return string.get_slice(Keys.MEMBER_DELIM, 1).get_slice(Keys.TYPE_DELIM, 0)
+	else:
+		return string.get_slice(Keys.MEMBER_DELIM, 1).get_slice(Keys.TYPE_DELIM, 0)
 
 static func type_path_add_member(string:String, member:String) -> String:
 	if string.is_empty():
 		return member
-	return string + Keys.MEMBER_DELIM + member
+	else:
+		return string + Keys.MEMBER_DELIM + member
+
 
 ## TypePath Structure:  [script][.Inner][::member]##Type[$$INS]
 ##
@@ -196,9 +200,9 @@ static func type_path_to_display(type_path:String) -> String:
 
 static func type_path_remove_type(string:String) -> String:
 	if string.contains(Keys.TYPE_DELIM):
-		string = string.get_slice(Keys.TYPE_DELIM, 0)
-	return string
-	
+		return string.get_slice(Keys.TYPE_DELIM, 0)
+	else:
+		return string
 
 static func member_is_const_class_enum(member_type:String) -> bool:
 	return member_type == Keys.MEMBER_TYPE_CLASS or member_type == Keys.MEMBER_TYPE_CONST or member_type == Keys.MEMBER_TYPE_ENUM

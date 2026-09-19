@@ -932,7 +932,8 @@ class DataUtils:
 	static func declaring_script_is_caller(symbol_data:SymbolData, class_obj:GDScriptParser.ParserClass) -> bool:
 		if not Utils.is_absolute_path(symbol_data.declaring_script_path):
 			return true
-		return Utils.type_path_get_script_data(symbol_data.declaring_script_path)[0] == class_obj.main_script_path
+		else:
+			return Utils.type_path_get_script_data(symbol_data.declaring_script_path)[0] == class_obj.main_script_path
 
 
 	## Shared by OperationData / MatchBlockData / FunctionCallData: same call into the access resolver,

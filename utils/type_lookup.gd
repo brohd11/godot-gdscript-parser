@@ -319,7 +319,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 	var parts: Array = URString.split_member_access(expression, string_map)
 	
 	var current_class_obj:ParserClass = initial_class_obj
-	var current_type_path = Keys.INS_DELIM # set this based on if function is static or not
+	var current_type_path:String = Keys.INS_DELIM # set this based on if function is static or not
 	if class_data.initial_type_path != "":
 		current_type_path = class_data.initial_type_path
 	elif class_data.in_static_function():
@@ -503,7 +503,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 						if is_awaited:
 							resolved_type = current_class_obj.get_script_signal_args(identifier, true)
 						else:
-							var class_path = Utils.get_or_add_current_type_path(current_type_path, current_class_obj)
+							var class_path:String = Utils.get_or_add_current_type_path(current_type_path, current_class_obj)
 							resolved_type = Utils.type_path_add_member(class_path, identifier + SIGNAL_SUFFIX)
 					
 						# check local vars too, they can shadow func names
@@ -742,7 +742,7 @@ func _resolve_expression_to_val(expression: String, class_data:ClassData, recurs
 			if inf_context:
 				print_deb(T.RESOLVE, ["INF CONTEXT::", current_type_path, "::", identifier, "::", resolved_type])
 				print_deb(T.RESOLVE, ["CLASS RESOLVED::", class_member_resolved])
-				var type_path = current_type_path
+				var type_path:String = current_type_path
 				if last_queued_callable != "":
 					type_path = last_queued_callable
 					last_queued_callable = ""
@@ -1741,10 +1741,9 @@ func resolve_preload(preload_call:String, class_obj:ParserClass):
 		path = Utils.type_path_add_ins(path)
 	return path
 
-
-func member_in_class_or_local_vars(identifier:String, class_obj:ParserClass, local_vars:Dictionary):
-	var in_members = class_obj.has_script_member(identifier) or local_vars.has(identifier)
-	return in_members
+static func member_in_class_or_local_vars(identifier:String, class_obj:ParserClass, local_vars:Dictionary):
+	#var in_members = class_obj.has_script_member(identifier) or local_vars.has(identifier)
+	return class_obj.has_script_member(identifier) or local_vars.has(identifier)
 
 func member_in_inherited(identifier:String, class_obj:ParserClass):
 	if class_resolution and class_obj == class_resolution_obj:
@@ -1825,7 +1824,7 @@ func _get_or_instance_inf_context():
 		set_inference_context(inf_context)
 	return inf_context
 
-func _get_inf_expression(class_data:ClassData, expression:String):
+static func _get_inf_expression(class_data:ClassData, expression:String):
 	return class_data.class_obj.get_script_class_path() + "::" + class_data.func_name + "::" + class_data.lambda_scope + "::" + expression
 
 func _check_inf_expression(inf_context:InferenceContext, inf_expression:String):

@@ -40,6 +40,10 @@ var _parser_cache:= {}
 var _get_cached_parser_callable:Callable
 var _max_cache_size:int = 10
 var _parse_cache_dir:String = PARSE_CACHE_DIR
+var cache_enabled:bool = true
+var _uncached_owner:WeakRef
+var _uncached_dependencies:Array = []
+var _uncached_inflight:Dictionary = {}
 
 var state:int = STATE_LIVE
 
@@ -79,6 +83,23 @@ func set_autoload_cache() -> void:
 	_type_lookup.set_autoload_cache()
 
 #region ParserCache
+## Disable reusable parse/resolve results without dropping the current syntax tree.
+## Dependency parsers stay alive for weak class references, but are never reused.
+func set_cache_enabled(enabled:bool) -> void:
+	cache_enabled = enabled
+	if not enabled:
+		_parser_cache = {}
+		code_edit_parser.string_map_cache.clear()
+		for class_obj in _class_access.values():
+			class_obj._resolve_cache.clear()
+			for function in class_obj.functions.values():
+				function._cache.clear()
+				function._cache_dirty = true
+		if state == STATE_CACHED_RESOLVED:
+			_upgrade_to_live()
+	for dependency in _uncached_dependencies:
+		dependency.set_cache_enabled(enabled)
+
 func set_parser_cache(cache_dict:Dictionary) -> void:
 	_parser_cache = cache_dict
 
@@ -144,6 +165,8 @@ func _deactivate_parser(active_cache:Dictionary, inactive_cache:Dictionary, path
 func clear_parser_cache() -> void:
 	_parser_cache.clear()
 	_static_parser_cache.clear()
+	_uncached_dependencies.clear()
+	_uncached_inflight.clear()
 
 #region PersistentDiskCache
 ## Serialize this parser's parsed+resolved classes to disk. See ScriptCache.write.
@@ -222,7 +245,7 @@ func cache_valid() -> bool:
 func parse(force:=false) -> void:
 	get_code_edit_parser().string_map_cache.clear() # clear this everytime so this doesn't get out of hand
 	
-	code_edit_parser.parse_text(force)
+	code_edit_parser.parse_text(force or not cache_enabled)
 	
 	#print_hierarchy()
 
@@ -444,12 +467,14 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 		_parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {}).erase(script_path)
 		return
 	
-	if is_instance_valid(active_parser) and not force_cache:
+	if is_instance_valid(active_parser) and not force_cache and (cache_enabled or active_parser == self):
 		if script_path == active_parser.get_script_path():
 			return active_parser
 		
 	if script_path == _script_path and not force_cache:
 		return self
+	if not cache_enabled:
+		return _uncached_parser(script_path)
 	if _source_provider.is_valid():
 		var source:Variant = _source_provider.call(script_path)
 		if source is String:
@@ -493,6 +518,7 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 			_finalize_parser_data(parser, parser_data, active_parsers_cache, script_path)
 			return parser
 		parser = new()
+		parser.set_cache_enabled(cache_enabled)
 		parser.set_source_provider(_source_provider)
 		parser.set_parser_cache(_parser_cache)
 		parser.set_parse_cache_dir(_parse_cache_dir)
@@ -525,6 +551,34 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 	return parser
 
 
+func _uncached_parser(path:String) -> GDScriptParser:
+	var owner = _uncached_owner.get_ref() if _uncached_owner != null else self
+	if not is_instance_valid(owner):
+		owner = self
+	if owner._uncached_inflight.has(path):
+		return owner._uncached_inflight[path]
+	var parser = new()
+	parser.set_cache_enabled(false)
+	parser.set_use_native_backend(use_native_backend)
+	parser.set_parse_cache_dir(_parse_cache_dir)
+	parser.set_source_provider(_source_provider)
+	parser._uncached_owner = weakref(owner)
+	var inf:InferenceContext = get_type_lookup().get_inference_context()
+	if is_instance_valid(inf):
+		parser.set_inference_context(inf)
+	var script = load(path)
+	if not is_instance_valid(script):
+		return null
+	parser.set_current_script(script)
+	var source:Variant = _source_provider.call(path) if _source_provider.is_valid() else null
+	parser.set_source_code(source if source is String else script.source_code)
+	owner._uncached_dependencies.append(parser)
+	owner._uncached_inflight[path] = parser
+	parser.parse(true)
+	owner._uncached_inflight.erase(path)
+	return parser
+
+
 func _snapshot_parser(path:String, source:String) -> GDScriptParser:
 	var cache:Dictionary = _parser_cache.get_or_add(Keys.CACHE_ACTIVE_PARSERS, {})
 	var data:Dictionary = cache.get(path, {})
@@ -532,6 +586,7 @@ func _snapshot_parser(path:String, source:String) -> GDScriptParser:
 	if is_instance_valid(parser) and data.get("snapshot_source") == source:
 		return parser
 	parser = new()
+	parser.set_cache_enabled(cache_enabled)
 	parser.set_use_native_backend(false)
 	parser.set_parser_cache(_parser_cache)
 	parser.set_source_provider(_source_provider)

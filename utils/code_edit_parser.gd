@@ -2,9 +2,9 @@
 
 const PRINT_DEBUG = false
 
-const URString = GDScriptParser.URString
+const UString = GDScriptParser.UString
 const StringMap = GDScriptParser.StringMap
-const URClassDetail = GDScriptParser.URClassDetail
+const UClassDetail = GDScriptParser.UClassDetail
 
 const ParserClass = GDScriptParser.ParserClass
 const Utils = GDScriptParser.Utils
@@ -56,6 +56,7 @@ var _annotation_regex:RegEx
 var _first_parse_complete:=false
 var cache_dirty:=true
 var _full_native_revision: int = -1
+var _full_native_document_id: int = 0
 var _line_sync_version:int = -1 # code_edit version the line ranges were last synced to
 var _lambda_source:String = ""
 var _plain_lambda_source:String = ""
@@ -270,10 +271,10 @@ func parse_text(force:=false):
 		var valid_classes:Dictionary = _pc.inner_class_map.get("", {}).duplicate()
 		if path != "":
 			var working_path = ""
-			var parts = URString.split_member_access(path)
+			var parts = UString.split_member_access(path)
 			for x in range(parts.size()):
 				var part = parts[x]
-				working_path = URString.dot_join(working_path, part)
+				working_path = UString.dot_join(working_path, part)
 				valid_constants.merge(_pc.constant_map.get(working_path, {}), true)
 				#valid_classes.merge(_pc.inner_class_map.get(working_path, {}), true)
 				var classes = _pc.inner_class_map.get(working_path, {})
@@ -296,8 +297,8 @@ func parse_text(force:=false):
 			_class_obj.set_script_resource(parser._script_resource)
 			_class_obj.class_name_data = _pc.class_name_data
 		else:
-			#_class_obj.set_script_resource(URClassDetail.get_member_info_by_path(main_script, _pc.access_path))
-			var inner_script = URClassDetail.get_member_info_by_path(main_script, path)
+			#_class_obj.set_script_resource(UClassDetail.get_member_info_by_path(main_script, _pc.access_path))
+			var inner_script = UClassDetail.get_member_info_by_path(main_script, path)
 			#prints("INNERSCRIPT::", inner_script, "::PATH::", path)
 			_class_obj.set_script_resource(inner_script)
 		
@@ -326,6 +327,7 @@ func parse_text(force:=false):
 	if PRINT_DEBUG:
 		t.stop()
 	#print("CLASSES ",temp_class_access.keys())
+	parser._parsed_source_hash = code_edit.text.sha256_text()
 	cache_dirty = false
 	_first_parse_complete = true
 	_pc = null
@@ -396,9 +398,9 @@ func _parse_line(stripped:String, line:int, column:int=0):
 		
 		_pc.in_function = false
 		if keyword == "class":
-			var new_access_path = URString.dot_join(_pc.access_path, member_name)
+			var new_access_path = UString.dot_join(_pc.access_path, member_name)
 			#data[Keys.MEMBER_TYPE] = Keys.MEMBER_TYPE_CLASS
-			data[Keys.TYPE] = URString.dot_join(_pc.main_script_path, new_access_path)
+			data[Keys.TYPE] = UString.dot_join(_pc.main_script_path, new_access_path)
 			
 			_pc.inner_class_map.get_or_add(_pc.access_path, {})[member_name] = data
 			
@@ -531,28 +533,30 @@ func parse_text_native(force:=false):
 	var main_script_path = parser.get_script_path()
 
 	var native_revision:int
+	var native_document_id:int = 0
 	var full_parse_data:Dictionary
 
 	if _is_read_only_reader(parser):
-		# This parser exists only to READ another script. Its CodeEdit is there so GDScript can walk
-		# lines faster than a PackedStringArray - nobody is editing it. Note the discriminator is the
-		# parser's purpose, not the CodeEdit's origin: a parser-created CodeEdit can still be
-		# live-edited (live_edit_lines_test.gd does exactly that), and those must keep their buffer.
-		# Attaching would register it with the LSP
-		# (attach -> acquire -> sync_buffer -> update_document), publishing a read as an open
-		# document and invalidating every script that depends on it, mid-resolve. Read the
-		# workspace's own indexed copy instead: no buffer, no version push, nothing invalidated.
-		# Matches the built-in LSP, where only editor buffers are open and everything else is disk.
-		var disk_doc:Object = _get_disk_document(main_script_path, code_edit.text)
+		# Dependency readers must not publish their scratch text as an unsaved editor buffer.
+		var disk_doc:Object = _get_disk_document(main_script_path)
 		if not is_instance_valid(disk_doc):
+			disk_doc = _get_disk_document(main_script_path, code_edit.text)
+		if not is_instance_valid(disk_doc) or not disk_doc.has_method(&"get_source_code"):
 			# No extension, or a file the workspace has not indexed - keep the text parser.
 			use_native_backend = false
 			var text_result = parse_text(force)
 			use_native_backend = true
 			return text_result
 		native_revision = disk_doc.get_revision()
-		if not cache_dirty and not force and _full_native_revision == native_revision:
+		native_document_id = disk_doc.get_instance_id()
+		if not cache_dirty and not force and _full_native_revision == native_revision and _full_native_document_id == native_document_id:
 			return
+		# Declaration lookups must read exactly the source used by this structural revision.
+		var document_source:String = disk_doc.get_source_code()
+		if code_edit.text != document_source:
+			code_edit.text = document_source
+			string_map_cache.clear()
+			cache_dirty = true
 		full_parse_data = disk_doc.parse_script(main_script_path)
 		if PRINT_DEBUG:
 			GDScriptParser.TF.new("PARSE TO DATA (disk)").stop()
@@ -625,8 +629,8 @@ func parse_text_native(force:=false):
 			_class_obj.set_script_resource(parser._script_resource)
 			_class_obj.class_name_data = cls_data
 		else:
-			#_class_obj.set_script_resource(URClassDetail.get_member_info_by_path(main_script, _pc.access_path))
-			var inner_script = URClassDetail.get_member_info_by_path(main_script, path)
+			#_class_obj.set_script_resource(UClassDetail.get_member_info_by_path(main_script, _pc.access_path))
+			var inner_script = UClassDetail.get_member_info_by_path(main_script, path)
 			#prints("INNERSCRIPT::", inner_script, "::PATH::", path)
 			_class_obj.set_script_resource(inner_script)
 		
@@ -657,6 +661,8 @@ func parse_text_native(force:=false):
 		t.stop()
 	#print("CLASSES ",temp_class_access.keys())
 	_full_native_revision = native_revision
+	_full_native_document_id = native_document_id
+	parser._parsed_source_hash = code_edit.text.sha256_text()
 	cache_dirty = false
 	_first_parse_complete = true
 	_line_sync_version = native_revision # ranges are fresh, next sync_line_ranges() no-ops
@@ -819,7 +825,7 @@ func get_line_context_start_data(target_line_index:int, params:Dictionary={}) ->
 								continue
 						else:
 							var assigns = [stripped]
-							assigns = URString.string_safe_split(stripped, ";")
+							assigns = UString.string_safe_split(stripped, ";")
 							if stripped.begins_with("var my"):
 								print("has sem---",assigns)
 							var col = 0
@@ -957,8 +963,8 @@ func get_line_context(target_line_index:int, _caret_column:=0, insert_caret:=fal
 	
 	if has_semi_col:# and _caret_column > 0:
 		var string_map = get_string_map(context_text)
-		var semi_prev = URString.string_safe_rfind(context_text, ";", caret_idx, string_map) + 1
-		var semi_next = URString.string_safe_find(context_text, ";", caret_idx, string_map)
+		var semi_prev = UString.string_safe_rfind(context_text, ";", caret_idx, string_map) + 1
+		var semi_next = UString.string_safe_find(context_text, ";", caret_idx, string_map)
 		var end_idx = -1 if semi_next == -1 else semi_next - semi_prev
 		context_text = context_text.substr(semi_prev, end_idx)
 	
@@ -1007,7 +1013,7 @@ func parse_identifier_at_position(text_to_process:String, start_pos:int):
 			var valid = false
 			if _char == ")" and last_char == ".":
 				valid = true
-			if _char in URString.NUMBERS:
+			if _char in UString.NUMBERS:
 				valid = true
 			
 			if not valid:
@@ -1131,7 +1137,7 @@ func get_string_map(text:String) -> StringMap:
 	var cache_enabled:bool = _get_parser().cache_enabled
 	if cache_enabled and string_map_cache.has(text):
 		return string_map_cache[text]
-	var string_map = URString.get_string_map(text, URString.StringMap.Mode.FULL)
+	var string_map = UString.get_string_map(text, UString.StringMap.Mode.FULL)
 	if cache_enabled:
 		string_map_cache[text] = string_map
 	return string_map

@@ -1,7 +1,7 @@
 #! import_p Keys,
 const SELF = preload("res://addons/addon_lib/gdscript_parser/utils/utils.gd")
 
-const URString = GDScriptParser.URString
+const UString = GDScriptParser.UString
 
 const Keys = GDScriptParser.Keys
 const CodeEditParser = GDScriptParser.CodeEditParser
@@ -75,9 +75,9 @@ static func valid_instance_type(string:String) -> bool:
 	elif is_absolute_path(string):
 		return true
 	elif string.contains("."):
-		var front:String = URString.get_member_access_front(string)
+		var front:String = UString.get_member_access_front(string)
 		if ClassDB.class_exists(front):
-			var back:String = URString.get_member_access_back(string)
+			var back:String = UString.get_member_access_back(string)
 			if ClassDB.class_has_enum(front, back):
 				return false
 		return true
@@ -126,7 +126,7 @@ static func type_path_get_script_data(string:String) -> Array[String]:
 	elif string.contains(Keys.INS_DELIM):
 		string = string.get_slice(Keys.INS_DELIM, 0)
 	
-	var script_data = URString.get_script_path_and_suffix(string)
+	var script_data = UString.get_script_path_and_suffix(string)
 	return script_data
 
 static func type_path_get_non_member(string:String) -> String:
@@ -287,8 +287,8 @@ static func get_string_inside_brackets(string:String, must_be_string:=true) -> S
 	var bracket_string:String = string.substr(open_b, string.rfind(")") - open_b)
 	if not must_be_string:
 		return bracket_string
-	if URString.is_string_or_string_name(bracket_string):
-		return URString.unquote(bracket_string)
+	if UString.is_string_or_string_name(bracket_string):
+		return UString.unquote(bracket_string)
 	return ""
 
 
@@ -330,7 +330,7 @@ static func add_var_to_dict(stripped_line:String, line:int, column:int, dict:Dic
 	return var_data
 
 static func get_class_access_path_from_member_data(dict:Dictionary) -> String:
-	return URString.dot_join(dict.get(Keys.SCRIPT_PATH, ""), dict.get(Keys.ACCESS_PATH, ""))
+	return UString.dot_join(dict.get(Keys.SCRIPT_PATH, ""), dict.get(Keys.ACCESS_PATH, ""))
 
 static func token_is_string(text:String) -> bool: # should this account for StringName and NodePath?
 	if text.begins_with("r"):
@@ -357,7 +357,7 @@ static func ensure_absolute_path(path:String, main_script_path:String) -> String
 	if path.is_absolute_path():
 		return path
 	var new_path:String = main_script_path.get_base_dir().path_join(path).simplify_path()
-	var script_data:Array[String] = URString.get_script_path_and_suffix(new_path)
+	var script_data:Array[String] = UString.get_script_path_and_suffix(new_path)
 	if FileAccess.file_exists(script_data[0]): # script path only
 		return new_path
 	return path
@@ -420,7 +420,7 @@ func print_hierarchy(parser:GDScriptParser) -> void:
 			name = "Script"
 		else:
 			indent = name.count(".") + 1
-			name = URString.get_member_access_back(name)
+			name = UString.get_member_access_back(name)
 		var base_indent_str:String = ""
 		for i:Variant in indent:
 			base_indent_str += "\t"

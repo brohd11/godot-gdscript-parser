@@ -25,7 +25,7 @@ const STATE_CACHED_RESOLVED = 1
 # --- versioning / location ----------------------------------------------------------------------
 const DEFAULT_DIR = "res://.godot/addons/gdscript_parser/parse_cache"
 const SCHEMA_VERSION = 5 # bump when the on-disk dict layout changes
-const PARSER_VERSION = 5 # bump when parse/resolve logic changes -> invalidates all cache files
+const PARSER_VERSION = 6 # bump when parse/resolve logic changes -> invalidates all cache files
 
 # --- on-disk dict keys (cache-local; not in the shared Keys registry) ---------------------------
 const PCACHE_SCHEMA = &"schema_version"
@@ -69,7 +69,7 @@ static func serialize_class(class_obj) -> Dictionary:
 	# the monitor matches unchanged parents and only clears when one actually changed.
 	var inh_mod:Dictionary = {}
 	for isp in class_obj.inherited_scripts:
-		var sp:String = GDScriptParser.URString.get_script_path_and_suffix(String(isp))[0]
+		var sp:String = GDScriptParser.UString.get_script_path_and_suffix(String(isp))[0]
 		inh_mod[sp] = FileAccess.get_modified_time(sp)
 	return {
 		Keys.ACCESS_PATH: class_obj.access_path,
@@ -300,6 +300,11 @@ static func write(parser) -> bool:
 		return false
 	if not FileAccess.file_exists(parser._script_path):
 		return false
+	var source_hash:String = parser._parsed_source_hash
+	if source_hash.is_empty() or source_hash != FileAccess.get_sha256(parser._script_path):
+		return false
+	if is_instance_valid(parser.code_edit) and parser.code_edit.text.sha256_text() != source_hash:
+		return false
 	var classes:Dictionary = {}
 	for access_path:String in parser._class_access.keys():
 		classes[access_path] = serialize_class(parser._class_access[access_path])
@@ -308,8 +313,11 @@ static func write(parser) -> bool:
 		PCACHE_PARSER_VER: PARSER_VERSION,
 		Keys.SCRIPT_PATH: parser._script_path,
 		Keys.CACHE_MODIFIED: FileAccess.get_modified_time(parser._script_path),
+		"source_hash": source_hash,
 		Keys.CACHE_CLASSES: classes,
 	}
+	if FileAccess.get_sha256(parser._script_path) != source_hash:
+		return false
 	ensure_dir(parser._parse_cache_dir)
 	var file:FileAccess = FileAccess.open(cache_file_path(parser._parse_cache_dir, parser._script_path), FileAccess.WRITE)
 	if file == null:
@@ -352,11 +360,14 @@ static func _read(script_path:String, dir:String, parser_cache:Dictionary) -> GD
 		return null
 	if data.get(Keys.CACHE_MODIFIED, -1) != FileAccess.get_modified_time(script_path):
 		return null
+	if data.get("source_hash", "") != FileAccess.get_sha256(script_path):
+		return null
 
 	var parser:GDScriptParser = GDScriptParser.new()
 	parser.set_parser_cache(parser_cache)
 	parser.set_parse_cache_dir(dir)
 	parser._script_path = script_path
+	parser._parsed_source_hash = data["source_hash"]
 	parser.state = STATE_CACHED_RESOLVED
 	var classes:Dictionary = data.get(Keys.CACHE_CLASSES, {})
 	for access_path:String in classes.keys():
@@ -392,7 +403,7 @@ static func from_cache(script_path:String, cache_dir:String = "", code_edit = nu
 	if code_edit != null:
 		parser.set_code_edit(code_edit)
 	else:
-		parser.set_source_code(script.source_code)
+		parser.set_source_code(FileAccess.get_file_as_string(script_path))
 	parser.parse()
 	return parser
 #endregion
@@ -409,7 +420,9 @@ static func ensure_source(parser) -> void:
 		parser._script_resource = load(parser._script_path)
 	parser._create_buffer_code_edit()
 	if is_instance_valid(parser._script_resource):
-		parser.code_edit.text = parser._script_resource.source_code
+		parser.code_edit.text = FileAccess.get_file_as_string(parser._script_path)
+		if parser.code_edit.text.sha256_text() != parser._parsed_source_hash:
+			upgrade_to_live(parser)
 	parser.code_edit_parser.sync_code_edit() # wire the tokenizer's code_edit for single-line reads
 
 ## The choke-point hook: called wherever the tokenizer / current script is fetched. No-op unless the
@@ -430,7 +443,7 @@ static func upgrade_to_live(parser) -> void:
 	if not is_instance_valid(script):
 		return
 	parser.set_current_script(script) # clears _class_access
-	parser.set_source_code(script.source_code)
+	parser.set_source_code(FileAccess.get_file_as_string(parser._script_path))
 	parser.parse(true)
 
 ## Resolve-cache validity for a CACHED_RESOLVED parser: no live source, so trust the persisted

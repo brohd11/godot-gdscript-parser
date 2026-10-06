@@ -13,10 +13,10 @@ const PARSE_CACHE_DIR = ScriptCache.DEFAULT_DIR
 
 const TF = preload("uid://7v3ioke0kffx") #! resolve UtilR.Profile.TimeFunction
 
-const URFile = preload("uid://bqfy5cvhth0m1") #! resolve UtilR.Files.URFile
-const URString = preload("uid://dce8d0wuh35gs") #! resolve UtilR.Strings.URString
+const UFile = preload("uid://bqfy5cvhth0m1") #! resolve UtilR.Files.UFile
+const UString = preload("uid://dce8d0wuh35gs") #! resolve UtilR.Strings.UString
 const StringMap = preload("uid://btml0a8r6vbbn") #! resolve UtilR.Strings.StringMap
-const URClassDetail = preload("uid://0a4i0eyxcij7") #! resolve UtilR.Objects.URClassDetail
+const UClassDetail = preload("uid://0a4i0eyxcij7") #! resolve UtilR.Objects.UClassDetail
 const ReadTres = preload("uid://b63khouggaars") #! resolve UtilR.Resources.Read.Tres
 const ReadTscn = preload("uid://cx8sx32appge5") #! resolve UtilR.Resources.Read.Tscn
 
@@ -59,6 +59,7 @@ var code_edit:CodeEdit
 
 var _script_path:String
 var _script_resource:GDScript
+var _parsed_source_hash:String = ""
 
 var _class_access:Dictionary = {}
 
@@ -218,7 +219,7 @@ func set_script_path(new_path:String) -> void:
 	_script_path = new_path
 	if FileAccess.file_exists(_script_path):
 		_script_resource = load(_script_path)
-		set_source_code(_script_resource.source_code)
+		set_source_code(FileAccess.get_file_as_string(_script_path))
 	else:
 		set_source_code("")
 
@@ -404,8 +405,8 @@ func get_member_info_from_script(full_script_path:String) -> Variant:
 	var access_path:String = ""
 	var member_name:String = class_path
 	if class_path.contains("."):
-		access_path = URString.trim_member_access_back(class_path)
-		member_name = URString.get_member_access_back(class_path)
+		access_path = UString.trim_member_access_back(class_path)
+		member_name = UString.get_member_access_back(class_path)
 	
 	if member_name.ends_with(Keys.ENUM_PATH_SUFFIX):
 		member_name = member_name.trim_suffix(Keys.ENUM_PATH_SUFFIX)
@@ -492,8 +493,10 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 	
 	var cached_modified_time:int = parser_data.get(Keys.CACHE_MODIFIED, -1)
 	var modified_time:int = FileAccess.get_modified_time(script_path)
-	var file_changed:bool = cached_modified_time != modified_time or cached_modified_time == -1
+	var source_hash:String = _get_source_hash(script_path)
+	var file_changed:bool = cached_modified_time != modified_time or cached_modified_time == -1 or parser_data.get("source_hash", "") != source_hash
 	parser_data[Keys.CACHE_MODIFIED] = modified_time
+	parser_data["source_hash"] = source_hash
 	
 	var parser_valid:bool = false
 	var parser:Variant = parser_data.get(Keys.CACHE_PARSER) as GDScriptParser
@@ -501,7 +504,7 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 		if parser.state == STATE_CACHED_RESOLVED:
 			# rehydrated-from-disk parser already in the active cache: serve from cache and never
 			# fall through to parse() (it has no code_edit). Only rebuild if the file changed.
-			if file_changed:
+			if file_changed or force_cache or _native_source_changed(parser):
 				parser._upgrade_to_live()
 			_finalize_parser_data(parser, parser_data, active_parsers_cache, script_path)
 			return parser
@@ -515,6 +518,8 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 			if is_instance_valid(active_parser):
 				parser.active_parser = active_parser
 			parser_data[Keys.CACHE_PARSER] = parser
+			if _native_source_changed(parser):
+				parser._upgrade_to_live()
 			_finalize_parser_data(parser, parser_data, active_parsers_cache, script_path)
 			return parser
 		parser = new()
@@ -538,7 +543,7 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 			print("NOT VALID:", script_path)
 			return
 		parser.set_current_script(script)
-		parser.set_source_code(script.source_code)
+		parser.set_source_code(FileAccess.get_file_as_string(script_path))
 		
 		var classes:Dictionary = parser_data.get(Keys.CACHE_CLASSES, {})
 		if not classes.is_empty():
@@ -549,6 +554,25 @@ func get_parser_for_path(full_script_path:String, force_cache:=false) -> GDScrip
 	parser.parse(need_parse) # i think this should be last so that classes can be updated
 	_finalize_parser_data(parser, parser_data, active_parsers_cache, script_path)
 	return parser
+
+
+func _native_source_changed(parser:GDScriptParser) -> bool:
+	if not parser.use_native_backend or not parser.code_edit_parser._is_read_only_reader(parser):
+		return false
+	var document:Object = parser.code_edit_parser._get_disk_document(parser.get_script_path())
+	if not is_instance_valid(document):
+		return false
+	if document.has_method(&"get_source_hash"):
+		return document.get_source_hash() != parser._parsed_source_hash
+	return document.has_method(&"get_source_code") and document.get_source_code().sha256_text() != parser._parsed_source_hash
+
+
+func _get_source_hash(path:String) -> String:
+	if use_native_backend:
+		var document:Object = code_edit_parser._get_disk_document(path)
+		if is_instance_valid(document) and document.has_method(&"get_source_hash"):
+			return document.get_source_hash()
+	return FileAccess.get_sha256(path)
 
 
 func _uncached_parser(path:String) -> GDScriptParser:
@@ -571,7 +595,7 @@ func _uncached_parser(path:String) -> GDScriptParser:
 		return null
 	parser.set_current_script(script)
 	var source:Variant = _source_provider.call(path) if _source_provider.is_valid() else null
-	parser.set_source_code(source if source is String else script.source_code)
+	parser.set_source_code(source if source is String else FileAccess.get_file_as_string(path))
 	owner._uncached_dependencies.append(parser)
 	owner._uncached_inflight[path] = parser
 	parser.parse(true)
@@ -638,7 +662,7 @@ func cached_data_valid(script_path:String, data:Dictionary) -> bool:
 	var modified_time:int = FileAccess.get_modified_time(script_path)
 	var file_changed:bool = cached_modified_time != modified_time or cached_modified_time == -1
 	var classes:Dictionary = data.get(Keys.CACHE_CLASSES, {})
-	if classes.is_empty() or file_changed:
+	if classes.is_empty() or file_changed or data.get("source_hash", "") != _get_source_hash(script_path):
 		return false
 	return true
 

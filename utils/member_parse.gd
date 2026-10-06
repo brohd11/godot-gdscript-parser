@@ -1,11 +1,9 @@
 ## Regex-based parsing of single GDScript declaration lines (var/const/func/signal/enum/class).
 ## Line-local and lexical only - no scope or type resolution, which is the parser's job.
 
-const URFile = GDScriptParser.URFile
-const URString = GDScriptParser.URString
+const UFile = GDScriptParser.UFile
+const UString = GDScriptParser.UString
 
-const UFile = URFile
-const UString = URString
 
 
 const _QUOTES = ["'", '"']

@@ -1,4 +1,4 @@
-const _MemberParse = preload("res://addons/addon_lib/gdscript_parser/utils/member_parse.gd")
+const _MemberParse = preload("res://addons/_lib/gdscript_parser/utils/member_parse.gd")
 
 const _BLANK = &""
 const CARET_UNI_CHAR = &"\uFFFF"

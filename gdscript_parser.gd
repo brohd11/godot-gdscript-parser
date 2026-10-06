@@ -6,7 +6,7 @@ const CACHE_TYPES = true
 
 # Whole persistent-cache subsystem lives in ScriptCache. These are aliases for existing references;
 # ScriptCache is the single source of truth for state/version/location + all cache logic.
-const ScriptCache = preload("res://addons/addon_lib/gdscript_parser/utils/cache.gd")
+const ScriptCache = preload("res://addons/_lib/gdscript_parser/utils/cache.gd")
 const STATE_LIVE = ScriptCache.STATE_LIVE
 const STATE_CACHED_RESOLVED = ScriptCache.STATE_CACHED_RESOLVED
 const PARSE_CACHE_DIR = ScriptCache.DEFAULT_DIR
@@ -20,18 +20,18 @@ const UClassDetail = preload("uid://0a4i0eyxcij7") #! resolve UtilR.Objects.UCla
 const ReadTres = preload("uid://b63khouggaars") #! resolve UtilR.Resources.Read.Tres
 const ReadTscn = preload("uid://cx8sx32appge5") #! resolve UtilR.Resources.Read.Tscn
 
-const ParserClass = preload("res://addons/addon_lib/gdscript_parser/parser_class.gd")
-const ParserFunc = preload("res://addons/addon_lib/gdscript_parser/parser_func.gd")
-const MemberParse = preload("res://addons/addon_lib/gdscript_parser/utils/member_parse.gd")
-const CaretContext = preload("res://addons/addon_lib/gdscript_parser/caret_context.gd")
-const CodeEditParser = preload("res://addons/addon_lib/gdscript_parser/utils/code_edit_parser.gd")
-const TypeLookup = preload("res://addons/addon_lib/gdscript_parser/utils/type_lookup.gd")
-const Access = preload("res://addons/addon_lib/gdscript_parser/utils/access.gd")
-const BuiltInChecker = preload("res://addons/addon_lib/gdscript_parser/utils/builtin/builtin_checker.gd")
-const InferenceContext = preload("res://addons/addon_lib/gdscript_parser/utils/type_lookup/inference_context.gd")
+const ParserClass = preload("res://addons/_lib/gdscript_parser/parser_class.gd")
+const ParserFunc = preload("res://addons/_lib/gdscript_parser/parser_func.gd")
+const MemberParse = preload("res://addons/_lib/gdscript_parser/utils/member_parse.gd")
+const CaretContext = preload("res://addons/_lib/gdscript_parser/caret_context.gd")
+const CodeEditParser = preload("res://addons/_lib/gdscript_parser/utils/code_edit_parser.gd")
+const TypeLookup = preload("res://addons/_lib/gdscript_parser/utils/type_lookup.gd")
+const Access = preload("res://addons/_lib/gdscript_parser/utils/access.gd")
+const BuiltInChecker = preload("res://addons/_lib/gdscript_parser/utils/builtin/builtin_checker.gd")
+const InferenceContext = preload("res://addons/_lib/gdscript_parser/utils/type_lookup/inference_context.gd")
 
-const Utils = preload("res://addons/addon_lib/gdscript_parser/utils/utils.gd")
-const Keys = preload("res://addons/addon_lib/gdscript_parser/utils/keys.gd")
+const Utils = preload("res://addons/_lib/gdscript_parser/utils/utils.gd")
+const Keys = preload("res://addons/_lib/gdscript_parser/utils/keys.gd")
 
 
 

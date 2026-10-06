@@ -10,15 +10,15 @@ const ParserClass = GDScriptParser.ParserClass
 const Utils = GDScriptParser.Utils
 const Keys = Utils.Keys
 const Keywords = Utils.Keywords
-const LambdaScanner = preload("res://addons/addon_lib/gdscript_parser/utils/lambda_scanner.gd")
+const LambdaScanner = preload("res://addons/_lib/gdscript_parser/utils/lambda_scanner.gd")
 
 var _parser:WeakRef
 var code_edit:CodeEdit
 
 var use_native_backend:bool = false # set by the owning GDScriptParser (source of truth) in its _init
 var native_manager:Variant
-const NATIVE_MANAGER_PATH = "res://addons/addon_lib/gdscript_lsp/code_edit_manager.gd"
-const NATIVE_SERVICE_PATH = "res://addons/addon_lib/gdscript_lsp/service.gd"
+const NATIVE_MANAGER_PATH = "res://addons/_lib/gdscript_lsp/code_edit_manager.gd"
+const NATIVE_SERVICE_PATH = "res://addons/_lib/gdscript_lsp/service.gd"
 
 var indent_size:int
 

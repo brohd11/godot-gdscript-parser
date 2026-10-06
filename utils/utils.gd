@@ -1,5 +1,5 @@
 #! import_p Keys,
-const SELF = preload("res://addons/addon_lib/gdscript_parser/utils/utils.gd")
+const SELF = preload("res://addons/_lib/gdscript_parser/utils/utils.gd")
 
 const UString = GDScriptParser.UString
 

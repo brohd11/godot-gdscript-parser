@@ -566,7 +566,8 @@ func parse_text_native(force:=false):
 			var code_edit_tree_parser = load(NATIVE_MANAGER_PATH)
 			native_manager = code_edit_tree_parser.new()
 	
-		if native_manager._edit != code_edit:
+		# is_attached: the service can drop a buffer under the same code_edit (freed service, discard)
+		if native_manager._edit != code_edit or not native_manager.is_attached():
 			var t4 = GDScriptParser.TF.new("PARSE TEXT NEW CODE")
 			native_manager.detach()
 			# the path is only a label - parse() stamps it into every member dict as Keys.SCRIPT_PATH.

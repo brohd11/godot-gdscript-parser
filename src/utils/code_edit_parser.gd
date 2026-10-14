@@ -10,7 +10,7 @@ const ParserClass = GDScriptParser.ParserClass
 const Utils = GDScriptParser.Utils
 const Keys = Utils.Keys
 const Keywords = Utils.Keywords
-const LambdaScanner = preload("res://addons/_lib/gdscript_parser/utils/lambda_scanner.gd")
+const LambdaScanner = preload("res://addons/_lib/gdscript_parser/src/utils/lambda_scanner.gd")
 
 var _parser:WeakRef
 var code_edit:CodeEdit

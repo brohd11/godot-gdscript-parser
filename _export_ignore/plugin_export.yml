@@ -2,8 +2,7 @@ export_root: "res://addons/_lib/gdscript_parser/_export_ignore/exports"
 plugin_folder: "GDScriptParser{{version=gdscript_parser}}"
 pre_script: ""
 post_script: ""
-build_require:
-  - "brohd11/godot-util-r@v0.1.3"
+build_require: @require
 compile_require: []
 options:
   overwrite: true

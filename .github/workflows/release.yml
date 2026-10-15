@@ -11,7 +11,7 @@ jobs:
     uses: brohd11/godot-package-exporter/.github/workflows/package-release.yml@main
     with:
       # Builds and verifies on this Godot; it must run everything the package and its deps use.
-      godot-version: "4.6.3-stable"
+      godot-version: "4.7-stable"
       publish: ${{ github.event_name == 'push' }}
     permissions:
       contents: write

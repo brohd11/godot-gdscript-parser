@@ -157,7 +157,7 @@ static func type_path_add_member(string:String, member:String) -> String:
 ## "res://x.gd::_err##Error##Enum" returns "Error", quietly dropping the "Enum" marker, and every
 ## consumer downstream stops seeing an enum. Enum/Callable/Signal paths already name their own
 ## declaration, so they must never be wrapped as `owner::member##<type>` (see type_lookup.gd, the
-## ENUM_SUFFIX branch before the member wrap). tests/gdscript_parser/inference_tests.gd asserts this
+## ENUM_SUFFIX branch before the member wrap). _export_ignore/test/inference_test.gd asserts this
 ## invariant on every resolved type and origin.
 static func type_path_get_type(string:String, allow_all:bool=false) -> String:
 	if not string.contains(Keys.TYPE_DELIM):

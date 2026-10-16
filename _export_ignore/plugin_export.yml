@@ -3,14 +3,17 @@ plugin_folder: "GDScriptParser{{version=gdscript_parser}}"
 pre_script: ""
 post_script: ""
 build_require: @require
+test_require:
+  - @require
+  - brohd11/godot-gdscript-lsp/release@v0.2.1
 compile_require: []
+exported_require: []
 options:
   overwrite: true
   include_uid: true
   include_import: true
   ignore_src: true
   use_tag_in_cfg: true
-  exported_deps: []
   include_min_version: true
   move_global_files: true
   include_docs: true

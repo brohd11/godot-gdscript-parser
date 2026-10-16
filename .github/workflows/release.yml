@@ -4,7 +4,7 @@
 name: release
 on:
   push:
-    tags: ["v*", "[0-9]*"]
+    tags: [] # ["v*", "[0-9]*"] # disable for now
   workflow_dispatch:
 jobs:
   release:

@@ -34,15 +34,3 @@ exports:
     source: "res://addons/_lib/gdscript_parser"
     export_name: "gdscript-parser{{version=gdscript_parser}}"
     export_folder: "addons/_lib/gdscript_parser"
-    exclude:
-      directories:
-        - "res://addons/_lib/gdscript_parser/_export_ignore"
-      file_extensions: []
-      files: []
-    other_transfers: []
-    parser_overide_settings:
-      parse_cs: {}
-      parse_gd: {}
-      parse_tscn: {}
-      parse_tres: {}
-    remote_dir: "res://addons/_lib/gdscript_parser/src/remote"

@@ -50,7 +50,7 @@ static func _reparent_keeps_buffer(service, root:Node) -> bool:
 	var edit := _new_edit(root)
 	var key:String = service.acquire(edit, SOURCE)
 	edit.reparent(holder)
-	service._check_editor_left(key) # the deferred check, run synchronously
+	service._check_editor_left(edit.get_instance_id()) # the deferred check, run synchronously
 	var ok:bool = service._buffers.has(key) and is_instance_valid(service.get_document(key))
 	service.release(key)
 	holder.free()
@@ -60,8 +60,9 @@ static func _reparent_keeps_buffer(service, root:Node) -> bool:
 static func _freed_edit_discards(service, root:Node) -> bool:
 	var edit := _new_edit(root)
 	var key:String = service.acquire(edit, SOURCE)
+	var edit_id := edit.get_instance_id()
 	edit.free()
-	service._check_editor_left(key)
+	service._check_editor_left(edit_id)
 	return not service._buffers.has(key)
 
 

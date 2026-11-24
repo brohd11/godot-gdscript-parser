@@ -5,7 +5,7 @@ post_script: ""
 build_require: @require
 test_require:
   - @require
-  - brohd11/godot-gdscript-lsp/release@v0.2.1
+  - brohd11/godot-gdscript-lsp/release@v0.3.0
 compile_require: []
 exported_require: []
 options:
